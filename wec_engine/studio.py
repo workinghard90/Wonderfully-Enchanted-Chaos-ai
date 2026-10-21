@@ -16,8 +16,10 @@ from .studio_store import (
     save_scene_image, get_scene_image, remove_scene_image,
     export_backup, restore_backup, StorageLimitError, ProjectConflictError,
     MAX_UPLOAD_BYTES, MAX_BACKUP_BYTES,
+    generation_usage, reserve_generation, MAX_GENERATIONS_PER_DAY, GenerationLimitError,
 )
 from .orchestrator import run_production
+from .providers.cloudflare_images import CloudflareImages, GenerationError, validate_prompt
 
 ROOT = Path(__file__).parent / 'studio_web'
 MAX_BODY = 128 * 1024
@@ -36,6 +38,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
     db_path = init_db(db_path)
     data_dir = Path(data_dir).resolve()
     media_lock = threading.Lock()
+    image_provider = CloudflareImages()
     class Handler(BaseHTTPRequestHandler):
         def setup(self):
             super().setup()
@@ -83,6 +86,48 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
             if path == '/api/health' and self.command == 'GET':
                 self._send(200, {'ok':True}); return
             if not self._authorized(): return
+            if path == '/api/generation' and self.command == 'GET':
+                self._send(200, {'ready': image_provider.ready(), 'provider': 'Cloudflare Workers AI',
+                                 'model': 'FLUX.1 schnell', 'attempts_today': generation_usage(db_path),
+                                 'daily_limit': MAX_GENERATIONS_PER_DAY})
+                return
+            generate_match = re.fullmatch(r'/api/projects/([a-f0-9]{32})/scenes/(scene-[0-9]{3})/generate', path)
+            if generate_match and self.command == 'POST':
+                if not media_lock.acquire(blocking=False):
+                    self._send(429, {'error': 'Another image or backup operation is running. Try again shortly.'}); return
+                try:
+                    body = json.loads(self._read_body(16 * 1024))
+                    prompt = validate_prompt(body.get('prompt') if isinstance(body, dict) else None)
+                    if not image_provider.ready():
+                        raise GenerationError('Image generation needs owner setup before it can run.', 503)
+                    pid, sid = generate_match.groups()
+                    project = get_project(db_path, pid)
+                    if not project:
+                        raise LookupError('Project not found')
+                    reserve_generation(db_path, pid, sid, project)
+                    raw = image_provider.generate(prompt)
+                    try:
+                        value = save_scene_image(db_path, pid, sid, raw, expected_project=project)
+                    except (StorageLimitError, ProjectConflictError):
+                        raise
+                    except (ValueError, OSError):
+                        raise GenerationError('The generated image could not be stored. Reopen the project before trying again.') from None
+                    self._send(200, value)
+                except GenerationError as exc:
+                    self._send(exc.status, {'error': str(exc)})
+                except GenerationLimitError as exc:
+                    self._send(429, {'error': str(exc)})
+                except StorageLimitError as exc:
+                    self._send(413, {'error': str(exc)})
+                except ProjectConflictError as exc:
+                    self._send(409, {'error': str(exc)})
+                except LookupError as exc:
+                    self._send(404, {'error': str(exc)})
+                except (ValueError, TypeError) as exc:
+                    self._send(400, {'error': str(exc)})
+                finally:
+                    media_lock.release()
+                return
             if path == '/api/backup' and self.command == 'GET':
                 with media_lock:
                     self._send(200, export_backup(db_path))

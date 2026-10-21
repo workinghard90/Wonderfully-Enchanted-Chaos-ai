@@ -1,2 +1,2 @@
 """Wonderfully Enchanted Chaos hybrid creative engine."""
-__version__ = "0.3.0"
+__version__ = "0.4.0"

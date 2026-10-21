@@ -10,7 +10,7 @@ const assert=require('node:assert/strict'), net=require('node:net');
   await new Promise(r=>listener.close(r));
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'wec-browser-'));
   const token='browser-test-only-secret-32-characters';
-  const server=spawn(process.env.PYTHON||'python',['-m','wec_engine.studio','--port',String(port),'--data-dir',directory],{cwd:os.tmpdir(),env:{...process.env,WEC_STUDIO_TOKEN:token},stdio:['ignore','pipe','pipe']});
+  const server=spawn(process.env.PYTHON||'python',['-m','wec_engine.studio','--port',String(port),'--data-dir',directory],{cwd:os.tmpdir(),env:{...process.env,WEC_STUDIO_TOKEN:token,WEC_ENABLE_IMAGE_GENERATION:'0'},stdio:['ignore','pipe','pipe']});
   const base=`http://127.0.0.1:${port}`;let browser,logs='';
   server.stderr.on('data',chunk=>{logs+=chunk});
   try {
@@ -39,6 +39,9 @@ const assert=require('node:assert/strict'), net=require('node:net');
       await page.locator('#plan').click();
       await page.locator('#preview .scene').first().waitFor();
       assert.equal(await page.locator('#preview .scene').count(),7);
+      await page.waitForFunction(()=>!document.querySelector('#save-top').disabled);
+      assert.equal(await page.locator('.generate:enabled').count(),0);
+      assert.ok((await page.locator('#generation-status').innerText()).includes('owner setup'));
       const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAAK0lEQVR4nO3NMQEAAAQAMPSvIScVfJ6twHI6XtRPKxaLxWKxWCwWi8XiiwX6KQHghAeRJQAAAABJRU5ErkJggg==','base64');
       const chooserPromise=page.waitForEvent('filechooser');
       await page.locator('[data-scene="scene-001"]').getByRole('button',{name:'Upload image'}).click();

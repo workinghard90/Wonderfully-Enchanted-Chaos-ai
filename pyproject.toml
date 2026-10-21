@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "wec-ai-engine"
-version = "0.3.0"
+version = "0.4.0"
 readme = "README.md"
 description = "Hybrid scene generation and video assembly for Wonderfully Enchanted Chaos"
 requires-python = ">=3.10"

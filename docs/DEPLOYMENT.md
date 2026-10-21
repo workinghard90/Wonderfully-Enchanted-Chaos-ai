@@ -2,7 +2,9 @@
 
 The simplest first online setup is **one backend serving both the dashboard and
 API** over HTTPS. iPhone and Windows then share the same SQLite database.
-The dashboard is a story planner; this deployment does not provide AI rendering.
+The dashboard plans stories and stores images. Optional Cloudflare image
+generation needs separate owner setup; this host does not run AI models or
+render videos. See [Cloudflare setup](CLOUDFLARE_IMAGES.md).
 
 1. Review the integration PR and its CI. Keep secrets outside Git.
 2. Choose an approved HTTPS host with durable storage and review its costs.
@@ -51,7 +53,8 @@ Prefer the one-server setup until there is a concrete reason to split it.
 ## Private local worker
 
 Keep ComfyUI on loopback or a private VPN. Never publicly forward port 8188.
-The web dashboard has no rendering endpoint. CLI generation must run where the
+The web dashboard has no video rendering endpoint. Optional Cloudflare images
+use a separate authenticated HTTPS provider, not the private ComfyUI worker. CLI generation must run where the
 private worker is reachable with validated workflows and licensed models. The
 hosted dashboard cannot reach a Windows PC's `127.0.0.1`; that address refers to
 the host itself. Designing a durable job queue and authenticated private worker

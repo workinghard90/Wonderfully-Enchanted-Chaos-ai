@@ -4,6 +4,7 @@ Images live in SQLite so project restore is atomic and needs no user-controlled
 filesystem paths. All limits also apply to imported backups.
 """
 import base64
+from datetime import datetime, timezone
 import binascii
 from contextlib import closing, contextmanager
 import io
@@ -15,6 +16,7 @@ import warnings
 from PIL import Image, ImageOps, UnidentifiedImageError
 from .story import plan_story
 
+MAX_GENERATIONS_PER_DAY = 20
 MAX_PROJECTS = 100
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
@@ -29,6 +31,10 @@ class StorageLimitError(ValueError):
 
 
 class ProjectConflictError(ValueError):
+    pass
+
+
+class GenerationLimitError(ValueError):
     pass
 
 
@@ -47,6 +53,7 @@ def init_db(path):
     with _database(path) as db:
         db.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, title TEXT NOT NULL, story TEXT NOT NULL, duration REAL NOT NULL, scenes INTEGER NOT NULL, updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)')
         db.execute('CREATE TABLE IF NOT EXISTS scene_images (project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, scene_id TEXT NOT NULL, image BLOB NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (project_id,scene_id))')
+        db.execute('CREATE TABLE IF NOT EXISTS image_generation_usage (day TEXT PRIMARY KEY, attempts INTEGER NOT NULL)')
     return path
 
 
@@ -175,11 +182,13 @@ def _check_scene(db, pid, sid):
         raise LookupError('Scene not found')
 
 
-def save_scene_image(path, pid, sid, raw):
+def save_scene_image(path, pid, sid, raw, *, expected_project=None):
     value, width, height = _read_image(raw)
     with _database(path) as db:
         db.execute('BEGIN IMMEDIATE')
         _check_scene(db, pid, sid)
+        if expected_project is not None:
+            _check_generation_target(db, pid, sid, expected_project)
         old = db.execute('SELECT length(image) FROM scene_images WHERE project_id=? AND scene_id=?', (pid, sid)).fetchone()
         _check_image_limit(db, len(value), old[0] if old else 0)
         db.execute('INSERT INTO scene_images(project_id,scene_id,image,width,height) VALUES (?,?,?,?,?) ON CONFLICT(project_id,scene_id) DO UPDATE SET image=excluded.image,width=excluded.width,height=excluded.height,updated=CURRENT_TIMESTAMP', (pid, sid, value, width, height))
@@ -267,3 +276,36 @@ def restore_backup(path, backup):
             db.execute('INSERT INTO projects(id,title,story,duration,scenes) VALUES (?,?,?,?,?)', (pid, *value.values()))
             db.executemany('INSERT INTO scene_images(project_id,scene_id,image,width,height) VALUES (?,?,?,?,?)', [(pid, *image) for image in images])
     return {'restored': len(prepared), 'projects': [{'id': pid, 'title': value['title']} for pid, value, _ in prepared]}
+
+
+def _generation_day():
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def generation_usage(path):
+    with _database(path) as db:
+        row = db.execute('SELECT attempts FROM image_generation_usage WHERE day=?', (_generation_day(),)).fetchone()
+        return row[0] if row else 0
+
+
+def _check_generation_target(db, pid, sid, expected_project):
+    _check_scene(db, pid, sid)
+    current = db.execute('SELECT story,scenes FROM projects WHERE id=?', (pid,)).fetchone()
+    if current != (expected_project['story'], expected_project['scenes']):
+        raise ProjectConflictError('The story or scenes changed while generating. Reopen the project and try again.')
+    if db.execute('SELECT 1 FROM scene_images WHERE project_id=? AND scene_id=?', (pid, sid)).fetchone():
+        raise ProjectConflictError('This scene already has an image. Keep a backup and remove it before generating another.')
+
+
+def reserve_generation(path, pid, sid, expected_project):
+    """Count every attempted call, including provider failures. No billing promise."""
+    with _database(path) as db:
+        db.execute('BEGIN IMMEDIATE')
+        _check_generation_target(db, pid, sid, expected_project)
+        # Leave room for the largest normalized image before using the allowance.
+        _check_image_limit(db, MAX_IMAGE_BYTES)
+        day = _generation_day()
+        row = db.execute('SELECT attempts FROM image_generation_usage WHERE day=?', (day,)).fetchone()
+        if row and row[0] >= MAX_GENERATIONS_PER_DAY:
+            raise GenerationLimitError('This studio has used its 20 image attempts for today. Try after midnight UTC.')
+        db.execute('INSERT INTO image_generation_usage(day,attempts) VALUES (?,1) ON CONFLICT(day) DO UPDATE SET attempts=attempts+1', (day,))
