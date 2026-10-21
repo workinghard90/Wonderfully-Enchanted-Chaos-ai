@@ -21,6 +21,13 @@ The same CRF is a quality target, not a promise of pixel-identical compression
 across presets. The final join itself preserves the already encoded scene
 frames without another lossy encode.
 
+JPEG plate values are explicitly converted to limited-range YUV before the
+scene encode, and the encoder is configured with `-color_range tv`. Older
+writers can omit the default limited-range VUI flag; `pc`/full-range output is
+not accepted. This avoids newer
+FFmpeg builds retaining full-range video reported as `yuvj420p`. The existing
+`yuv420p` delivery check remains unchanged and is checked in the container too.
+
 ## Local comparison
 
 One sequential before/after comparison used the same seven-picture, 35-second
@@ -31,14 +38,14 @@ and delivery verification. Cached speech synthesis is excluded from both.
 
 | Measurement | Previous exporter | Optimized exporter |
 | --- | ---: | ---: |
-| Elapsed time | 58.649 s | 17.271 s |
-| Finishing stage | 25.480 s | 1.093 s |
-| Largest child-process RSS | 510,704 KiB | 257,976 KiB |
+| Elapsed time | 58.649 s | 15.434 s |
+| Finishing stage | 25.480 s | 1.040 s |
+| Largest child-process RSS | 510,704 KiB | 257,916 KiB |
 | MP4 bytes | 7,841,981 | 5,322,228 |
 | Video frames encoded for this 35 s project | 2,100 | 1,050 |
 | Delivery checks | Passed | Passed |
 
-This comparison was **3.40× faster**, with a roughly 49.5% lower largest
+This comparison was **3.80× faster**, with a roughly 49.5% lower largest
 child-process peak and a roughly 32.1% smaller file. Memory was measured with
 Linux `resource.getrusage(RUSAGE_CHILDREN).ru_maxrss`: it is the largest observed
 child peak, **not** simultaneous whole-service/cgroup memory. It does not prove
@@ -53,13 +60,18 @@ deleted, and no service plan or restart behavior is changed by this patch.
 ## Regression checks
 
 - A real two-scene FFmpeg fixture verifies H.264/AAC, 1080p, 30 fps, fractional
-  duration, faststart and delivery size.
+  duration, limited-range output, faststart and delivery size, using different
+  source image colors and aspect ratios.
 - Decoded frame hashes match the captioned scene concatenation exactly, proving
   final assembly adds no further lossy video encode.
 - Pixel checks verify visible captions during measured speech in both scenes,
   and no captions before/after the first utterance.
 - Rounded scene-frame windows add up to the expected total instead of
   accumulating a per-scene rounding error.
+- FFmpeg does not read caller console input and stops on demuxing errors;
+  a damaged later concat clip fails instead of silently publishing an early cut.
+- Delivery checks inspect the video stream duration itself. Full-length audio
+  cannot make a short/incomplete video pass the expected movie duration.
 - The container check runs the short synthetic export within 512 MiB / one CPU.
   Narration has its separate bounded CPU smoke test. These are component checks,
   not a full hosted seven-scene capacity guarantee.

@@ -37,7 +37,10 @@ ASS_HEADER = [
 
 def _run(args, *, cwd=None):
     try:
-        subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True, timeout=600)
+        # Never read console keystrokes from the caller, and fail on demuxing
+        # errors instead of accepting a concat that stopped at a damaged clip.
+        subprocess.run([args[0], '-nostdin', '-xerror', *args[1:]], cwd=cwd,
+                       check=True, capture_output=True, text=True, timeout=600)
     except subprocess.CalledProcessError as exc:
         raise RuntimeError('FFmpeg failed: ' + (exc.stderr or '')[-1500:]) from None
 
@@ -277,10 +280,14 @@ def render_backup_video(backup_path, output_path, *, voice_model, workdir=None,
         _, frames = _scene_frame_window(scene)
         clip = scene['id'] + '.mp4'
         zoom = f"zoompan=z='min(zoom+0.00012,1.018)':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s=1080x1920:fps={FPS}"
+        # JPEG plates are full-range. Recent FFmpeg builds can retain that range
+        # even with -pix_fmt yuv420p, which FFprobe reports as yuvj420p. Convert
+        # sample values and signal limited-range H.264 explicitly for playback.
+        filters = zoom + ',subtitles=filename=' + scene['id'] + '-captions.ass,scale=out_range=tv,format=yuv420p'
         _run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-filter_threads', '1',
-              '-i', plate.name, '-vf', zoom + ',subtitles=filename=' + scene['id'] + '-captions.ass',
+              '-i', plate.name, '-vf', filters,
               '-frames:v', str(frames), '-an', '-c:v', 'libx264', '-preset', 'veryfast',
-              '-crf', '22', '-threads', '2', '-pix_fmt', 'yuv420p', clip], cwd=root)
+              '-crf', '22', '-threads', '2', '-pix_fmt', 'yuv420p', '-color_range', 'tv', clip], cwd=root)
         concat.append(f"file '{clip}'")
     (root / 'clips.txt').write_text('\n'.join(concat) + '\n', encoding='utf-8')
     final = root / 'final.mp4'
