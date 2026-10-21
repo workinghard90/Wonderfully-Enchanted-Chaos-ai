@@ -54,6 +54,15 @@ const net=require('node:net'),assert=require('node:assert/strict');
    console.log(`PASS video ${viewport.width}: consent, missing image, queued render, blob playback/download, reload, auth headers, cleanup`);
    await context.close();
   }
+ }catch(error){
+  console.error(logs.slice(-4000));
+  const jobs=path.join(directory,'video-jobs');
+  if(fs.existsSync(jobs))for(const id of fs.readdirSync(jobs)){
+   for(const name of ['status.json','worker.log']){
+    const file=path.join(jobs,id,name);if(fs.existsSync(file))console.error(id,name,fs.readFileSync(file,'utf8').slice(-2500));
+   }
+  }
+  throw error;
  }finally{
   if(browser)await browser.close();server.kill();await new Promise(r=>server.exitCode!==null?r():server.once('exit',r));fs.rmSync(directory,{recursive:true,force:true});
  }

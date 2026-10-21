@@ -121,6 +121,11 @@ class StudioVideoTests(unittest.TestCase):
         reopened.close()
 
     def test_incomplete_or_oversized_projects_do_not_reserve_attempts(self):
+        snapshot = export_backup(self.db, self.project['id'])
+        snapshot['projects'][0]['story'] = 'lantern '*101
+        with self.assertRaisesRegex(VideoJobError, '100 words'):
+            self.jobs.start(snapshot, self.project['id'])
+        self.assertEqual(self.jobs.status()['attempts_today'], 0)
         from wec_engine.studio_store import remove_scene_image
         remove_scene_image(self.db, self.project['id'], 'scene-002')
         response = self.start(); self.assertEqual(response.status_code, 400)

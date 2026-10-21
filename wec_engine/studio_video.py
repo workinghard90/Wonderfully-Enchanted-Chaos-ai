@@ -20,6 +20,7 @@ from .studio_video_worker import write_json
 
 MAX_SECONDS = 35
 MAX_SCENES = 7
+MAX_STORY_WORDS = 100
 DAILY_LIMIT = 2
 MAX_JOBS = 3
 MAX_MOVIE_BYTES = 20_000_000
@@ -130,6 +131,8 @@ class VideoJobs:
             project = snapshot['projects'][0]
             if project['duration'] > MAX_SECONDS or project['scenes'] > MAX_SCENES:
                 raise VideoJobError('This video test supports up to 35 seconds and 7 scenes.')
+            if len(project['story']) > 1000 or len(project['story'].split()) > MAX_STORY_WORDS:
+                raise VideoJobError('Keep this short-video test to 100 words and 1000 characters. Shorten the story before rendering.')
             expected = {f'scene-{i:03d}' for i in range(1, project['scenes']+1)}
             if {image['scene_id'] for image in project.get('scene_images', [])} != expected:
                 raise VideoJobError('Attach a picture to every scene before rendering.')

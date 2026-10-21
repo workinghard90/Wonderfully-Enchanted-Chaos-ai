@@ -56,7 +56,9 @@ this implementation.
 ## Bounded test deployment
 
 - At most **35 seconds and 7 scenes**, with an image and narration for every
-  scene. One shared CPU render at a time, with a 20-minute hard timeout.
+  scene, and **100 words / 1000 characters** of story text. Longer scripts are
+  rejected before loading a voice. One shared CPU render at a time, with a
+  20-minute hard timeout.
 - **Two accepted attempts per UTC day**, including failed/cancelled jobs.
   Rejected incomplete projects do not reserve an attempt. This is a local CPU
   test limit, independent of the Cloudflare image allowance.
