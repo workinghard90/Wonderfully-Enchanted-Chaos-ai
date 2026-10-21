@@ -41,6 +41,17 @@
       </div>
       <p class="muted">Restore opens backups as new project copies, including any attached images. Existing projects stay in place.</p>
       <p id="message" role="status" aria-live="polite"></p>
+      <section id="video-export" aria-labelledby="video-heading">
+        <h2 id="video-heading">Your movie</h2>
+        <p id="video-availability" class="muted">Checking video export…</p>
+        <div class="actions"><button id="render-video" type="button" disabled>Render video</button></div>
+        <p class="muted">Rendering uses the saved story and pictures. Keep this page open while it builds. Download finished movies to keep them if the server resets.</p>
+        <div id="video-jobs"></div>
+        <div id="video-player" hidden>
+          <p id="video-player-title"></p>
+          <video id="movie" controls playsinline preload="metadata" aria-label="Finished story movie"></video>
+        </div>
+      </section>
     </section>
     <aside class="panel">
       <h2>Saved projects</h2>
@@ -53,7 +64,7 @@
     </aside>
   </div>
 </main>
-<footer>Story planning &amp; image uploads · AI images require owner setup · Video export is not connected yet</footer>
+<footer>Story planning · Scene images · Narrated video export requires owner setup</footer>
 <script src="./config.js"></script>
 <script src="./app.js"></script>
 </body>

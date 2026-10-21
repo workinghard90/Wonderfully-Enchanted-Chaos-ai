@@ -7,6 +7,7 @@ import hmac
 import json
 import os
 import re
+import signal
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,11 +21,12 @@ from .studio_store import (
 )
 from .orchestrator import run_production
 from .providers.cloudflare_images import CloudflareImages, GenerationError, validate_prompt
+from .studio_video import VideoJobs, VideoJobError
 
 ROOT = Path(__file__).parent / 'studio_web'
 MAX_BODY = 128 * 1024
 
-def create_handler(db_path, data_dir, token=None, allowed_origin=None):
+def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_jobs=None):
     """Allow one explicit HTTPS frontend origin; never wildcard authenticated APIs."""
     if allowed_origin:
         origin = urlsplit(allowed_origin)
@@ -39,16 +41,17 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
     data_dir = Path(data_dir).resolve()
     media_lock = threading.Lock()
     image_provider = CloudflareImages()
+    videos = video_jobs or VideoJobs(data_dir/'video-jobs')
     class Handler(BaseHTTPRequestHandler):
+        video_jobs = videos
         def setup(self):
             super().setup()
             self.connection.settimeout(15)
 
-        def _send(self, status, body, mime='application/json; charset=utf-8'):
-            content = json.dumps(body, allow_nan=False, ensure_ascii=False).encode() if mime.startswith('application/json') else body
+        def _headers(self, status, mime, length, extra=None):
             self.send_response(status)
             self.send_header('Content-Type', mime)
-            self.send_header('Content-Length', str(len(content)))
+            self.send_header('Content-Length', str(length))
             self.send_header('Cache-Control', 'no-store')
             if allowed_origin and self.headers.get('Origin') == allowed_origin:
                 self.send_header('Access-Control-Allow-Origin', allowed_origin)
@@ -56,9 +59,44 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
                 self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
                 self.send_header('Vary', 'Origin')
             self.send_header('X-Content-Type-Options', 'nosniff')
-            self.send_header('Content-Security-Policy', "default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+            self.send_header('Content-Security-Policy', "default-src 'self'; img-src 'self' blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+            for key, value in (extra or {}).items():
+                self.send_header(key, value)
             self.end_headers()
+        def _send(self, status, body, mime='application/json; charset=utf-8'):
+            content = json.dumps(body, allow_nan=False, ensure_ascii=False).encode() if mime.startswith('application/json') else body
+            self._headers(status, mime, len(content))
             self.wfile.write(content)
+        def _movie(self, jid):
+            # Authentication ran before this route. Credentials never enter URLs.
+            path = videos.movie(jid)
+            with path.open('rb') as source:
+                size = os.fstat(source.fileno()).st_size
+                start, end, status = 0, size-1, 200
+                headers = {'Accept-Ranges': 'bytes', 'Content-Disposition': f'inline; filename="wec-video-{jid[:8]}.mp4"'}
+                value = self.headers.get('Range')
+                if value:
+                    match = re.fullmatch(r'bytes=(\d{0,12})-(\d{0,12})', value)
+                    if not match or not any(match.groups()):
+                        self._headers(416, 'video/mp4', 0, {'Content-Range': f'bytes */{size}'}); return
+                    first, last = match.groups()
+                    if first:
+                        start, end = int(first), min(int(last), size-1) if last else size-1
+                    else:
+                        start = max(0, size-int(last))
+                    if start > end or start >= size or (not first and int(last) == 0):
+                        self._headers(416, 'video/mp4', 0, {'Content-Range': f'bytes */{size}'}); return
+                    status = 206
+                    headers['Content-Range'] = f'bytes {start}-{end}/{size}'
+                self._headers(status, 'video/mp4', end-start+1, headers)
+                source.seek(start)
+                remaining = end-start+1
+                while remaining:
+                    chunk = source.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
         def _read_body(self, limit):
             if self.headers.get('Transfer-Encoding'):
                 raise ValueError('Send a request with Content-Length')
@@ -86,6 +124,46 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
             if path == '/api/health' and self.command == 'GET':
                 self._send(200, {'ok':True}); return
             if not self._authorized(): return
+            if path == '/api/video' and self.command == 'GET':
+                if not token or len(token) < 32:
+                    self._send(200, {'ready': False, 'message': 'Set a studio access token of at least 32 characters to enable video export.',
+                                     'jobs': [], 'max_duration': 35, 'max_scenes': 7, 'attempts_today': 0, 'daily_limit': 2})
+                else:
+                    self._send(200, videos.status())
+                return
+            video_start = re.fullmatch(r'/api/projects/([a-f0-9]{32})/video', path)
+            if (video_start or path.startswith('/api/video-jobs/')) and (not token or len(token) < 32):
+                self._send(503, {'error': 'Video export requires a studio access token of at least 32 characters.'}); return
+            if video_start and self.command == 'POST':
+                try:
+                    body = json.loads(self._read_body(1024))
+                    if not isinstance(body, dict) or set(body) - {'ambience'}:
+                        raise ValueError('Choose the ambience setting only.')
+                    with media_lock:
+                        snapshot = export_backup(db_path, video_start.group(1))
+                    self._send(202, videos.start(snapshot, video_start.group(1), ambience=body.get('ambience', True)))
+                except VideoJobError as exc:
+                    self._send(exc.status, {'error': str(exc)})
+                except LookupError as exc:
+                    self._send(404, {'error': str(exc)})
+                except StorageLimitError as exc:
+                    self._send(413, {'error': str(exc)})
+                except (ValueError, TypeError) as exc:
+                    self._send(400, {'error': str(exc)})
+                return
+            video_job = re.fullmatch(r'/api/video-jobs/([a-f0-9]{32})(/file|/cancel|/remove)?', path)
+            if video_job:
+                try:
+                    jid, action = video_job.groups()
+                    if self.command == 'GET' and action == '/file':
+                        self._movie(jid); return
+                    if self.command == 'GET' and not action:
+                        self._send(200, videos.get(jid)); return
+                    if self.command == 'POST' and action in ('/cancel', '/remove'):
+                        self._send(200, videos.cancel(jid) if action == '/cancel' else videos.remove(jid)); return
+                except VideoJobError as exc:
+                    self._send(exc.status, {'error': str(exc)})
+                    return
             if path == '/api/generation' and self.command == 'GET':
                 self._send(200, {'ready': image_provider.ready(), 'provider': 'Cloudflare Workers AI',
                                  'model': 'FLUX.1 schnell', 'attempts_today': generation_usage(db_path),
@@ -210,6 +288,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
             self._send(405, {'error':'Method not allowed'})
         def do_GET(self):
             try: self._route()
+            except (BrokenPipeError, ConnectionResetError): pass
             except Exception: self._send(500, {'error':'Internal server error'})
         def do_POST(self):
             try: self._route()
@@ -227,12 +306,14 @@ def main(argv=None):
         parser.error('Non-loopback access requires WEC_STUDIO_TOKEN with at least 32 characters. Use HTTPS reverse proxy for remote access.')
     directory = Path(args.data_dir)
     server = ThreadingHTTPServer((args.host, args.port), create_handler(directory/'studio.sqlite3', directory, token, os.environ.get('WEC_FRONTEND_ORIGIN')))
+    signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
     print(f'WEC Studio at http://{args.host}:{args.port} (Ctrl+C to stop)', flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        server.RequestHandlerClass.video_jobs.close()
         server.server_close()
 
 if __name__ == '__main__': main()

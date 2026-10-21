@@ -7,6 +7,10 @@ let selected = null;
 let loadedProject = null;
 let dirty = false;
 let busy = false;
+let videoState = null;
+let videoTimer = null;
+let videoURL = null;
+let playingJob = null;
 const imageURLs = new Set();
 
 function token() { return sessionStorage.getItem('wec_token') || ''; }
@@ -39,6 +43,7 @@ function setBusy(value) {
   busy = value;
   document.querySelectorAll('button, #editor input, #editor textarea, #preview input, #preview textarea').forEach(item => { item.disabled = value || item.dataset.generationReady === 'false'; });
   $('editor').setAttribute('aria-busy', String(value));
+  updateVideoButton();
 }
 async function runAction(action) {
   if (busy) return;
@@ -58,6 +63,7 @@ function load(project) {
   dirty = false;
   clearPreview();
   msg('Editing ' + project.title);
+  updateVideoButton();
 }
 async function refresh() {
   const value = await api('/api/projects');
@@ -78,13 +84,14 @@ async function refresh() {
   }
 }
 for (const key of ['title', 'story', 'duration', 'scenes']) {
-  $(key).addEventListener('input', () => { dirty = true; clearPreview(); });
+  $(key).addEventListener('input', () => { dirty = true; clearPreview(); updateVideoButton(); });
 }
 $('new').onclick = () => {
   if (busy || (dirty && !confirm('Discard unsaved edits and start a new project?'))) return;
   selected = null; loadedProject = null; dirty = false;
   $('title').value = ''; $('story').value = ''; $('duration').value = 35; $('scenes').value = 7;
   clearPreview(); msg('New project ready.'); $('title').focus();
+  updateVideoButton();
 };
 async function saveCurrent() {
   const payload = {title: $('title').value, story: $('story').value, duration: Number($('duration').value), scenes: Number($('scenes').value)};
@@ -96,6 +103,7 @@ async function saveCurrent() {
   selected = project.id; loadedProject = project; dirty = false;
   msg('Project saved on this studio server. Download a backup to keep a separate copy.');
   await refresh();
+  await refreshVideos();
 }
 $('save').onclick = $('save-top').onclick = () => runAction(saveCurrent);
 function requireSaved() {
@@ -180,6 +188,7 @@ async function showScenes() {
     }
     item.append(actions); root.append(item);
   }
+  await refreshVideos();
 }
 $('plan').onclick = () => runAction(async () => { await showScenes(); msg('Scene plan ready. Upload an image for each scene below.'); });
 $('dry').onclick = () => runAction(async () => {
@@ -212,5 +221,83 @@ $('restore-file').onchange = () => runAction(async () => {
   await refresh(); await showScenes();
   msg(`Restored ${result.restored} project(s) as new copies, with their attached images. Existing projects were kept.`);
 });
+function updateVideoButton() {
+  const active = videoState?.jobs.some(job => ['queued', 'running'].includes(job.status));
+  const ready = Boolean(selected && !dirty && videoState?.ready && !active && videoState.attempts_today < videoState.daily_limit);
+  $('render-video').dataset.generationReady = String(ready);
+  $('render-video').disabled = busy || !ready;
+}
+async function loadMovie(job) {
+  if (playingJob !== job.id) {
+    const response = await request(`/api/video-jobs/${job.id}/file`);
+    const blob = await response.blob();
+    if (blob.size > 20000000) throw Error('This movie is too large to open here.');
+    const next = URL.createObjectURL(blob);
+    $('movie').pause();
+    $('movie').src = next;
+    if (videoURL) URL.revokeObjectURL(videoURL);
+    videoURL = next; playingJob = job.id;
+  }
+  $('video-player-title').textContent = job.title + ' — saved version used for this render';
+  $('video-player').hidden = false;
+}
+async function refreshVideos() {
+  clearTimeout(videoTimer);
+  videoState = await api('/api/video');
+  $('video-availability').textContent = videoState.ready
+    ? `Render up to ${videoState.max_duration} seconds and ${videoState.max_scenes} scenes from your attached pictures. ${videoState.attempts_today}/${videoState.daily_limit} render attempts used today. No image AI requests are made. Free hosting may take several minutes.`
+    : videoState.message;
+  const root = $('video-jobs'); root.replaceChildren();
+  for (const job of videoState.jobs) {
+    const item = document.createElement('div'); item.className = 'video-job'; item.dataset.job = job.id;
+    const heading = document.createElement('strong'); heading.textContent = job.title;
+    const status = document.createElement('p'); status.textContent = job.message; status.setAttribute('role', 'status');
+    item.append(heading, status);
+    const actions = document.createElement('div'); actions.className = 'actions';
+    function button(name, action) {
+      const control = document.createElement('button'); control.type = 'button'; control.className = 'secondary';
+      control.textContent = name; control.disabled = busy; control.onclick = () => runAction(action);
+      actions.append(control);
+    }
+    if (['queued', 'running'].includes(job.status)) {
+      const progress = document.createElement('progress'); progress.max = 100; progress.value = job.progress;
+      progress.setAttribute('aria-label', 'Video render progress'); item.append(progress);
+      button('Cancel render', async () => {
+        await api(`/api/video-jobs/${job.id}/cancel`, {method: 'POST'}); await refreshVideos();
+      });
+    } else {
+      if (job.status === 'ready') {
+        button('Play video', async () => { await loadMovie(job); $('video-player').scrollIntoView({block: 'center', behavior: 'smooth'}); });
+        button('Download video', async () => {
+          await loadMovie(job);
+          const link = document.createElement('a'); link.href = videoURL; link.download = `wec-video-${job.id.slice(0,8)}.mp4`;
+          document.body.append(link); link.click(); link.remove();
+          msg('Movie download opened. Save it to your device to keep it.');
+        });
+      }
+      button('Remove server copy', async () => {
+        if (!confirm('Remove this movie from the server? Download it first. Your saved story and scene pictures stay in place.')) return;
+        await api(`/api/video-jobs/${job.id}/remove`, {method: 'POST'});
+        if (playingJob === job.id) {
+          $('movie').pause(); $('movie').removeAttribute('src'); $('movie').load(); $('video-player').hidden = true;
+          URL.revokeObjectURL(videoURL); videoURL = null; playingJob = null;
+        }
+        await refreshVideos();
+      });
+    }
+    item.append(actions); root.append(item);
+  }
+  updateVideoButton();
+  if (videoState.jobs.some(job => ['queued', 'running'].includes(job.status))) {
+    videoTimer = setTimeout(() => refreshVideos().catch(error => { msg(error.message); }), 2500);
+  }
+}
+$('render-video').onclick = () => runAction(async () => {
+  requireSaved();
+  if (!confirm('Build a narrated movie from this saved story and its attached pictures? This uses one local render attempt and does not generate new images.')) return;
+  await api(`/api/projects/${selected}/video`, {method: 'POST', body: JSON.stringify({ambience: true})});
+  await refreshVideos();
+  msg('Movie rendering started. You can follow its progress below.');
+});
 window.addEventListener('beforeunload', event => { if (dirty || busy) { event.preventDefault(); event.returnValue = ''; } });
-refresh().catch(error => msg(error.message));
+refresh().then(refreshVideos).catch(error => msg(error.message));

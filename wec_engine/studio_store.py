@@ -214,18 +214,21 @@ def remove_scene_image(path, pid, sid):
     return {'removed': True, 'scene_id': sid}
 
 
-def export_backup(path):
+def export_backup(path, project_id=None):
     with _database(path) as db:
         db.execute('BEGIN')
         db.row_factory = sqlite3.Row
         projects = []
-        for row in db.execute('SELECT * FROM projects ORDER BY updated DESC,id'):
+        rows = db.execute('SELECT * FROM projects WHERE id=?', (project_id,)) if project_id else db.execute('SELECT * FROM projects ORDER BY updated DESC,id')
+        for row in rows:
             project = dict(row)
             project['scene_images'] = [
                 {'scene_id': image['scene_id'], 'mime': 'image/jpeg',
                  'image_base64': base64.b64encode(image['image']).decode('ascii')}
                 for image in db.execute('SELECT scene_id,image FROM scene_images WHERE project_id=? ORDER BY scene_id', (project['id'],))]
             projects.append(project)
+        if project_id and not projects:
+            raise LookupError('Project not found')
     return {'schema_version': 2, 'projects': projects}
 
 

@@ -1,9 +1,13 @@
 name: Verify engine and studio
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   python:
     strategy:
@@ -34,6 +38,7 @@ jobs:
       - run: python -m pip install .
       - run: python -m unittest discover -s tests -p test_media_smoke.py -v
       - run: python -m unittest discover -s tests -p test_backup_video.py -v
+      - run: python -m unittest discover -s tests -p test_studio_video.py -v
   browser:
     runs-on: ubuntu-latest
     steps:
@@ -47,5 +52,24 @@ jobs:
       - run: python -m pip install .
       - run: npm install --no-save playwright@1.62.1
       - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: node tests/browser_smoke.cjs
       - run: node tests/browser_generation.cjs
+      - run: node tests/browser_video.cjs
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t wec-video-test .
+      - name: Check pinned voice on CPU within 512 MiB
+        run: |
+          docker run --rm --memory=512m --cpus=1 --entrypoint python wec-video-test -c '
+          import json, os, tempfile, resource
+          from pathlib import Path
+          from wec_engine.studio_video_worker import narrate
+          root = Path(tempfile.mkdtemp())
+          (root / "plan.json").write_text(json.dumps({"scenes": [{"id": "scene-001", "narration": "A little lantern glows."}]}))
+          narrate(root, Path(os.environ["WEC_PIPER_MODEL"]))
+          assert (root / "scene-001-raw.wav").stat().st_size > 1000
+          print({"cpu_voice_ok": True, "peak_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss})
+          '
