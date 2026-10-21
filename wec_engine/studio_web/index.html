@@ -1,1 +1,59 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#1b1832"><title>Wonderfully Enchanted Chaos Studio</title><link rel="stylesheet" href="./style.css"></head><body><header><div class="brand">✦ Wonderfully Enchanted Chaos <small>AI Studio</small></div><span class="pill">Phase 10 · Hybrid Studio</span></header><main><section class="hero"><p class="eyebrow">YOUR CREATIVE WORKSPACE</p><h1>Every story starts with a spark.</h1><p>Plan magical scenes on your phone or PC. Save projects to this studio server and preview the production steps.</p></section><div class="layout"><section class="panel"><h2>Story editor</h2><label for="title">Project title</label><input id="title" maxlength="150" placeholder="The Lantern That Wouldn't Wait"><label for="story">Your story</label><textarea id="story" rows="10" maxlength="30000" placeholder="Once upon a time..."></textarea><div class="two"><div><label for="duration">Duration (seconds)</label><input id="duration" type="number" min="1" max="3600" value="35"></div><div><label for="scenes">Scenes</label><input id="scenes" type="number" min="1" max="100" value="7"></div></div><div class="actions"><button id="new" class="secondary">New project</button><button id="save">Save project</button><button id="plan" class="secondary">Preview scenes</button><button id="dry" class="secondary">Production dry-run</button><button id="backup" class="secondary">Download backup</button></div><p id="message" role="status"></p></section><aside class="panel"><h2>Saved projects</h2><p class="muted">Projects live on the server you're connected to. Cross-device access requires reaching that same server.</p><div id="projects"></div><h2>Scene preview</h2><div id="preview" class="muted">Save a story, then preview its scenes.</div></aside></div></main><footer>Local-first · Cloud rendering disabled · No surprise charges</footer><script src="./config.js"></script><script src="./app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1b1832">
+  <title>Wonderfully Enchanted Chaos Studio</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header>
+  <div class="brand">✦ Wonderfully Enchanted Chaos <small>Story &amp; scene studio</small></div>
+  <button id="save-top" type="button">Save project</button>
+</header>
+<main>
+  <section class="hero">
+    <p class="eyebrow">YOUR CREATIVE WORKSPACE</p>
+    <h1>Every story starts with a spark.</h1>
+    <p>Plan your story, attach scene images from your phone, and keep a backup you can reopen.</p>
+  </section>
+  <p class="notice" role="note"><strong>Keep a backup.</strong> Server storage may be temporary. Download a backup to keep your story and attached scene images outside this server.</p>
+  <div class="layout">
+    <section class="panel" id="editor">
+      <h2>Story editor</h2>
+      <label for="title">Project title</label>
+      <input id="title" maxlength="150" placeholder="The Lantern That Wouldn't Wait">
+      <label for="story">Your story</label>
+      <textarea id="story" rows="10" maxlength="30000" placeholder="Once upon a time..."></textarea>
+      <div class="two">
+        <div><label for="duration">Duration (seconds)</label><input id="duration" type="number" min="1" max="3600" value="35"></div>
+        <div><label for="scenes">Scenes</label><input id="scenes" type="number" min="1" max="100" value="7"></div>
+      </div>
+      <div class="actions">
+        <button id="new" class="secondary" type="button">New project</button>
+        <button id="save" type="button">Save project</button>
+        <button id="plan" class="secondary" type="button">Preview scenes &amp; images</button>
+        <button id="dry" class="secondary" type="button">Production dry-run</button>
+        <button id="backup" class="secondary" type="button">Download backup</button>
+        <button id="restore" class="secondary" type="button">Restore backup</button>
+        <input id="restore-file" type="file" accept=".json,application/json" hidden>
+      </div>
+      <p class="muted">Restore opens backups as new project copies, including any attached images. Existing projects stay in place.</p>
+      <p id="message" role="status" aria-live="polite"></p>
+    </section>
+    <aside class="panel">
+      <h2>Saved projects</h2>
+      <p class="muted">Open the same server on another device to see its projects. A downloaded backup lets you restore them if this server resets.</p>
+      <div id="projects"></div>
+      <h2 class="preview-heading">Scene images</h2>
+      <p class="muted">Save your story, then preview its scenes to upload pictures. Choose JPG, PNG or WebP up to 8 MB. Keep your original photos; backups contain optimized copies.</p>
+      <div id="preview" class="muted">Save a story, then preview its scenes.</div>
+    </aside>
+  </div>
+</main>
+<footer>Story planning &amp; image uploads · AI generation and video export are not connected yet</footer>
+<script src="./config.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

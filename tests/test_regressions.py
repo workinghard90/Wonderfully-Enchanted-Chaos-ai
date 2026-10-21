@@ -63,12 +63,12 @@ class RegressionTests(unittest.TestCase):
         from wec_engine.studio import init_db, save_project, list_projects, get_project
         original_connect = sqlite3.connect
         connections = []
-        def connect(path):
-            connection = original_connect(path)
+        def connect(path, **kwargs):
+            connection = original_connect(path, **kwargs)
             connections.append(connection)
             return connection
         with tempfile.TemporaryDirectory() as td:
-            with patch('wec_engine.studio.sqlite3.connect', side_effect=connect):
+            with patch('wec_engine.studio_store.sqlite3.connect', side_effect=connect):
                 db = init_db(Path(td)/'db')
                 project = save_project(db, {'title':'Lantern','story':'A lantern flew.','duration':5,'scenes':1})
                 self.assertEqual(len(list_projects(db)),1)
