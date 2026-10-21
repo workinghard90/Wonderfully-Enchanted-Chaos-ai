@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "wec-ai-engine"
+version = "0.1.0"
+description = "Hybrid scene generation and video assembly for Wonderfully Enchanted Chaos"
+requires-python = ">=3.10"
+dependencies = ["Pillow>=10.0", "requests>=2.31"]
+[project.scripts]
+wec = "wec_engine.cli:main"
+[tool.setuptools.packages.find]
+include = ["wec_engine*"]
