@@ -14,14 +14,38 @@ small{color:#625a70}#printPages{display:none}
 <label>Book title <input id="title" value="Pip's Cloud Magic Coloring Book"></label>
 <div class="controls"><label>Add coloring pages <input id="upload" type="file" accept="image/png,image/jpeg,image/webp" multiple></label>
 <label><input id="blank" type="checkbox" checked> Blank back after each illustration</label>
-<button id="print" disabled>Print / Save as PDF</button><button id="clear">Clear pages</button></div>
+<button id="zip" disabled>Download artwork ZIP</button><button id="print" disabled>Print / Save as PDF</button><button id="clear">Clear pages</button></div>
 <p id="status" role="status">No pages loaded.</p><div id="pages"></div>
 <p><small>Print settings: Letter (8.5 × 11 in), scale 100%, margins none, headers/footers off. Illustrations have a 0.5-inch inset. Check your final PDF page count and print resolution before uploading to KDP. This first version is a browser-print prototype, not a validated KDP export.</small></p></main><div id="printPages"></div>
 <script>
 const images=[];const upload=document.getElementById('upload'),gallery=document.getElementById('pages'),printPages=document.getElementById('printPages'),status=document.getElementById('status');
-function render(){gallery.replaceChildren();printPages.replaceChildren();images.forEach((item,i)=>{const card=document.createElement('div');card.className='page';const img=document.createElement('img');img.src=item.url;img.alt=item.name;card.append(img);const info=document.createElement('p');info.textContent=(i+1)+'. '+item.name+' ('+item.width+' × '+item.height+')';card.append(info);const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=()=>{URL.revokeObjectURL(item.url);images.splice(i,1);render()};card.append(remove);gallery.append(card);const sheet=document.createElement('div');sheet.className='print-page';const art=document.createElement('img');art.src=item.url;sheet.append(art);printPages.append(sheet);if(document.getElementById('blank').checked){const back=document.createElement('div');back.className='print-page';printPages.append(back)}});status.textContent=images.length+' illustration(s), '+(images.length*(document.getElementById('blank').checked?2:1))+' printable pages. Files stay on your device.';document.getElementById('print').disabled=!images.length}
-upload.addEventListener('change',async()=>{for(const file of upload.files){if(!['image/png','image/jpeg','image/webp'].includes(file.type))continue;const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();images.push({url,name:file.name,width:image.naturalWidth,height:image.naturalHeight})}catch{URL.revokeObjectURL(url)}}upload.value='';render()});
+function render(){gallery.replaceChildren();printPages.replaceChildren();images.forEach((item,i)=>{const card=document.createElement('div');card.className='page';const img=document.createElement('img');img.src=item.url;img.alt=item.name;card.append(img);const info=document.createElement('p');info.textContent=(i+1)+'. '+item.name+' ('+item.width+' × '+item.height+')';card.append(info);const dpi=Math.min(item.width/7.5,item.height/10);const quality=document.createElement('p');quality.textContent='Approx. '+Math.floor(dpi)+' PPI at 7.5 × 10 in — '+(dpi>=300?'300 PPI target met':'Below 300 PPI target');quality.style.color=dpi>=300?'#236a3a':'#a13b23';card.append(quality);const up=document.createElement('button');up.textContent='↑';up.disabled=i===0;up.setAttribute('aria-label','Move page '+(i+1)+' earlier');up.onclick=()=>{[images[i-1],images[i]]=[images[i],images[i-1]];render()};card.append(up);const down=document.createElement('button');down.textContent='↓';down.disabled=i===images.length-1;down.setAttribute('aria-label','Move page '+(i+1)+' later');down.onclick=()=>{[images[i+1],images[i]]=[images[i],images[i+1]];render()};card.append(down);const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=()=>{URL.revokeObjectURL(item.url);images.splice(i,1);render()};card.append(remove);gallery.append(card);const sheet=document.createElement('div');sheet.className='print-page';const art=document.createElement('img');art.src=item.url;sheet.append(art);printPages.append(sheet);if(document.getElementById('blank').checked){const back=document.createElement('div');back.className='print-page';printPages.append(back)}});status.textContent=images.length+' illustration(s), '+(images.length*(document.getElementById('blank').checked?2:1))+' printable pages. Files stay on your device.';document.getElementById('print').disabled=!images.length;document.getElementById('zip').disabled=!images.length}
+upload.addEventListener('change',async()=>{for(const file of upload.files){if(!['image/png','image/jpeg','image/webp'].includes(file.type))continue;const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();images.push({url,file,name:file.name,width:image.naturalWidth,height:image.naturalHeight})}catch{URL.revokeObjectURL(url)}}upload.value='';render()});
 document.getElementById('blank').addEventListener('change',render);
 document.getElementById('clear').onclick=()=>{images.forEach(x=>URL.revokeObjectURL(x.url));images.length=0;render()};
-document.getElementById('print').onclick=()=>window.print();render();
+document.getElementById('print').onclick=()=>window.print();
+document.getElementById('zip').onclick=async()=>{
+ const button=document.getElementById('zip');button.disabled=true;status.textContent='Preparing artwork ZIP locally…';
+ try{
+  const entries=await Promise.all(images.map(async(x,i)=>({name:'page-'+String(i+1).padStart(2,'0')+'.'+(x.file.type==='image/png'?'png':x.file.type==='image/webp'?'webp':'jpg'),bytes:new Uint8Array(await x.file.arrayBuffer())})));
+  const manifest={title:document.getElementById('title').value,pages:images.map((x,i)=>({page:i+1,original:x.name,width:x.width,height:x.height,ppi_at_7_5_by_10_in:Math.floor(Math.min(x.width/7.5,x.height/10))})),blank_backs:document.getElementById('blank').checked,notice:'Artwork archive only. PDF and cover require independent KDP verification.'};
+  entries.push({name:'manifest.json',bytes:new TextEncoder().encode(JSON.stringify(manifest,null,2))});
+  const zip=makeZip(entries);const link=document.createElement('a');const url=URL.createObjectURL(zip);link.href=url;link.download='wec-coloring-book-artwork.zip';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+ }catch(err){status.textContent='ZIP failed: '+err.message}finally{button.disabled=false}
+};
+function makeZip(entries){
+ const encoder=new TextEncoder(),chunks=[],central=[];let offset=0;
+ const u16=(n)=>[n&255,(n>>>8)&255],u32=(n)=>[n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255];
+ function crc32(bytes){let c=0xffffffff;for(const b of bytes){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0)}return(c^0xffffffff)>>>0}
+ for(const entry of entries){const name=encoder.encode(entry.name),data=entry.bytes,crc=crc32(data);
+  const local=new Uint8Array([80,75,3,4,20,0,0,8,0,0,0,0,0,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),0,0,...name]);
+  chunks.push(local,data);
+  central.push(new Uint8Array([80,75,1,2,20,0,20,0,0,8,0,0,0,0,0,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),0,0,0,0,0,0,0,0,0,0,0,0,...u32(offset),...name]));
+  offset+=local.length+data.length;
+ }
+ const start=offset;for(const item of central){chunks.push(item);offset+=item.length}
+ chunks.push(new Uint8Array([80,75,5,6,0,0,0,0,...u16(entries.length),...u16(entries.length),...u32(offset-start),...u32(start),0,0]));
+ return new Blob(chunks,{type:'application/zip'});
+}
+render();
 </script></body></html>
