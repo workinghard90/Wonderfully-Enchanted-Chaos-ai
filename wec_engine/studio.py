@@ -118,6 +118,17 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             path = urlparse(self.path).path
             if self.command == 'GET' and path == '/':
                 self._send(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8'); return
+            # Fixed asset allowlist: user artwork is handled in the browser only.
+            coloring_assets = {
+                '/coloring': ('index.html', 'text/html; charset=utf-8'),
+                '/coloring/': ('index.html', 'text/html; charset=utf-8'),
+                '/coloring/app.js': ('app.js', 'application/javascript; charset=utf-8'),
+                '/coloring/zip.js': ('zip.js', 'application/javascript; charset=utf-8'),
+                '/coloring/style.css': ('style.css', 'text/css; charset=utf-8'),
+            }
+            if self.command == 'GET' and path in coloring_assets:
+                name, mime = coloring_assets[path]
+                self._send(200, (ROOT / 'coloring' / name).read_bytes(), mime); return
             if self.command == 'GET' and path in ('/app.js','/device-backup.js','/style.css','/config.js'):
                 mime = 'application/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8'
                 self._send(200, (ROOT / path.lstrip('/')).read_bytes(), mime); return

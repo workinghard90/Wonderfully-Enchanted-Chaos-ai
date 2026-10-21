@@ -57,6 +57,7 @@ jobs:
       - run: node tests/browser_generation.cjs
       - run: node tests/browser_recovery.cjs
       - run: node tests/browser_video.cjs
+      - run: node tests/browser_coloring.cjs
   container:
     runs-on: ubuntu-latest
     steps:

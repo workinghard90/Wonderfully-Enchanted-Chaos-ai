@@ -38,10 +38,21 @@ story-planning dashboard. The Docker image includes CPU video tools and a
 checksum-pinned Piper voice; web rendering stays off until enabled by the owner.
 It includes no GPU stack.
 
+## Coloring books
+
+Open **Coloring Book Studio** from the dashboard, or visit `/coloring/` on the
+same server. Add finished PNG/JPG/WebP artwork, reorder pages, download an
+original-artwork ZIP and print a Letter-size PDF with optional blank backs.
+Artwork stays in the open browser tab; keep originals and download the ZIP
+before closing. It uses no generation credits and is separate from story
+backups. On iPhone use the hosted page in Safari. See the
+[coloring workflow and prototype limits](docs/COLORING_STUDIO.md).
+
 ## What works and what needs setup
 
 | Capability | Status |
 | --- | --- |
+| Coloring book assembly | Packaged browser workspace, ordered artwork ZIP, print layout; no persistence or KDP certification |
 | Create, edit, list and back up stories | Implemented; HTTP integration tests |
 | Upload/replace/remove scene images | Implemented; authenticated JPEG/PNG/WebP uploads and browser previews |
 | Restore project backups with images | Implemented; version 1 text and version 2 image backups restore as new copies |
