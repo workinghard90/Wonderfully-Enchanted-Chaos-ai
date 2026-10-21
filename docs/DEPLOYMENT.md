@@ -3,8 +3,9 @@
 The simplest first online setup is **one backend serving both the dashboard and
 API** over HTTPS. iPhone and Windows then share the same SQLite database.
 The dashboard plans stories and stores images. Optional Cloudflare image
-generation needs separate owner setup; this host does not run AI models or
-render videos. See [Cloudflare setup](CLOUDFLARE_IMAGES.md).
+generation needs separate owner setup. Optional video jobs use local CPU
+narration and FFmpeg after owner enablement. See [Cloudflare setup](CLOUDFLARE_IMAGES.md)
+and [dashboard video setup](DASHBOARD_VIDEO.md).
 
 1. Review the integration PR and its CI. Keep secrets outside Git.
 2. Choose an approved HTTPS host with durable storage and review its costs.
@@ -24,9 +25,10 @@ render videos. See [Cloudflare setup](CLOUDFLARE_IMAGES.md).
 
 `Dockerfile` packages the dashboard as a non-root user. Its startup command
 honors `PORT` and `WEC_DATA_DIR`. Mount writable storage at `/var/data`, owned
-by UID 10001. It does not install FFmpeg, ComfyUI, GPU libraries or Piper.
-No container runtime was available during local integration, so Docker image
-build/launch must be verified on the target host.
+by UID 10001. It includes FFmpeg, fonts, Piper and a checksum-pinned voice for
+optional CPU video exports. It does not install ComfyUI or GPU libraries.
+CI builds the container and checks a brief CPU narration within a 512 MiB
+container limit. Confirm a full job on the actual target before relying on it.
 
 `render.yaml` is an optional **paid-capable starter + persistent disk** blueprint.
 It sets `/api/health` and `/var/data`; enter the token through the host's secret
@@ -53,7 +55,8 @@ Prefer the one-server setup until there is a concrete reason to split it.
 ## Private local worker
 
 Keep ComfyUI on loopback or a private VPN. Never publicly forward port 8188.
-The web dashboard has no video rendering endpoint. Optional Cloudflare images
+Optional CPU video exports run on the studio server; see
+[dashboard video setup](DASHBOARD_VIDEO.md). Optional Cloudflare images
 use a separate authenticated HTTPS provider, not the private ComfyUI worker. CLI generation must run where the
 private worker is reachable with validated workflows and licensed models. The
 hosted dashboard cannot reach a Windows PC's `127.0.0.1`; that address refers to

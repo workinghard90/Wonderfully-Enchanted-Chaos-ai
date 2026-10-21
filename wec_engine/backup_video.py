@@ -221,7 +221,10 @@ def _scene_plate(source, output):
 
 
 def render_backup_video(backup_path, output_path, *, voice_model, workdir=None,
-                        project_index=None, ambience=False):
+                        project_index=None, ambience=False, progress=None, narrator=None):
+    def notify(stage, percent, message):
+        if progress:
+            progress({'stage': stage, 'progress': percent, 'message': message})
     source, output, model = (Path(value).resolve() for value in (backup_path, output_path, voice_model))
     if output.suffix.lower() != '.mp4':
         raise ValueError('Output must use the .mp4 extension')
@@ -234,11 +237,16 @@ def render_backup_video(backup_path, output_path, *, voice_model, workdir=None,
     if output in (source, model, Path(str(model) + '.json')):
         raise ValueError('Output must differ from inputs')
     root = Path(workdir).resolve() if workdir else output.with_name(output.stem + '-work')
+    notify('snapshot', 5, 'Preparing your saved scenes')
     plan = prepare_backup(source, root, project_index=project_index)
-    _synthesize_scenes(plan, model, root)
+    notify('narration', 12, 'Recording the narration')
+    (narrator or _synthesize_scenes)(plan, model, root)
+    notify('audio', 25, 'Timing captions and mixing audio')
     timings = make_narration(plan, root, ambience=ambience)
     concat = []
     for scene in plan['scenes']:
+        notify('scenes', 30 + round(45 * len(concat) / len(plan['scenes'])),
+               f'Building scene {len(concat)+1} of {len(plan["scenes"])}')
         plate = root / (scene['id'] + '-plate.jpg')
         _scene_plate(root / scene['image'], plate)
         frames = max(1, round(scene['duration'] * 30))
@@ -250,12 +258,14 @@ def render_backup_video(backup_path, output_path, *, voice_model, workdir=None,
         concat.append(f"file '{clip}'")
     (root / 'clips.txt').write_text('\n'.join(concat) + '\n', encoding='utf-8')
     final = root / 'final.mp4'
+    notify('finishing', 82, 'Adding captions and finishing the movie')
     _run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-filter_threads', '1',
           '-f', 'concat', '-safe', '1', '-i', 'clips.txt', '-i', 'narration-mix.wav',
           '-vf', 'subtitles=filename=captions.ass', '-map', '0:v:0', '-map', '1:a:0',
           '-c:v', 'libx264', '-preset', 'fast', '-crf', '22', '-threads', '2',
           '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2',
           '-t', str(plan['duration']), '-movflags', '+faststart', 'final.mp4'], cwd=root)
+    notify('verification', 96, 'Checking your finished movie')
     report = verify_delivery(final, expected_duration=plan['duration'], tolerance=0.1)
     report.update({'title': plan['title'], 'narration': 'Piper local neural TTS',
                    'voice_model': model.name, 'ambience': ambience,
@@ -278,4 +288,5 @@ def render_backup_video(backup_path, output_path, *, voice_model, workdir=None,
         partial.unlink(missing_ok=True)
     report['path'] = str(output)
     (root / 'verification.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    notify('complete', 100, 'Your movie is ready')
     return report

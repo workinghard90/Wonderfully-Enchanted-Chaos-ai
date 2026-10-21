@@ -2,9 +2,8 @@
 
 `wec export-backup` produces a 1080 × 1920, 30 fps H.264/AAC MP4 from a
 version 2 studio backup. Each scene must have its own attached image. It runs
-on your computer or a separate rendering machine; **the hosted dashboard has
-no video-render button yet**. The free Render planning service does not gain
-FFmpeg, voice weights or background jobs from this change.
+on your computer or a separate rendering machine. Optional dashboard video
+jobs use this same engine; see [dashboard video setup](DASHBOARD_VIDEO.md).
 
 The exporter uses local Piper narration, gentle camera movement, and burned-in
 captions timed to each measured narration clip. It preserves the complete image
@@ -33,7 +32,8 @@ Review the model card for any voice you choose. The example voice is the Piper
 LJ Speech high model, whose model card identifies its dataset as public domain:
 <https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/high/MODEL_CARD>.
 Piper software is distributed under GPLv3. No voice weights are bundled in this
-repository or its Docker image.
+repository. The video-capable Docker image downloads the pinned voice during
+its explicit build; see [dashboard video setup](DASHBOARD_VIDEO.md).
 
 On Linux/macOS use `.venv/bin/python` and `.venv/bin/wec` instead. Install FFmpeg
 through your operating system's trusted package manager.
@@ -60,9 +60,10 @@ through your operating system's trusted package manager.
 
 For an iPhone-only workflow, keep creating images and downloading backups in
 the studio. The first video can be rendered outside the free web service and
-returned as a downloadable MP4. Hosting a reliable render queue and durable
-movie storage is a separate deployment task; do not expose a local generation
-service or add paid infrastructure to enable this command.
+returned as a downloadable MP4. The optional dashboard controller adds one CPU
+job at a time to the same server. Durable movie storage is a separate deployment
+task; do not expose a local generation service or add paid infrastructure to
+enable this command.
 
 ## Validation
 
@@ -77,4 +78,6 @@ technical preview rather than a finished art pass.
 Automated tests use synthetic images/audio and mocked speech synthesis. They
 cover backup validation, missing images, explicit project selection, unsafe
 scene IDs, output preservation, caption markup, overlong narration and a real
-FFmpeg MP4. CI does not download voices or make paid inference requests.
+FFmpeg MP4. These tests do not download voices or make paid inference requests.
+A separate container check explicitly downloads the pinned public voice and
+checks a short CPU narration; it makes no external inference request.

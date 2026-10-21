@@ -34,8 +34,9 @@ python3 -m venv .venv
 
 No Node build or separate frontend server is needed. The backend serves the
 frontend and `/api/*` together. FFmpeg and AI models are unnecessary for the
-story-planning dashboard. The Docker image intentionally includes no GPU stack,
-FFmpeg, or voice models.
+story-planning dashboard. The Docker image includes CPU video tools and a
+checksum-pinned Piper voice; web rendering stays off until enabled by the owner.
+It includes no GPU stack.
 
 ## What works and what needs setup
 
@@ -51,18 +52,21 @@ FFmpeg, or voice models.
 | ComfyUI images and video | Adapter code and mocked tests; requires compatible workflows, nodes, models and worker |
 | Character references | Metadata plus explicit reference upload/binding; no guarantee of visual consistency |
 | Narrated movie from a studio backup | Offline `export-backup`; all scene images, local Piper voice and FFmpeg required |
+| Dashboard movie render/play/download | Opt-in CPU job with progress/cancel and authenticated MP4 downloads; bounded free-host test configuration |
 | Piper narration | Live CPU smoke test with LJ Speech high; optional `[narration]` installation and separately supplied voice model |
 | Cloud image fallback | Custom gateway contract; explicit CLI opt-in only; not live tested |
-| Cloud video, web video jobs, accounts, automatic sync/backups | Not implemented |
+| AI character-animation service, accounts, automatic sync/backups | Not implemented |
 
 The legacy `captions` command estimates caption times from scene times.
 `export-backup` times each caption to its measured narration clip; it does not
 perform word-level forced alignment. See the
 [narrated movie guide](docs/NARRATED_VIDEO.md).
-Music/SFX must be supplied as a completed audio mix. Dashboard image generation
+The legacy production pipeline needs a supplied audio mix; the backup and web
+exporters can add quiet procedural ambience. Dashboard image generation
 is off by default; optional Cloudflare setup permits one image per confirmed
 click. No paid service calls are made by the test suite. Uploaded
-images are stored for preview and backup; the dashboard does not render them into movies. See the
+images can be rendered into narrated movies after optional video setup. See
+[dashboard video setup](docs/DASHBOARD_VIDEO.md) and the
 [scene images and recovery guide](docs/SCENE_IMAGES.md) for the iPhone workflow,
 file limits and backup compatibility.
 
@@ -135,11 +139,12 @@ npm install --no-save playwright@1.62.1
 npx playwright install chromium
 node tests/browser_smoke.cjs
 node tests/browser_generation.cjs
+node tests/browser_video.cjs
 ```
 
 Set `PYTHON` to the installed Python executable if `python` is outside your
 virtual environment. CI covers Windows/Linux Python 3.10, 3.12 and 3.13,
-Linux media rendering, and Chromium dashboard checks. Its results are separate
+Linux media rendering, Chromium dashboard checks and a container voice check. Its results are separate
 from local verification; see [integration report](docs/INTEGRATION_REPORT.md).
 
 ## Repository layout

@@ -11,6 +11,8 @@ not an automatic loader. Do not commit populated environment files.
 | `WEC_ENABLE_IMAGE_GENERATION` | `0`/unset; only `1` opts into studio Cloudflare generation. Credentials are also required. |
 | `WEC_CLOUDFLARE_ACCOUNT_ID` | Unset; Cloudflare account ID, 32 hexadecimal characters. Server only. |
 | `WEC_CLOUDFLARE_API_TOKEN` | Unset; scoped Workers AI token. Server secret, never frontend config. |
+| `WEC_ENABLE_VIDEO_RENDER` | `0`/unset; only `1` enables bounded CPU movie jobs; a 32+ character studio token is also required, even on loopback. |
+| `WEC_PIPER_MODEL` | Local Piper `.onnx` path with matching `.onnx.json`; Docker defaults to `/opt/wec-voices/en_US-ljspeech-high.onnx`. |
 | `WEC_COMFY_URL` | `http://127.0.0.1:8188`; CLI `--comfy-url` overrides. Keep the worker on a private network/VPN. |
 | `WEC_FFMPEG_THREADS` | `2`; positive integer encoder thread count for assembly/finalization. |
 | `WEC_CLOUD_ENDPOINT` | Unset; custom cloud image gateway endpoint, not a provider built into the app. Use HTTPS. |
@@ -43,6 +45,12 @@ response access; it is not a substitute for authentication.
 | POST | `/api/projects/{id}/scenes/{scene-id}/generate` | Confirmed single-image request; JSON `prompt` of 1–2048 characters, at most 16 KiB |
 | GET | `/api/backup` | All stories and embedded images, schema version 2 |
 | POST | `/api/restore` | Import version 1 or 2 JSON; returns new project IDs |
+| GET | `/api/video` | Video readiness, limits and saved job summaries |
+| POST | `/api/projects/{id}/video` | Immutable saved-project snapshot; JSON `ambience` boolean; 202 returns job ID |
+| GET | `/api/video-jobs/{id}` | Safe progress/status; no credentials or worker logs |
+| GET | `/api/video-jobs/{id}/file` | Authenticated ready MP4; single HTTP byte range supported |
+| POST | `/api/video-jobs/{id}/cancel` | Stop a queued/running CPU job and its subprocesses |
+| POST | `/api/video-jobs/{id}/remove` | Explicitly remove a stopped job/server movie copy; project remains |
 | OPTIONS | API paths | Preflight for exactly configured frontend origin |
 
 Create/update bodies contain `title` (1–150 characters), `story` (1–30000),
@@ -50,7 +58,8 @@ Create/update bodies contain `title` (1–150 characters), `story` (1–30000),
 Each scene needs at least 1/30 second. Project request bodies are limited to
 128 KiB. `images` on a project and `image_asset` on each planned scene contain
 metadata, never filesystem paths. The original `image`/`video` CLI plan fields
-remain unset; stored scene images do not submit video rendering jobs.
+remain unset; stored scene images submit a video job only after the owner
+explicitly selects Render video. See [video job setup and limits](DASHBOARD_VIDEO.md).
 
 Changing the story or scene count of a project with images returns 409 unless
 `reset_images: true` is explicitly supplied. This clears attached images in the
