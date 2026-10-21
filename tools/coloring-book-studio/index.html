@@ -20,7 +20,22 @@ small{color:#625a70}#printPages{display:none}
 <script>
 const images=[];const upload=document.getElementById('upload'),gallery=document.getElementById('pages'),printPages=document.getElementById('printPages'),status=document.getElementById('status');
 function render(){gallery.replaceChildren();printPages.replaceChildren();images.forEach((item,i)=>{const card=document.createElement('div');card.className='page';const img=document.createElement('img');img.src=item.url;img.alt=item.name;card.append(img);const info=document.createElement('p');info.textContent=(i+1)+'. '+item.name+' ('+item.width+' × '+item.height+')';card.append(info);const dpi=Math.min(item.width/7.5,item.height/10);const quality=document.createElement('p');quality.textContent='Approx. '+Math.floor(dpi)+' PPI at 7.5 × 10 in — '+(dpi>=300?'300 PPI target met':'Below 300 PPI target');quality.style.color=dpi>=300?'#236a3a':'#a13b23';card.append(quality);const up=document.createElement('button');up.textContent='↑';up.disabled=i===0;up.setAttribute('aria-label','Move page '+(i+1)+' earlier');up.onclick=()=>{[images[i-1],images[i]]=[images[i],images[i-1]];render()};card.append(up);const down=document.createElement('button');down.textContent='↓';down.disabled=i===images.length-1;down.setAttribute('aria-label','Move page '+(i+1)+' later');down.onclick=()=>{[images[i+1],images[i]]=[images[i],images[i+1]];render()};card.append(down);const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=()=>{URL.revokeObjectURL(item.url);images.splice(i,1);render()};card.append(remove);gallery.append(card);const sheet=document.createElement('div');sheet.className='print-page';const art=document.createElement('img');art.src=item.url;sheet.append(art);printPages.append(sheet);if(document.getElementById('blank').checked){const back=document.createElement('div');back.className='print-page';printPages.append(back)}});status.textContent=images.length+' illustration(s), '+(images.length*(document.getElementById('blank').checked?2:1))+' printable pages. Files stay on your device.';document.getElementById('print').disabled=!images.length;document.getElementById('zip').disabled=!images.length}
-upload.addEventListener('change',async()=>{for(const file of upload.files){if(!['image/png','image/jpeg','image/webp'].includes(file.type))continue;const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();images.push({url,file,name:file.name,width:image.naturalWidth,height:image.naturalHeight})}catch{URL.revokeObjectURL(url)}}upload.value='';render()});
+upload.addEventListener('change',async()=>{
+ const selected=Array.from(upload.files||[]);const errors=[];status.textContent='Loading '+selected.length+' file(s)…';
+ for(const file of selected){
+  const type=file.type.toLowerCase();const extension=file.name.split('.').pop().toLowerCase();
+  if(!['image/png','image/jpeg','image/webp'].includes(type)&&!['png','jpg','jpeg','webp'].includes(extension)){errors.push(file.name+': unsupported format ('+(type||'unknown')+')');continue}
+  const url=URL.createObjectURL(file);
+  try{
+   const image=new Image();image.src=url;
+   await new Promise((resolve,reject)=>{if(image.complete&&image.naturalWidth>0){resolve();return}image.onload=resolve;image.onerror=()=>reject(new Error('Could not decode image'))});
+   if(!image.naturalWidth||!image.naturalHeight)throw new Error('Image has no readable dimensions');
+   images.push({url,file,name:file.name,width:image.naturalWidth,height:image.naturalHeight});
+  }catch(error){URL.revokeObjectURL(url);errors.push(file.name+': '+(error.message||String(error)))}
+ }
+ upload.value='';render();
+ if(errors.length){status.textContent+=' Failed: '+errors.join('; ')}
+});
 document.getElementById('blank').addEventListener('change',render);
 document.getElementById('clear').onclick=()=>{images.forEach(x=>URL.revokeObjectURL(x.url));images.length=0;render()};
 document.getElementById('print').onclick=()=>window.print();
