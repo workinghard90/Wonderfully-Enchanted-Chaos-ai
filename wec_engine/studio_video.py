@@ -51,6 +51,8 @@ class VideoJobs:
         self.lock = threading.RLock()
         self.processes = {}
         self.cancelled = set()
+        self.owned_jobs = set()
+        self.lease = None
         self.closed = False
         with self._db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS usage (day TEXT PRIMARY KEY, attempts INTEGER NOT NULL)')
@@ -83,22 +85,55 @@ class VideoJobs:
 
     def _recover(self):
         # A restart never silently re-runs a render or consumes another attempt.
-        for path in self.root.glob('*/status.json'):
-            try:
-                value = json.loads(path.read_text(encoding='utf-8'))
-                owner = value.get('owner_pid')
-                alive = False
-                if owner:
-                    try:
-                        os.kill(owner, 0)
-                        alive = True
-                    except (ProcessLookupError, OSError):
-                        pass
-                if value.get('status') not in TERMINAL and not alive:
-                    value.update(status='interrupted', message='The server restarted. Start a new render when ready.', finished_at=now())
-                    self._save(value)
-            except (ValueError, OSError, VideoJobError):
-                continue
+        # OS leases expire on process exit, even if a container reuses PID 1.
+        try:
+            lease = self._acquire_lease()
+        except VideoJobError:
+            return
+        try:
+            for path in self.root.glob('*/status.json'):
+                try:
+                    value = json.loads(path.read_text(encoding='utf-8'))
+                    if value.get('status') not in TERMINAL:
+                        value.update(status='interrupted', message='The server restarted. Start a new render when ready.', finished_at=now())
+                        self._save(value)
+                except (ValueError, OSError, VideoJobError):
+                    continue
+        finally:
+            self._release_lease(lease)
+
+    def _acquire_lease(self):
+        lease = (self.root/'active.lock').open('a+b')
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                lease.seek(0, 2)
+                if lease.tell() == 0:
+                    lease.write(b'0'); lease.flush()
+                lease.seek(0)
+                msvcrt.locking(lease.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lease.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return lease
+        except OSError:
+            lease.close()
+            raise VideoJobError('A video is already rendering. Wait or cancel it first.', 409) from None
+
+    @staticmethod
+    def _release_lease(lease):
+        if lease is None:
+            return
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                lease.seek(0)
+                msvcrt.locking(lease.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lease.fileno(), fcntl.LOCK_UN)
+        finally:
+            lease.close()
 
     def ready(self):
         return bool(self.enabled and self.model.is_file() and Path(str(self.model)+'.json').is_file()
@@ -146,17 +181,7 @@ class VideoJobs:
                 raise VideoJobError('Ambience must be true or false.')
             if len(self.status()['jobs']) >= MAX_JOBS:
                 raise VideoJobError('Download and remove an older video before making another.', 429)
-            active = self.root/'active.lock'
-            try:
-                with active.open('x') as lock:
-                    lock.write(str(os.getpid()))
-            except FileExistsError:
-                try:
-                    os.kill(int(active.read_text()), 0)
-                except (ProcessLookupError, ValueError):
-                    active.unlink(missing_ok=True)
-                    return self.start(snapshot, project_id, ambience=ambience)
-                raise VideoJobError('A video is already rendering. Wait or cancel it first.', 409) from None
+            self.lease = self._acquire_lease()
             try:
                 with self._db() as db:
                     db.execute('BEGIN IMMEDIATE')
@@ -175,11 +200,13 @@ class VideoJobs:
                          'progress': 0, 'message': 'Your saved scenes are queued for rendering.',
                          'created_at': now(), 'owner_pid': os.getpid(), 'snapshot_sha256': hashlib.sha256(raw).hexdigest()}
                 self._save(value)
+                self.owned_jobs.add(jid)
                 thread = threading.Thread(target=self._run, args=(jid,), daemon=True)
                 thread.start()
                 return self.get(jid)
             except Exception:
-                active.unlink(missing_ok=True)
+                self._release_lease(self.lease)
+                self.lease = None
                 raise
 
     @staticmethod
@@ -253,12 +280,16 @@ class VideoJobs:
                     self._stop(process)
                     process.wait(timeout=5)
                 self.processes.pop(jid, None)
-                (self.root/'active.lock').unlink(missing_ok=True)
+                self.owned_jobs.discard(jid)
+                self._release_lease(self.lease)
+                self.lease = None
 
     def cancel(self, jid):
         with self.lock:
             value = self._record(jid)
             if value['status'] not in TERMINAL:
+                if jid not in self.owned_jobs:
+                    raise VideoJobError('Another studio process owns this render. Stop it there first.', 409)
                 self.cancelled.add(jid)
                 if jid in self.processes:
                     self._stop(self.processes[jid])
@@ -286,6 +317,5 @@ class VideoJobs:
     def close(self):
         with self.lock:
             self.closed = True
-            for job in self.status()['jobs']:
-                if job['status'] not in TERMINAL:
-                    self.cancel(job['id'])
+            for jid in list(self.owned_jobs):
+                self.cancel(jid)

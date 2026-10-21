@@ -1,5 +1,6 @@
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -139,11 +140,42 @@ class StudioVideoTests(unittest.TestCase):
 
     def test_interrupted_jobs_are_not_automatically_rerun(self):
         jid = 'b'*32; folder = self.jobs.root/jid; folder.mkdir()
-        (folder/'status.json').write_text(json.dumps({'id': jid, 'status': 'running', 'created_at': '2026-01-01', 'owner_pid': 99999999}))
+        # Containers commonly reuse PID 1; a live/reused PID is not a job lease.
+        (folder/'status.json').write_text(json.dumps({'id': jid, 'status': 'running', 'created_at': '2026-01-01', 'owner_pid': os.getpid()}))
         recovered = VideoJobs(self.jobs.root, enabled=False)
         self.assertEqual(recovered.get(jid)['status'], 'interrupted')
         self.assertEqual(recovered.status()['attempts_today'], 0)
         recovered.close()
+
+
+class VideoLeaseTests(unittest.TestCase):
+    def test_second_controller_cannot_steal_live_job_and_reused_pid_recovers(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            owner = VideoJobs(root, enabled=True, worker_command=[sys.executable, '-c', 'import time; time.sleep(20)'])
+            snapshot = {'schema_version': 2, 'projects': [{'title': 'Lease fixture', 'duration': 2, 'scenes': 1,
+                        'story': 'A lantern.', 'scene_images': [{'scene_id': 'scene-001'}]}]}
+            try:
+                with patch.object(owner, 'ready', return_value=True):
+                    job = owner.start(snapshot, 'c'*32)
+                other = VideoJobs(root, enabled=True)
+                with patch.object(other, 'ready', return_value=True):
+                    with self.assertRaises(VideoJobError) as blocked:
+                        other.start(snapshot, 'c'*32)
+                    self.assertEqual(blocked.exception.status, 409)
+                other.close()
+                self.assertIn(owner.get(job['id'])['status'], ('queued', 'running'))
+                owner.cancel(job['id'])
+            finally:
+                owner.close()
+                for _ in range(100):
+                    if not owner.owned_jobs: break
+                    time.sleep(.05)
+            # Simulate a stale record in a new container reusing the same PID.
+            value = owner._record(job['id']); value.update(status='running', owner_pid=os.getpid()); owner._save(value)
+            recovered = VideoJobs(root, enabled=False)
+            self.assertEqual(recovered.get(job['id'])['status'], 'interrupted')
+            recovered.close()
 
 
 if __name__ == '__main__':
