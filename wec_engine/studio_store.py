@@ -232,7 +232,9 @@ def export_backup(path, project_id=None):
     return {'schema_version': 2, 'projects': projects}
 
 
-def restore_backup(path, backup):
+def restore_backup(path, backup, *, only_if_empty=False):
+    if type(only_if_empty) is not bool:
+        raise ValueError('The empty-server recovery option must be true or false')
     if not isinstance(backup, dict) or type(backup.get('schema_version')) is not int or backup['schema_version'] not in (1, 2):
         raise ValueError('Choose a WEC backup with schema version 1 or 2')
     projects = backup.get('projects')
@@ -273,6 +275,8 @@ def restore_backup(path, backup):
         prepared.append((uuid.uuid4().hex, value, normalized))
     with _database(path) as db:
         db.execute('BEGIN IMMEDIATE')
+        if only_if_empty and db.execute('SELECT 1 FROM projects LIMIT 1').fetchone():
+            raise ProjectConflictError('Server projects already exist. Nothing was recovered. Download the device backup to review it separately.')
         _check_project_limit(db, len(prepared))
         _check_image_limit(db, total_bytes)
         for pid, value, images in prepared:

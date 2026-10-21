@@ -2,7 +2,7 @@
 
 The dashboard accepts pictures you supply. Optional AI image generation needs
 [Cloudflare owner setup](CLOUDFLARE_IMAGES.md) and a first live verification. Web
-video export is still unconnected. No external service or paid API is called
+video export is available after [owner setup](DASHBOARD_VIDEO.md). No external service or paid API is called
 by image upload, preview, backup or restore.
 
 ## iPhone workflow
@@ -17,7 +17,9 @@ by image upload, preview, backup or restore.
 4. Tap **Download backup** after saving edits or attaching images. Keep the JSON
    file in Files/iCloud Drive or another location you control. The backup
    contains all saved projects, including their attached pictures.
-5. To recover after a server reset, open the studio, tap **Restore backup**,
+5. The **Your device backup** panel automatically copies saved work into this
+   browser and offers recovery when the server is empty. See [device recovery](DEVICE_RECOVERY.md)
+   for limits and privacy. To recover from a downloaded file, tap **Restore backup**,
    choose the JSON in Files, and confirm. Imported projects appear as new copies.
    Existing saved projects stay in place. This also works with earlier text-only
    backups, including version 1 exports.
@@ -62,7 +64,6 @@ hosting still needs downloaded backups: this update adds neither durable
 storage nor automatic sync. Opening another device on the same server accesses
 the same database; it does not synchronize separate installations.
 
-Uploaded images currently support dashboard preview and backup only. Producing
-movies still uses CLI manifests with explicit media paths. A private generation
-worker, authenticated web job execution and video delivery require separate
-implementation and testing.
+Attached images can also be used by the opt-in [dashboard movie exporter](DASHBOARD_VIDEO.md)
+and the offline [backup exporter](NARRATED_VIDEO.md). Both require local CPU
+narration tools and FFmpeg. A private GPU generation worker remains separate.

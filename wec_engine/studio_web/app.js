@@ -12,6 +12,13 @@ let videoTimer = null;
 let videoURL = null;
 let playingJob = null;
 const imageURLs = new Set();
+let deviceScope = null;
+let deviceRecord = null;
+let deviceError = false;
+let deviceReadable = false;
+let deviceConflict = false;
+let serverEmpty = null;
+let deviceQueue = Promise.resolve();
 
 function token() { return sessionStorage.getItem('wec_token') || ''; }
 async function request(path, options = {}, retry = true) {
@@ -26,10 +33,12 @@ async function request(path, options = {}, retry = true) {
     const value = prompt('Studio access token (stored for this browser tab):');
     if (value === null) throw Error('Authentication cancelled');
     sessionStorage.setItem('wec_token', value);
+    resetDeviceView();
     return request(path, options, false);
   }
   if (response.status === 401) {
     sessionStorage.removeItem('wec_token');
+    resetDeviceView();
     throw Error('Access token rejected. Try the action again to enter a new token.');
   }
   if (!response.ok) {
@@ -44,6 +53,7 @@ function setBusy(value) {
   document.querySelectorAll('button, #editor input, #editor textarea, #preview input, #preview textarea').forEach(item => { item.disabled = value || item.dataset.generationReady === 'false'; });
   $('editor').setAttribute('aria-busy', String(value));
   updateVideoButton();
+  updateDeviceView();
 }
 async function runAction(action) {
   if (busy) return;
@@ -68,7 +78,7 @@ function load(project) {
 async function refresh() {
   const value = await api('/api/projects');
   const root = $('projects'); root.replaceChildren();
-  if (!value.projects.length) { root.textContent = 'No projects yet.'; return; }
+  if (!value.projects.length) root.textContent = 'No projects yet.';
   for (const project of value.projects) {
     const item = document.createElement('div'); item.className = 'item'; item.dataset.project = project.id;
     const title = document.createElement('strong'); title.textContent = project.title;
@@ -82,7 +92,116 @@ async function refresh() {
     });
     item.append(title, detail, button); root.append(item);
   }
+  await syncDevice(value.projects.length);
 }
+
+function resetDeviceView() {
+  deviceScope = null; deviceRecord = null; deviceConflict = false; deviceError = false; deviceReadable = false; serverEmpty = null;
+  updateDeviceView();
+}
+function updateDeviceView() {
+  const projects = deviceRecord?.backup?.projects || [];
+  const hasCopy = Boolean(projects.length);
+  let text = hasCopy
+    ? `Saved on this device: ${new Date(deviceRecord.savedAt).toLocaleString()} · ${projects.length} project(s) · ${projects.reduce((n, p) => n + p.scene_images.length, 0)} picture(s). Saved changes only.`
+    : 'No saved copy in this browser yet. Save a project to begin.';
+  if (!deviceScope) text = 'Device backup needs your studio access token and available browser storage.';
+  if (deviceRecord?.paused) text = 'Automatic device backup is off. The device copy was removed. Download backups to keep your work.';
+  if (deviceConflict) text = 'The server has different projects. Your earlier device copy was kept. Download it before choosing to use the current server projects. ' + text;
+  if (deviceError) text = 'Device backup could not be updated. Browser storage may be unavailable or full, or the connection failed. Download a backup for recent changes. ' + (hasCopy ? text : 'No device copy is confirmed.');
+  $('device-status').textContent = text;
+  $('device-recover').hidden = !(hasCopy && serverEmpty === true);
+  $('device-recover').disabled = busy || !hasCopy || serverEmpty !== true;
+  $('device-download').disabled = busy || !hasCopy;
+  $('device-toggle').disabled = busy || !deviceScope || !deviceReadable;
+  $('device-toggle').textContent = deviceRecord?.paused ? 'Enable device backup' : 'Turn off & remove device copy';
+  $('device-replace').hidden = !deviceConflict;
+  $('device-replace').disabled = busy || !deviceConflict || serverEmpty !== false;
+}
+function deviceTask(action) {
+  deviceQueue = deviceQueue.then(action).catch(() => { deviceError = true; }).finally(updateDeviceView);
+  return deviceQueue;
+}
+async function readDevice() {
+  const accessToken = token();
+  const key = await WECDeviceBackups.scope(API_BASE || location.origin, accessToken);
+  if (accessToken !== token()) return;
+  if (key !== deviceScope) { deviceRecord = null; deviceConflict = false; deviceError = false; }
+  deviceScope = key;
+  deviceReadable = false;
+  const record = key ? await WECDeviceBackups.read(key) : null;
+  if (accessToken !== token() || key !== deviceScope) return;
+  deviceRecord = record;
+  deviceReadable = Boolean(key);
+}
+async function captureDevice(replace = false, backup = null) {
+  const key = deviceScope, accessToken = token();
+  if (!key || deviceRecord?.paused) return;
+  const capturedAt = Date.now();
+  if (!backup) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try { backup = await (await request('/api/backup', {signal: controller.signal}, false)).json(); }
+    finally { clearTimeout(timer); }
+  }
+  if (key !== deviceScope || accessToken !== token()) return;
+  const result = await WECDeviceBackups.save(key, backup, capturedAt, replace);
+  if (key !== deviceScope || accessToken !== token()) return;
+  deviceRecord = result.record; deviceConflict = result.conflict; deviceError = false;
+}
+function syncDevice(projectCount) {
+  serverEmpty = projectCount === 0;
+  if (serverEmpty) deviceConflict = false;
+  return deviceTask(async () => {
+    await readDevice();
+    if (projectCount) await captureDevice();
+  });
+}
+function downloadBackup(data, filename) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
+  const link = document.createElement('a'); link.href = url; link.download = filename;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('device-download').onclick = () => runAction(async () => {
+  await deviceTask(readDevice);
+  if (!deviceRecord?.backup?.projects.length) throw Error('No device backup is available.');
+  downloadBackup(deviceRecord.backup, 'wec-device-backup.json');
+  msg('Device backup download opened. Save it outside this browser. Movies and unsaved edits are not included.');
+});
+$('device-toggle').onclick = () => runAction(async () => {
+  await deviceTask(readDevice);
+  if (!deviceScope || !deviceReadable) throw Error('Device storage is unavailable. Keep a downloaded backup.');
+  const paused = !deviceRecord?.paused;
+  if (paused && !confirm('Turn off automatic device backup and remove its stories and pictures from this browser? Server projects and downloaded files stay in place.')) return;
+  await deviceTask(async () => {
+    deviceRecord = await WECDeviceBackups.pause(deviceScope, paused);
+    deviceConflict = false; deviceError = false;
+  });
+  if (!paused) await refresh();
+});
+$('device-replace').onclick = () => runAction(async () => {
+  if (!confirm('Replace the earlier device backup with the current server projects? Download the earlier copy first if you want to keep it.')) return;
+  await deviceTask(async () => { await readDevice(); await captureDevice(true); });
+});
+$('device-recover').onclick = () => runAction(async () => {
+  await deviceTask(readDevice);
+  const backup = deviceRecord?.backup, key = deviceScope;
+  if (!backup?.projects.length || !deviceReadable) throw Error('No readable device backup is available. Use a downloaded backup.');
+  const current = await api('/api/projects');
+  if (current.projects.length) {
+    await refresh();
+    throw Error('Server projects already exist. Nothing was restored. Download the device backup to review it separately.');
+  }
+  const warning = dirty ? 'This replaces the unsaved edits in your editor. ' : '';
+  if (!confirm(`${warning}Recover ${backup.projects.length} saved project(s) and their pictures to this empty server? Movies are not included.`)) return;
+  if (key !== deviceScope) throw Error('Studio access changed. Reload before recovering.');
+  const result = await api('/api/restore', {method: 'POST', body: JSON.stringify({...backup, only_if_empty: true})});
+  load(await api('/api/projects/' + result.projects[0].id));
+  await deviceTask(() => captureDevice(true));
+  await refresh(); await showScenes();
+  msg(`Recovered ${result.restored} project(s) and their attached pictures from this device. Download a separate backup to keep them.`);
+});
 for (const key of ['title', 'story', 'duration', 'scenes']) {
   $(key).addEventListener('input', () => { dirty = true; clearPreview(); updateVideoButton(); });
 }
@@ -146,7 +265,7 @@ async function showScenes() {
       msg('Uploading image…');
       await api(`/api/projects/${pid}/scenes/${scene.id}/image`, {method: 'POST', headers: {'Content-Type': file.type || 'application/octet-stream'}, body: file});
       loadedProject = await api('/api/projects/' + pid);
-      await showScenes(); await refresh();
+      await refresh(); await showScenes();
       msg('Image attached to ' + scene.id + '. Download a backup to keep it.');
     });
     actions.append(choose, input);
@@ -157,7 +276,7 @@ async function showScenes() {
         if (!confirm('Remove the image from ' + scene.id + '?')) return;
         await api(`/api/projects/${pid}/scenes/${scene.id}/image/remove`, {method: 'POST'});
         loadedProject = await api('/api/projects/' + pid);
-        await showScenes(); await refresh(); msg('Scene image removed.');
+        await refresh(); await showScenes(); msg('Scene image removed.');
       });
       actions.append(remove);
     }
@@ -181,7 +300,7 @@ async function showScenes() {
         msg('Generating one image… Keep this page open. If the connection drops, reopen the project before trying again.');
         await api(`/api/projects/${pid}/scenes/${scene.id}/generate`, {method: 'POST', body: JSON.stringify({prompt})});
         loadedProject = await api('/api/projects/' + pid);
-        await showScenes(); await refresh();
+        await refresh(); await showScenes();
         msg('Image generated and attached to ' + scene.id + '. Download a backup to keep it.');
       });
       actions.append(generate);
@@ -198,10 +317,8 @@ $('dry').onclick = () => runAction(async () => {
 });
 $('backup').onclick = () => runAction(async () => {
   const data = await api('/api/backup');
-  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
-  const link = document.createElement('a'); link.href = url; link.download = 'wec-projects-backup.json';
-  document.body.append(link); link.click(); link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBackup(data, 'wec-projects-backup.json');
+  await deviceTask(async () => { await readDevice(); await captureDevice(false, data); });
   msg('Backup downloaded with your stories and attached images. Store it somewhere safe.');
 });
 $('restore').onclick = () => { if (!busy) $('restore-file').click(); };
@@ -300,4 +417,4 @@ $('render-video').onclick = () => runAction(async () => {
   msg('Movie rendering started. You can follow its progress below.');
 });
 window.addEventListener('beforeunload', event => { if (dirty || busy) { event.preventDefault(); event.returnValue = ''; } });
-refresh().then(refreshVideos).catch(error => msg(error.message));
+runAction(async () => { await deviceTask(readDevice); await refresh(); await refreshVideos(); });

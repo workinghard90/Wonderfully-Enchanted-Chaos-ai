@@ -118,7 +118,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             path = urlparse(self.path).path
             if self.command == 'GET' and path == '/':
                 self._send(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8'); return
-            if self.command == 'GET' and path in ('/app.js','/style.css','/config.js'):
+            if self.command == 'GET' and path in ('/app.js','/device-backup.js','/style.css','/config.js'):
                 mime = 'application/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8'
                 self._send(200, (ROOT / path.lstrip('/')).read_bytes(), mime); return
             if path == '/api/health' and self.command == 'GET':
@@ -215,7 +215,10 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     self._send(429, {'error': 'Another image or backup operation is running. Try again shortly.'}); return
                 try:
                     body = json.loads(self._read_body(MAX_BACKUP_BYTES))
-                    self._send(200, restore_backup(db_path, body))
+                    only_if_empty = body.get('only_if_empty', False) if isinstance(body, dict) else False
+                    self._send(200, restore_backup(db_path, body, only_if_empty=only_if_empty))
+                except ProjectConflictError as exc:
+                    self._send(409, {'error': str(exc)})
                 except StorageLimitError as exc:
                     self._send(413, {'error': str(exc)})
                 except (ValueError, TypeError) as exc:

@@ -45,6 +45,7 @@ It includes no GPU stack.
 | Create, edit, list and back up stories | Implemented; HTTP integration tests |
 | Upload/replace/remove scene images | Implemented; authenticated JPEG/PNG/WebP uploads and browser previews |
 | Restore project backups with images | Implemented; version 1 text and version 2 image backups restore as new copies |
+| Automatic device copy and empty-server recovery | Saved stories/pictures in this browser, visible timestamp, explicit recovery; browser storage is best effort. [Recovery guide](docs/DEVICE_RECOVERY.md) |
 | Cloudflare scene images from the dashboard | Implemented behind opt-in; mocked provider/browser tests and a successful live FLUX request. Account setup required |
 | Scene planning and production dry-run | Implemented; offline deterministic word segmentation, no LLM |
 | Silent still/clip assembly, audio mux and burned-in captions | Implemented; FFmpeg smoke tests with synthetic media |
@@ -55,7 +56,7 @@ It includes no GPU stack.
 | Dashboard movie render/play/download | Opt-in CPU job with progress/cancel and authenticated MP4 downloads; bounded free-host test configuration |
 | Piper narration | Live CPU smoke test with LJ Speech high; optional `[narration]` installation and separately supplied voice model |
 | Cloud image fallback | Custom gateway contract; explicit CLI opt-in only; not live tested |
-| AI character-animation service, accounts, automatic sync/backups | Not implemented |
+| AI character-animation service, accounts, scheduled server backups and cross-device sync | Not implemented |
 
 The legacy `captions` command estimates caption times from scene times.
 `export-backup` times each caption to its measured narration clip; it does not
