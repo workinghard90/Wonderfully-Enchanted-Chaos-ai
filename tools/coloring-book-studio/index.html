@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WEC Coloring Book Studio</title><style>
+body{font:16px system-ui;background:#faf7ff;color:#29233c;margin:0;padding:24px}main{max-width:850px;margin:auto}h1{color:#6746a4}
+.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:20px 0}button,input{font:inherit;padding:10px}
+button{background:#6746a4;color:white;border:0;border-radius:8px;cursor:pointer}button:disabled{opacity:.5}
+#pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.page{background:white;border:1px solid #ddd;border-radius:8px;padding:8px}.page img{width:100%;aspect-ratio:8.5/11;object-fit:contain}
+small{color:#625a70}#printPages{display:none}
+@page{size:letter;margin:0}
+@media print{body{padding:0;background:white}main{display:none}#printPages{display:block}.print-page{width:8.5in;height:11in;box-sizing:border-box;page-break-after:always;break-after:page;display:flex;align-items:center;justify-content:center;padding:.5in}.print-page img{max-width:100%;max-height:100%;object-fit:contain}.print-page:last-child{page-break-after:auto}}
+</style></head><body><main><h1>☁️ WEC Coloring Book Studio</h1>
+<p>Local-first book assembly. Your images stay on this device and are not uploaded to WEC or Render.</p>
+<label>Book title <input id="title" value="Pip's Cloud Magic Coloring Book"></label>
+<div class="controls"><label>Add coloring pages <input id="upload" type="file" accept="image/png,image/jpeg,image/webp" multiple></label>
+<label><input id="blank" type="checkbox" checked> Blank back after each illustration</label>
+<button id="print" disabled>Print / Save as PDF</button><button id="clear">Clear pages</button></div>
+<p id="status" role="status">No pages loaded.</p><div id="pages"></div>
+<p><small>Print settings: Letter (8.5 × 11 in), scale 100%, margins none, headers/footers off. Illustrations have a 0.5-inch inset. Check your final PDF page count and print resolution before uploading to KDP. This first version is a browser-print prototype, not a validated KDP export.</small></p></main><div id="printPages"></div>
+<script>
+const images=[];const upload=document.getElementById('upload'),gallery=document.getElementById('pages'),printPages=document.getElementById('printPages'),status=document.getElementById('status');
+function render(){gallery.replaceChildren();printPages.replaceChildren();images.forEach((item,i)=>{const card=document.createElement('div');card.className='page';const img=document.createElement('img');img.src=item.url;img.alt=item.name;card.append(img);const info=document.createElement('p');info.textContent=(i+1)+'. '+item.name+' ('+item.width+' × '+item.height+')';card.append(info);const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=()=>{URL.revokeObjectURL(item.url);images.splice(i,1);render()};card.append(remove);gallery.append(card);const sheet=document.createElement('div');sheet.className='print-page';const art=document.createElement('img');art.src=item.url;sheet.append(art);printPages.append(sheet);if(document.getElementById('blank').checked){const back=document.createElement('div');back.className='print-page';printPages.append(back)}});status.textContent=images.length+' illustration(s), '+(images.length*(document.getElementById('blank').checked?2:1))+' printable pages. Files stay on your device.';document.getElementById('print').disabled=!images.length}
+upload.addEventListener('change',async()=>{for(const file of upload.files){if(!['image/png','image/jpeg','image/webp'].includes(file.type))continue;const url=URL.createObjectURL(file);try{const image=new Image();image.src=url;await image.decode();images.push({url,name:file.name,width:image.naturalWidth,height:image.naturalHeight})}catch{URL.revokeObjectURL(url)}}upload.value='';render()});
+document.getElementById('blank').addEventListener('change',render);
+document.getElementById('clear').onclick=()=>{images.forEach(x=>URL.revokeObjectURL(x.url));images.length=0;render()};
+document.getElementById('print').onclick=()=>window.print();render();
+</script></body></html>
