@@ -117,7 +117,13 @@ class BackupMovieMediaTests(unittest.TestCase):
                     _write_pcm(work / (scene['id'] + '-raw.wav'),
                                (int(5000 * math.sin(2 * math.pi * 220 * i / SAMPLE_RATE)) for i in range(SAMPLE_RATE // 4)))
             with patch('wec_engine.backup_video._synthesize_scenes', side_effect=fake_voice):
-                report = render_backup_video(source, root / 'film.mp4', voice_model=model, ambience=True)
+                try:
+                    report = render_backup_video(source, root / 'film.mp4', voice_model=model, ambience=True)
+                except RuntimeError:
+                    verification = root / 'film-work' / 'verification.json'
+                    if verification.is_file():
+                        print('Synthetic export verification:', verification.read_text())
+                    raise
             self.assertTrue(report['ok'], report)
             self.assertTrue(all(report['checks'].values()))
             self.assertAlmostEqual(report['duration'], 2.07, delta=0.1)
