@@ -5,7 +5,9 @@ The responsive dashboard saves stories, accepts scene-image uploads, previews
 deterministic scene plans and production dry-runs, and exports/restores portable
 project backups with images. The CLI handles existing media and opt-in ComfyUI
 integration. An optional Cloudflare adapter adds one-scene image generation to
-the dashboard after owner setup. **Live AI generation has not been validated.**
+the dashboard after owner setup. A live FLUX image request has been verified
+through the hosted studio API. The offline `export-backup` command turns a
+complete image backup into a narrated vertical MP4.
 
 ## Start the studio on Windows
 
@@ -42,17 +44,21 @@ FFmpeg, or voice models.
 | Create, edit, list and back up stories | Implemented; HTTP integration tests |
 | Upload/replace/remove scene images | Implemented; authenticated JPEG/PNG/WebP uploads and browser previews |
 | Restore project backups with images | Implemented; version 1 text and version 2 image backups restore as new copies |
-| Cloudflare scene images from the dashboard | Implemented behind opt-in; mocked provider/browser tests. Account setup and a first live test still required |
+| Cloudflare scene images from the dashboard | Implemented behind opt-in; mocked provider/browser tests and a successful live FLUX request. Account setup required |
 | Scene planning and production dry-run | Implemented; offline deterministic word segmentation, no LLM |
 | Silent still/clip assembly, audio mux and burned-in captions | Implemented; FFmpeg smoke tests with synthetic media |
 | Production checkpoints and delivery verification | Implemented; use a fresh workdir when source media/audio changes |
 | ComfyUI images and video | Adapter code and mocked tests; requires compatible workflows, nodes, models and worker |
 | Character references | Metadata plus explicit reference upload/binding; no guarantee of visual consistency |
-| Piper narration | Optional adapter; binary and licensed voice model required; not live tested |
+| Narrated movie from a studio backup | Offline `export-backup`; all scene images, local Piper voice and FFmpeg required |
+| Piper narration | Live CPU smoke test with LJ Speech high; optional `[narration]` installation and separately supplied voice model |
 | Cloud image fallback | Custom gateway contract; explicit CLI opt-in only; not live tested |
 | Cloud video, web video jobs, accounts, automatic sync/backups | Not implemented |
 
-Caption times are estimated from scene times, **not aligned to recorded speech**.
+The legacy `captions` command estimates caption times from scene times.
+`export-backup` times each caption to its measured narration clip; it does not
+perform word-level forced alignment. See the
+[narrated movie guide](docs/NARRATED_VIDEO.md).
 Music/SFX must be supplied as a completed audio mix. Dashboard image generation
 is off by default; optional Cloudflare setup permits one image per confirmed
 click. No paid service calls are made by the test suite. Uploaded

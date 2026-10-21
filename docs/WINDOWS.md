@@ -34,6 +34,7 @@ $env:WEC_DATA_DIR = "$env:USERPROFILE\Documents\WEC Studio Data"
 Install FFmpeg/FFprobe separately for video commands. Ensure `ffmpeg -version`
 and `ffprobe -version` succeed in a new PowerShell window; FFmpeg needs libx264,
 AAC and the subtitles/libass filter. Run `.\.venv\Scripts\wec.exe doctor`.
+For narrated movies from image backups, see [narrated video export](NARRATED_VIDEO.md).
 Piper and ComfyUI/models are optional separate installations. No model download
 occurs during package installation. Quote paths containing spaces. Manifest
 paths may use forward slashes on Windows; relative paths start at the manifest's
