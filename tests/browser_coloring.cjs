@@ -43,6 +43,7 @@ Image.new('RGB',(300,600),'#167c8b').save(p/'tall.jpg')
       page.on('dialog', dialog => acceptClear ? dialog.accept() : dialog.dismiss());
       await page.goto(base + '/coloring');
       await page.waitForFunction(() => document.querySelector('#status').textContent.includes('0 illustration'));
+      await page.waitForFunction(() => !document.querySelector('#upload').disabled);
       assert.equal(await page.locator('header a').getAttribute('target'), '_blank');
       assert.ok(await page.locator('#zip').isDisabled());
       const loadedTraffic = traffic.length;

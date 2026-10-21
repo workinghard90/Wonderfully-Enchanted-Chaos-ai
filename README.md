@@ -43,8 +43,9 @@ It includes no GPU stack.
 Open **Coloring Book Studio** from the dashboard, or visit `/coloring/` on the
 same server. Add finished PNG/JPG/WebP artwork, reorder pages, download an
 original-artwork ZIP and print a Letter-size PDF with optional blank backs.
-Artwork stays in the open browser tab; keep originals and download the ZIP
-before closing. It uses no generation credits and is separate from story
+The browser automatically saves one book and reopens it after refresh. Open a
+WEC artwork ZIP to recover a book or move it between devices; keep ZIPs and originals
+because browser storage can be cleared. It uses no generation credits and is separate from story
 backups. On iPhone use the hosted page in Safari. See the
 [coloring workflow and prototype limits](docs/COLORING_STUDIO.md).
 
@@ -52,7 +53,7 @@ backups. On iPhone use the hosted page in Safari. See the
 
 | Capability | Status |
 | --- | --- |
-| Coloring book assembly | Packaged browser workspace, ordered artwork ZIP, print layout; no persistence or KDP certification |
+| Coloring book assembly | Browser device save/reopen, portable WEC ZIP import/export, ordering and print layout; not KDP-certified |
 | Create, edit, list and back up stories | Implemented; HTTP integration tests |
 | Upload/replace/remove scene images | Implemented; authenticated JPEG/PNG/WebP uploads and browser previews |
 | Restore project backups with images | Implemented; version 1 text and version 2 image backups restore as new copies |
