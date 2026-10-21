@@ -5,6 +5,15 @@ pictures. It does not request new AI images, call Cloudflare, or charge a text
 model. Narration runs locally with Piper, and FFmpeg assembles the MP4. This is
 still-image assembly with gentle camera motion, not animated character video.
 
+The exporter burns captions while encoding each scene, then joins those scenes
+with `-c:v copy`. It no longer encodes the entire movie a second time at the
+finishing stage. Resolution stays 1080 × 1920 at 30 fps, with CRF 22, AAC audio
+and the same delivery checks. A `veryfast` encoder preset and one filter thread
+reduce CPU work and memory use; compression is not pixel-identical to the older
+two-encode output. See the [measured local comparison](VIDEO_PERFORMANCE.md).
+This improves rendering and transfer time but does not make free-host storage
+durable or guarantee completion before a host restart. Download finished movies.
+
 ## Phone workflow
 
 1. Save the story and attach a picture to every scene.

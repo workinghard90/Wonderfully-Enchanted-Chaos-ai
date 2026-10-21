@@ -74,3 +74,9 @@ jobs:
           assert (root / "scene-001-raw.wav").stat().st_size > 1000
           print({"cpu_voice_ok": True, "peak_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss})
           '
+      - name: Check captioned export within 512 MiB
+        run: |
+          docker run --rm --memory=512m --cpus=1 \
+            --mount "type=bind,source=$PWD/tests,target=/tmp/wec-tests,readonly" \
+            --workdir /tmp/wec-tests --entrypoint python wec-video-test \
+            -m unittest test_backup_video.BackupMovieMediaTests -v
