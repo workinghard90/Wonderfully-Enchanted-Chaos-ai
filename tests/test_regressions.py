@@ -56,7 +56,15 @@ class RegressionTests(unittest.TestCase):
             with patch('wec_engine.cli.HybridRouter') as router:
                 router.return_value.generate.return_value={}
                 cli(['generate',str(scene),'--comfy-url','http://127.0.0.1:9191'])
-                self.assertEqual(router.return_value.generate.call_args.args[0]['comfy_workflow'],str(root/'workflow.json'))
+                self.assertEqual(router.return_value.generate.call_args.args[0]['comfy_workflow'],str((root/'workflow.json').resolve()))
+
+    def test_overwrite_validation_without_media_tools(self):
+        from wec_engine.production import finalize_video
+        with tempfile.TemporaryDirectory() as td:
+            video=Path(td)/'original.mp4';video.write_bytes(b'original')
+            with patch('wec_engine.production.shutil.which',return_value=None):
+                with self.assertRaises(ValueError):finalize_video(video,video)
+            self.assertEqual(video.read_bytes(),b'original')
 
     def test_delivery_failure_exit_code(self):
         with patch('wec_engine.cli.verify_delivery', return_value={'ok':False}):

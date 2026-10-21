@@ -56,6 +56,8 @@ def synthesize_piper(text_path, model_path, output_path, *, piper='piper'):
         raise FileNotFoundError('Narration text and Piper voice model are required')
     if target.resolve() in (source.resolve(), model.resolve()):
         raise ValueError('Output must not overwrite an input')
+    if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
+        raise RuntimeError('FFmpeg and FFprobe are required')
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_name(target.stem + '.partial.' + uuid.uuid4().hex + target.suffix)
     try:
@@ -75,8 +77,6 @@ def finalize_video(video, output, *, audio=None, captions=None, fps=30, width=10
 
     SRT cues from story planning are estimated timings, not speech-aligned captions.
     """
-    if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
-        raise RuntimeError('FFmpeg and FFprobe are required')
     video, target = Path(video).resolve(), Path(output).resolve()
     audio = Path(audio).resolve() if audio is not None else None
     captions = Path(captions).resolve() if captions is not None else None
@@ -92,6 +92,8 @@ def finalize_video(video, output, *, audio=None, captions=None, fps=30, width=10
         raise FileNotFoundError(captions)
     if audio is not None and target.resolve() == Path(audio).resolve():
         raise ValueError('Output must differ from audio input')
+    if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
+        raise RuntimeError('FFmpeg and FFprobe are required')
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_name(target.stem + '.partial.' + uuid.uuid4().hex + target.suffix)
     # A fixed relative caption filename avoids FFmpeg filter escaping problems on

@@ -57,7 +57,7 @@ class ProviderTests(unittest.TestCase):
             root=Path(td);plan=root/'plan.json'
             plan.write_text(json.dumps({'duration':1,'scenes':[{'id':'scene-001','start':0,'duration':1,'prompt':'x','comfy_workflow':'image-api.json','narration':'x'}]}))
             def generate(scene,directory,**kwargs):
-                self.assertEqual(scene['comfy_workflow'],str(root/'image-api.json'))
+                self.assertEqual(scene['comfy_workflow'],str((root/'image-api.json').resolve()))
                 output=Path(directory)/'scene-001.png';output.parent.mkdir(parents=True,exist_ok=True)
                 Image.new('RGB',(512,512)).save(output)
                 return {'image_path':str(output)}

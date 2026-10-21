@@ -47,7 +47,7 @@ comparison requires the failed archive to be uploaded again. See
 | Python editable installation | PASS | Clean virtual environment, declared dependencies installed |
 | Wheel build and installation | PASS | Version 0.2.0, installed in separate virtual environment; all four dashboard assets packaged |
 | Dependency checks | PASS | `python -m pip check`, both environments |
-| Python suite | PASS: 52 tests | `python -m unittest discover -s tests -v`, Linux Python 3.12.14 |
+| Python suite | PASS: 53 tests | `python -m unittest discover -s tests -v`, Linux Python 3.12.14 |
 | Real media smoke tests | PASS: 2 tests included above | FFmpeg/FFprobe 6.1.1; two synthetic stills, 2-second sine audio, burned-in captions, production/resume and 3-second padded clip assembly |
 | Delivery verification | PASS in media smoke | 1080×1920, H.264, yuv420p, AAC when required, duration, size, faststart |
 | Provider protocols | PASS with mocks | ComfyUI submission/history/download, video bindings, custom cloud contract, reference upload and workflow resolution; no real model inference |
