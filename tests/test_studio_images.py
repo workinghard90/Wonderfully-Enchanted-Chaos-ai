@@ -120,6 +120,29 @@ class ImageStoreTests(unittest.TestCase):
         self.assertEqual(store.get_scene_image(other, pid, 'scene-001'), original)
         self.assertEqual(store.get_project(other, pid)['story'], PROJECT['story'])
 
+    def test_device_recovery_requires_an_empty_database_atomically(self):
+        backup = store.export_backup(self.db)
+        with self.assertRaises(store.ProjectConflictError):
+            store.restore_backup(self.db, backup, only_if_empty=True)
+        self.assertEqual(len(store.list_projects(self.db)), 1)
+        other = store.init_db(Path(self.temp.name) / 'device-recovery.sqlite3')
+        barrier = threading.Barrier(2)
+        results = []
+        def recover():
+            barrier.wait()
+            try:
+                store.restore_backup(other, backup, only_if_empty=True)
+                results.append('restored')
+            except store.ProjectConflictError:
+                results.append('conflict')
+        workers = [threading.Thread(target=recover) for _ in range(2)]
+        for worker in workers: worker.start()
+        for worker in workers: worker.join(timeout=20)
+        self.assertCountEqual(results, ['restored', 'conflict'])
+        self.assertEqual(len(store.list_projects(other)), 1)
+        with self.assertRaises(ValueError):
+            store.restore_backup(other, backup, only_if_empty='true')
+
     def test_restore_is_all_or_nothing(self):
         backup = {'schema_version': 2, 'projects': [PROJECT, dict(PROJECT, story='')]}
         with self.assertRaises(ValueError): store.restore_backup(self.db, backup)
@@ -212,6 +235,18 @@ class ImageApiTests(unittest.TestCase):
         edited['reset_images'] = True
         self.assertEqual(self.request(route, json.dumps(edited).encode(), 'POST')[0], 200)
         self.assertEqual(self.request(self.route)[0], 404)
+
+    def test_device_recovery_http_guard_and_asset(self):
+        backup = json.loads(self.request('/api/backup')[2])
+        backup['only_if_empty'] = True
+        self.assertEqual(self.request('/api/restore', json.dumps(backup).encode(), 'POST')[0], 409)
+        self.assertEqual(len(store.list_projects(self.db)), 1)
+        backup['only_if_empty'] = 'false'
+        self.assertEqual(self.request('/api/restore', json.dumps(backup).encode(), 'POST')[0], 400)
+        status, headers, content = self.request('/device-backup.js', token='')
+        self.assertEqual(status, 200)
+        self.assertIn('javascript', headers['Content-Type'])
+        self.assertIn(b'WECDeviceBackups', content)
 
     def test_declared_body_limits_reject_before_reading(self):
         for route, size in ((self.route, store.MAX_UPLOAD_BYTES + 1), ('/api/restore', store.MAX_BACKUP_BYTES + 1)):

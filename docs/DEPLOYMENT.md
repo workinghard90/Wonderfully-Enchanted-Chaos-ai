@@ -83,8 +83,10 @@ exports, creating new copies without replacing existing projects. See the
 backups hold optimized JPEG copies, not original files.
 
 Free or otherwise ephemeral hosting still loses the SQLite database when the
-host replaces its filesystem. This feature does not add a persistent disk or
-automatic backup. Download a backup after edits and image uploads, before a
+host replaces its filesystem. The dashboard keeps a best-effort browser copy
+of saved stories/pictures and offers explicit recovery to an empty server;
+see [device recovery](DEVICE_RECOVERY.md). This adds no persistent disk or
+scheduled server backup. Download a backup after edits and image uploads, before a
 restart or redeploy. The free test service uses `/tmp/wec-studio`; do not apply
 the paid `render.yaml` blueprint as part of this feature update. A manual
 redeploy can erase its current test projects, so export them first.

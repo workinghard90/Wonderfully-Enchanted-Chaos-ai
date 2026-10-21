@@ -6,3 +6,7 @@ header{position:sticky;top:0;z-index:10}header button{flex-shrink:0}.brand{max-w
 .video-job { margin: 1rem 0; padding: 1rem; border: 1px solid #615a78; border-radius: 12px; }
 .video-job progress { display: block; width: 100%; margin: .7rem 0; }
 [hidden] { display: none !important; }
+.device-backup { margin-bottom: 20px; }
+#device-status { overflow-wrap: anywhere; }
+.device-backup summary { min-height: 44px; padding: 10px 0; cursor: pointer; }
+.device-backup summary:focus-visible { outline: 3px solid #dac3ff; outline-offset: 3px; }
