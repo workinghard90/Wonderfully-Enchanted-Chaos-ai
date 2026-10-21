@@ -1,23 +1,29 @@
-import {makeZip} from '/coloring/zip.js';
+import {makeZip, readZip, LIMITS} from '/coloring/zip.js';
+import {readBook, writeBook, validateSnapshot} from '/coloring/project-store.js';
 
 const images = [];
 const $ = id => document.getElementById(id);
 const upload = $('upload'), gallery = $('pages'), printPages = $('printPages'), status = $('status');
-const MiB = 1024 * 1024;
-const limits = {pages: 100, fileBytes: 10 * MiB, totalBytes: 80 * MiB, imagePixels: 24e6, totalPixels: 100e6};
-let busy = false;
+const limits = LIMITS;
+let busy = true, revision = null, deviceRecord = null, paused = false;
+let conflict = false, invalidCopy = false, dirty = false, editVersion = 0, saveTimer;
+let saveQueue = Promise.resolve();
 
 function summary() {
   const count = images.length * ($('blank').checked ? 2 : 1);
-  return `${images.length} illustration(s), ${count} printable pages. Pages are kept only in this tab.`;
+  return `${images.length} illustration(s), ${count} printable pages. Keep a downloaded ZIP as an independent backup.`;
 }
 
 function updateControls() {
-  for (const id of ['upload', 'title', 'blank']) $(id).disabled = busy;
+  for (const id of ['upload', 'title', 'blank', 'open-book']) $(id).disabled = busy;
   for (const id of ['zip', 'print', 'clear']) $(id).disabled = busy || !images.length;
   document.querySelectorAll('.page-actions button').forEach(button => {
     button.disabled = busy || button.dataset.atBoundary === 'true';
   });
+  $('device-save').disabled = busy || paused || conflict || invalidCopy;
+  $('device-load').disabled = busy || !deviceRecord?.snapshot;
+  $('device-toggle').disabled = busy;
+  $('device-toggle').textContent = paused ? 'Enable device saving' : 'Turn off & remove device copy';
   $('pages').setAttribute('aria-busy', String(busy));
 }
 
@@ -52,7 +58,7 @@ function render() {
       button.onclick = () => {
         if (busy) return;
         [images[i + delta], images[i]] = [images[i], images[i + delta]];
-        render();
+        render(); changed();
       };
       actions.append(button);
     }
@@ -61,7 +67,7 @@ function render() {
     remove.setAttribute('aria-label', `Remove page ${i + 1}`);
     remove.onclick = () => {
       if (busy) return;
-      URL.revokeObjectURL(item.url); images.splice(i, 1); render();
+      URL.revokeObjectURL(item.url); images.splice(i, 1); render(); changed();
     };
     actions.append(remove); card.append(actions); gallery.append(card);
     const sheet = document.createElement('div'); sheet.className = 'print-page';
@@ -131,14 +137,16 @@ upload.addEventListener('change', async () => {
     }
   } finally {
     upload.value = ''; busy = false; render();
+    if (selected.length) changed();
     if (errors.length) status.textContent += ' Failed: ' + errors.join('; ');
   }
 });
 
-$('blank').addEventListener('change', () => { if (!busy) render(); });
+$('blank').addEventListener('change', () => { if (!busy) { render(); changed(); } });
+$('title').addEventListener('input', () => { if (!busy) changed(true); });
 $('clear').onclick = () => {
-  if (busy || !images.length || !confirm('Clear all pages from this tab? Keep your originals or download an artwork ZIP first.')) return;
-  images.forEach(item => URL.revokeObjectURL(item.url)); images.length = 0; render();
+  if (busy || !images.length || !confirm('Clear all pages and update this device’s saved book? Download a ZIP first to keep the old version.')) return;
+  images.forEach(item => URL.revokeObjectURL(item.url)); images.length = 0; render(); changed();
 };
 
 $('print').onclick = async () => {
@@ -176,7 +184,7 @@ $('zip').onclick = async () => {
     const title = $('title').value.trim() || 'WEC Coloring Book';
     const manifest = {schema_version: 1, title, pages, blank_backs: $('blank').checked,
       paper: 'Letter', artwork_box_inches: [7.5, 10],
-      notice: 'Artwork archive only. Blank backs are print-only. PDF and cover require independent KDP verification.'};
+      notice: 'WEC book backup with original artwork. Blank backs are print-only. PDF and cover require independent KDP verification.'};
     entries.push({name: 'manifest.json', bytes: new TextEncoder().encode(JSON.stringify(manifest, null, 2))});
     const url = URL.createObjectURL(makeZip(entries)), link = document.createElement('a');
     const slug = title.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 80) || 'wec-coloring-book';
@@ -189,6 +197,144 @@ $('zip').onclick = async () => {
 };
 
 window.addEventListener('beforeunload', event => {
-  if (images.length) { event.preventDefault(); event.returnValue = ''; }
+  if (dirty) { event.preventDefault(); event.returnValue = ''; }
 });
-render();
+
+
+function snapshot() {
+  return {schema_version: 1, title: $('title').value, blank_backs: $('blank').checked,
+    pages: images.map(({file, name, width, height, extension}) => ({file, name, width, height, extension}))};
+}
+
+function deviceMessage(message) { $('device-status').textContent = message; }
+function savedMessage() {
+  deviceMessage(`Saved on this device: ${new Date(deviceRecord.savedAt).toLocaleString()}. Keep a downloaded ZIP too.`);
+}
+
+function changed(debounce = false) {
+  editVersion++; dirty = true; clearTimeout(saveTimer);
+  if (paused) { deviceMessage('Device saving is off. Download a ZIP to keep this book.'); return; }
+  if (conflict || invalidCopy) return;
+  deviceMessage('Saving changes on this device…');
+  if (debounce) saveTimer = setTimeout(queueSave, 400);
+  else queueSave();
+}
+
+function queueSave() {
+  clearTimeout(saveTimer);
+  const book = snapshot(), capturedVersion = editVersion;
+  saveQueue = saveQueue.then(async () => {
+    if (paused || conflict || invalidCopy) return;
+    try {
+      const record = await writeBook(book, revision);
+      revision = record.revision; deviceRecord = record;
+      if (capturedVersion === editVersion) { dirty = false; savedMessage(); }
+    } catch (error) {
+      conflict = error.name === 'ConflictError';
+      deviceMessage(conflict ? error.message : 'Device copy could not be updated. Download a ZIP and retry Save on this device.');
+      // Refresh the available-load pointer, but never adopt a newer write revision.
+      if (conflict) { try { deviceRecord = await readBook(); } catch {} }
+    } finally { updateControls(); }
+  });
+  return saveQueue;
+}
+
+async function prepareBook(book) {
+  validateSnapshot(book);
+  const prepared = [];
+  try {
+    for (const page of book.pages) {
+      const extension = await detectFormat(page.file);
+      if (extension !== page.extension) throw Error('An artwork file does not match its saved format.');
+      const url = URL.createObjectURL(page.file);
+      try {
+        const image = await loadImage(url);
+        if (image.naturalWidth !== page.width || image.naturalHeight !== page.height) {
+          throw Error('An artwork file does not match its saved dimensions.');
+        }
+        const type = extension === 'jpg' ? 'image/jpeg' : 'image/' + extension;
+        const file = new File([page.file], page.name, {type});
+        prepared.push({...page, extension, url, file});
+      } catch (error) { URL.revokeObjectURL(url); throw error; }
+    }
+    return prepared;
+  } catch (error) { prepared.forEach(page => URL.revokeObjectURL(page.url)); throw error; }
+}
+
+function useBook(book, prepared) {
+  images.forEach(page => URL.revokeObjectURL(page.url));
+  images.splice(0, images.length, ...prepared);
+  $('title').value = book.title; $('blank').checked = book.blank_backs;
+  render();
+}
+
+$('device-save').onclick = () => {
+  if (busy || paused || conflict || invalidCopy) return;
+  deviceMessage('Saving changes on this device…'); queueSave();
+};
+
+$('open-book').addEventListener('change', async () => {
+  const selected = $('open-book').files?.[0];
+  if (!selected || busy) return;
+  if ((images.length || dirty) && !confirm('Open this ZIP and replace the book in this tab? Download the current book first if you need both.')) {
+    $('open-book').value = ''; return;
+  }
+  busy = true; updateControls(); status.textContent = 'Checking book ZIP…';
+  try {
+    const book = await readZip(selected), prepared = await prepareBook(book);
+    useBook(book, prepared); changed();
+    status.textContent = 'Opened book ZIP. ' + summary();
+  } catch (error) { status.textContent = 'Book could not be opened: ' + error.message + ' Current pages were kept.'; }
+  finally { $('open-book').value = ''; busy = false; updateControls(); }
+});
+
+$('device-load').onclick = async () => {
+  if (busy) return;
+  if ((images.length || dirty) && !confirm('Load the last device save and replace this open book? Download the current ZIP first to keep both.')) return;
+  busy = true; clearTimeout(saveTimer); updateControls();
+  try {
+    await saveQueue;
+    const record = await readBook();
+    if (!record?.snapshot || record.paused) throw Error('No saved book is available.');
+    const prepared = await prepareBook(record.snapshot);
+    useBook(record.snapshot, prepared);
+    revision = record.revision; deviceRecord = record; paused = false;
+    conflict = false; invalidCopy = false; dirty = false; editVersion++; savedMessage();
+    status.textContent = 'Loaded device book. ' + summary();
+  } catch (error) { deviceMessage('Device book could not be loaded. ' + error.message + ' Current pages were kept.'); }
+  finally { busy = false; updateControls(); }
+};
+
+$('device-toggle').onclick = async () => {
+  if (busy) return;
+  if (!paused && !confirm('Remove the saved coloring book from this browser and turn off automatic saving? The open pages stay available for ZIP export.')) return;
+  busy = true; clearTimeout(saveTimer); updateControls();
+  try {
+    await saveQueue;
+    // An explicit remove/re-enable action still must not erase a newer tab’s copy.
+    const record = await writeBook(paused ? snapshot() : null, revision, !paused);
+    deviceRecord = record; revision = record.revision; paused = record.paused;
+    conflict = false; invalidCopy = false; dirty = paused ? images.length > 0 : false;
+    if (paused) deviceMessage('Device saving is off and its saved artwork was removed. Download a ZIP before leaving.');
+    else savedMessage();
+  } catch (error) { deviceMessage(error.message + ' Device settings were kept.'); }
+  finally { busy = false; updateControls(); }
+};
+
+async function start() {
+  render(); deviceMessage('Checking this browser’s saved book…');
+  try {
+    const record = await readBook();
+    deviceRecord = record; revision = record?.revision || null; paused = record?.paused === true;
+    if (record?.snapshot && !paused) {
+      invalidCopy = true; // Only validated artwork may replace the open workspace.
+      const prepared = await prepareBook(record.snapshot);
+      useBook(record.snapshot, prepared); invalidCopy = false; dirty = false; savedMessage();
+      status.textContent = 'Reopened your saved book. ' + summary();
+    } else deviceMessage(paused ? 'Device saving is off. Open a ZIP to continue a book.' : 'Automatic device saving is on. Add pages or open a WEC ZIP.');
+  } catch (error) {
+    deviceMessage(invalidCopy ? 'The saved device book could not be read. It was kept; use a ZIP backup or explicitly remove the device copy.'
+      : 'Device storage is unavailable. You can still open, edit and download a book ZIP.');
+  } finally { busy = false; updateControls(); }
+}
+start();

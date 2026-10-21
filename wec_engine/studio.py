@@ -124,6 +124,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 '/coloring/': ('index.html', 'text/html; charset=utf-8'),
                 '/coloring/app.js': ('app.js', 'application/javascript; charset=utf-8'),
                 '/coloring/zip.js': ('zip.js', 'application/javascript; charset=utf-8'),
+                '/coloring/project-store.js': ('project-store.js', 'application/javascript; charset=utf-8'),
                 '/coloring/style.css': ('style.css', 'text/css; charset=utf-8'),
             }
             if self.command == 'GET' and path in coloring_assets:
