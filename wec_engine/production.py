@@ -145,6 +145,10 @@ def verify_delivery(path, *, expected_duration=None, tolerance=1.0, require_audi
               'size_limit': file.stat().st_size <= max_bytes}
     if expected_duration is not None:
         checks['duration'] = abs(duration - float(expected_duration)) <= tolerance
+        # Container duration can come from a longer audio stream even if video
+        # stopped early. MP4 delivery must contain the full video timeline too.
+        checks['video_duration'] = (len(videos) == 1 and
+                                    abs(float(videos[0].get('duration', 0)) - float(expected_duration)) <= tolerance)
     # MP4 faststart requires atom inspection beyond ffprobe's normal stream fields.
     with file.open('rb') as f:
         header = f.read(min(file.stat().st_size, 2_000_000))

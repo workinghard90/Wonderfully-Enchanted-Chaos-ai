@@ -13,19 +13,20 @@ from unittest.mock import patch
 from PIL import Image
 
 from wec_engine.backup_video import (
-    SAMPLE_RATE, _caption_line, _scene_frame_window, _write_pcm, make_narration, prepare_backup,
+    SAMPLE_RATE, _caption_line, _run, _scene_frame_window, _write_pcm, make_narration, prepare_backup,
     render_backup_video,
 )
 
 
 def backup(images=True, duration=2):
-    out = io.BytesIO()
-    Image.new('RGB', (256, 384), 'teal').save(out, format='JPEG')
-    picture = base64.b64encode(out.getvalue()).decode('ascii')
+    pictures = []
+    for size, color in [((256, 384), 'teal'), ((384, 256), 'purple')]:
+        out = io.BytesIO(); Image.new('RGB', size, color).save(out, format='JPEG')
+        pictures.append(base64.b64encode(out.getvalue()).decode('ascii'))
     return {'schema_version': 2, 'projects': [{'title': 'A tiny film',
             'story': 'The lantern glows. The fox smiles.', 'scenes': 2, 'duration': duration,
             'scene_images': [{'scene_id': f'scene-{i:03d}', 'mime': 'image/jpeg', 'image_base64': picture}
-                             for i in (1, 2)] if images else []}]}
+                             for i, picture in enumerate(pictures, 1)] if images else []}]}
 
 
 class BackupVideoTests(unittest.TestCase):
@@ -117,7 +118,13 @@ class BackupMovieMediaTests(unittest.TestCase):
                     _write_pcm(work / (scene['id'] + '-raw.wav'),
                                (int(5000 * math.sin(2 * math.pi * 220 * i / SAMPLE_RATE)) for i in range(SAMPLE_RATE // 4)))
             with patch('wec_engine.backup_video._synthesize_scenes', side_effect=fake_voice):
-                report = render_backup_video(source, root / 'film.mp4', voice_model=model, ambience=True)
+                try:
+                    report = render_backup_video(source, root / 'film.mp4', voice_model=model, ambience=True)
+                except RuntimeError:
+                    verification = root / 'film-work' / 'verification.json'
+                    if verification.is_file():
+                        print('Synthetic export verification:', verification.read_text())
+                    raise
             self.assertTrue(report['ok'], report)
             self.assertTrue(all(report['checks'].values()))
             self.assertAlmostEqual(report['duration'], 2.07, delta=0.1)
@@ -128,6 +135,9 @@ class BackupMovieMediaTests(unittest.TestCase):
             probe = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', str(root/'film.mp4')]))
             video = next(s for s in probe['streams'] if s['codec_type'] == 'video')
             self.assertEqual(video['r_frame_rate'], '30/1')
+            # Older H.264 writers omit the VUI flag for default limited range.
+            # Full-range `pc` and `yuvj420p` remain disallowed by these checks.
+            self.assertIn(video.get('color_range'), (None, 'tv'))
             self.assertEqual(int(video['nb_frames']), 62)
             # Pixel-identical decoded frames prove final assembly did not apply
             # a second lossy video encode. Ignore timestamps in the MD5 records.
@@ -146,6 +156,12 @@ class BackupMovieMediaTests(unittest.TestCase):
             self.assertGreater(white_pixels(.25), 100)
             self.assertLess(white_pixels(.8), 10)
             self.assertGreater(white_pixels(1.3), 100)
+            work = root/'film-work'
+            (work/'broken.mp4').write_bytes((work/'scene-002.mp4').read_bytes()[:100])
+            (work/'broken-clips.txt').write_text("file 'scene-001.mp4'\nfile 'broken.mp4'\n")
+            with self.assertRaises(RuntimeError):
+                _run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'concat', '-safe', '1',
+                      '-i', 'broken-clips.txt', '-c:v', 'copy', 'broken-join.mp4'], cwd=work)
 
 
 if __name__ == '__main__':

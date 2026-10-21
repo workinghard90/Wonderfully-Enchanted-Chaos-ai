@@ -14,6 +14,18 @@ from wec_engine.video import render_stills
 
 @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'FFmpeg/FFprobe unavailable')
 class MediaSmokeTests(unittest.TestCase):
+    def test_full_audio_cannot_hide_a_short_video_track(self):
+        with tempfile.TemporaryDirectory() as td:
+            output = Path(td)/'short-picture.mp4'
+            subprocess.run(['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+                            '-f', 'lavfi', '-i', 'color=c=teal:s=1080x1920:r=30:d=1',
+                            '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2',
+                            '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-pix_fmt', 'yuv420p',
+                            '-c:a', 'aac', '-movflags', '+faststart', str(output)], check=True)
+            report = verify_delivery(output, expected_duration=2, tolerance=.1)
+            self.assertTrue(report['checks']['duration'])
+            self.assertFalse(report['checks']['video_duration'])
+            self.assertFalse(report['ok'])
     def test_stills_audio_captions_delivery_and_resume(self):
         with tempfile.TemporaryDirectory(prefix="wec path's [test], ") as td:
             root=Path(td)

@@ -54,7 +54,7 @@ It includes no GPU stack.
 | Character references | Metadata plus explicit reference upload/binding; no guarantee of visual consistency |
 | Narrated movie from a studio backup | Offline `export-backup`; all scene images, local Piper voice and FFmpeg required |
 | Dashboard movie render/play/download | Opt-in CPU job with progress/cancel and authenticated MP4 downloads; bounded free-host test configuration |
-| Faster captioned movie assembly | One encode per scene, final video stream copy; 3.40× faster in one matched local cached-audio comparison, not a hosted speed guarantee. [Evidence](docs/VIDEO_PERFORMANCE.md) |
+| Faster captioned movie assembly | One encode per scene, final video stream copy; 3.80× faster in one matched local cached-audio comparison, not a hosted speed guarantee. [Evidence](docs/VIDEO_PERFORMANCE.md) |
 | Piper narration | Live CPU smoke test with LJ Speech high; optional `[narration]` installation and separately supplied voice model |
 | Cloud image fallback | Custom gateway contract; explicit CLI opt-in only; not live tested |
 | AI character-animation service, accounts, scheduled server backups and cross-device sync | Not implemented |
