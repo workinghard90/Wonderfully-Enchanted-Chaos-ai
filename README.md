@@ -1,9 +1,10 @@
 # Wonderfully Enchanted Chaos AI
 
 A local-first creative studio for planning stories and assembling vertical videos.
-The responsive dashboard saves stories, previews deterministic scene plans and
-production dry-runs, and exports project backups. The CLI handles existing media
-and opt-in ComfyUI integration. **Live AI generation has not been validated.**
+The responsive dashboard saves stories, accepts scene-image uploads, previews
+deterministic scene plans and production dry-runs, and exports/restores portable
+project backups with images. The CLI handles existing media and opt-in ComfyUI
+integration. **Live AI generation has not been validated.**
 
 ## Start the studio on Windows
 
@@ -38,6 +39,8 @@ FFmpeg, or voice models.
 | Capability | Status |
 | --- | --- |
 | Create, edit, list and back up stories | Implemented; HTTP integration tests |
+| Upload/replace/remove scene images | Implemented; authenticated JPEG/PNG/WebP uploads and browser previews |
+| Restore project backups with images | Implemented; version 1 text and version 2 image backups restore as new copies |
 | Scene planning and production dry-run | Implemented; offline deterministic word segmentation, no LLM |
 | Silent still/clip assembly, audio mux and burned-in captions | Implemented; FFmpeg smoke tests with synthetic media |
 | Production checkpoints and delivery verification | Implemented; use a fresh workdir when source media/audio changes |
@@ -45,11 +48,14 @@ FFmpeg, or voice models.
 | Character references | Metadata plus explicit reference upload/binding; no guarantee of visual consistency |
 | Piper narration | Optional adapter; binary and licensed voice model required; not live tested |
 | Cloud image fallback | Custom gateway contract; explicit CLI opt-in only; not live tested |
-| Cloud video, web rendering jobs, accounts, automatic sync/backup restore | Not implemented |
+| Cloud video, web rendering jobs, accounts, automatic sync/backups | Not implemented |
 
 Caption times are estimated from scene times, **not aligned to recorded speech**.
 Music/SFX must be supplied as a completed audio mix. The dashboard never submits
-generation jobs. No paid service calls are made by the test suite.
+generation jobs. No paid service calls are made by the test suite. Uploaded
+images are stored for preview and backup; the dashboard does not render them into movies. See the
+[scene images and recovery guide](docs/SCENE_IMAGES.md) for the iPhone workflow,
+file limits and backup compatibility.
 
 ## Offline story workflow
 

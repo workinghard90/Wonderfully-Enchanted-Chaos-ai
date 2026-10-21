@@ -3,73 +3,24 @@
 Bind to loopback by default. Remote access requires TLS termination and authentication.
 """
 import argparse
-from contextlib import closing, contextmanager
 import hmac
 import json
 import os
 import re
-import sqlite3
-import uuid
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, urlsplit
-from .story import plan_story
+from .studio_store import (
+    init_db, list_projects, get_project, save_project, project_plan,
+    save_scene_image, get_scene_image, remove_scene_image,
+    export_backup, restore_backup, StorageLimitError, ProjectConflictError,
+    MAX_UPLOAD_BYTES, MAX_BACKUP_BYTES,
+)
 from .orchestrator import run_production
 
 ROOT = Path(__file__).parent / 'studio_web'
 MAX_BODY = 128 * 1024
-
-@contextmanager
-def _database(path):
-    # SQLite's transaction context commits/rolls back but does not close handles.
-    # Explicit closure is necessary for Windows file access and long-running HTTP use.
-    with closing(sqlite3.connect(path)) as db:
-        with db:
-            yield db
-
-
-def init_db(path):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with _database(path) as db:
-        db.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, title TEXT NOT NULL, story TEXT NOT NULL, duration REAL NOT NULL, scenes INTEGER NOT NULL, updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)')
-    return path
-
-def list_projects(path):
-    with _database(path) as db:
-        db.row_factory = sqlite3.Row
-        return [dict(x) for x in db.execute('SELECT id,title,duration,scenes,updated FROM projects ORDER BY updated DESC')]
-
-def get_project(path, pid):
-    with _database(path) as db:
-        db.row_factory = sqlite3.Row
-        row = db.execute('SELECT * FROM projects WHERE id=?', (pid,)).fetchone()
-        return dict(row) if row else None
-
-def save_project(path, payload, pid=None):
-    title = payload.get('title', '')
-    story = payload.get('story', '')
-    duration = payload.get('duration', 35)
-    scenes = payload.get('scenes', 7)
-    if not isinstance(title, str) or not title.strip() or len(title) > 150:
-        raise ValueError('Title must be 1–150 characters')
-    if not isinstance(story, str) or not story.strip() or len(story) > 30000:
-        raise ValueError('Story must be 1–30000 characters')
-    if isinstance(scenes, bool) or not isinstance(scenes, int):
-        raise ValueError('Scene count must be an integer')
-    plan_story(story, total_duration=duration, scene_count=scenes)
-    pid = pid or uuid.uuid4().hex
-    with _database(path) as db:
-        if get_project(path, pid):
-            db.execute('UPDATE projects SET title=?,story=?,duration=?,scenes=?,updated=CURRENT_TIMESTAMP WHERE id=?', (title.strip(), story.strip(), float(duration), scenes, pid))
-        else:
-            db.execute('INSERT INTO projects(id,title,story,duration,scenes) VALUES (?,?,?,?,?)', (pid,title.strip(),story.strip(),float(duration),scenes))
-    return get_project(path, pid)
-
-def project_plan(project):
-    plan = plan_story(project['story'], total_duration=project['duration'], scene_count=project['scenes'])
-    plan['title'] = project['title']
-    return plan
 
 def create_handler(db_path, data_dir, token=None, allowed_origin=None):
     """Allow one explicit HTTPS frontend origin; never wildcard authenticated APIs."""
@@ -84,13 +35,14 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
             raise ValueError('Invalid frontend origin port') from None
     db_path = init_db(db_path)
     data_dir = Path(data_dir).resolve()
+    media_lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
         def setup(self):
             super().setup()
             self.connection.settimeout(15)
 
         def _send(self, status, body, mime='application/json; charset=utf-8'):
-            content = json.dumps(body, allow_nan=False).encode() if mime.startswith('application/json') else body
+            content = json.dumps(body, allow_nan=False, ensure_ascii=False).encode() if mime.startswith('application/json') else body
             self.send_response(status)
             self.send_header('Content-Type', mime)
             self.send_header('Content-Length', str(len(content)))
@@ -101,9 +53,21 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
                 self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
                 self.send_header('Vary', 'Origin')
             self.send_header('X-Content-Type-Options', 'nosniff')
-            self.send_header('Content-Security-Policy', "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+            self.send_header('Content-Security-Policy', "default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(content)
+        def _read_body(self, limit):
+            if self.headers.get('Transfer-Encoding'):
+                raise ValueError('Send a request with Content-Length')
+            size = int(self.headers.get('Content-Length', '0'))
+            if size <= 0:
+                raise ValueError('Request body is required')
+            if size > limit:
+                raise StorageLimitError(f'Request exceeds {limit // (1024 * 1024)} MB' if limit >= 1024 * 1024 else 'Project request is too large')
+            value = self.rfile.read(size)
+            if len(value) != size:
+                raise ValueError('Incomplete request body')
+            return value
         def _authorized(self):
             if token and not hmac.compare_digest(self.headers.get('X-WEC-Token', ''), token):
                 self._send(401, {'error':'Authentication required'})
@@ -120,7 +84,49 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
                 self._send(200, {'ok':True}); return
             if not self._authorized(): return
             if path == '/api/backup' and self.command == 'GET':
-                self._send(200, {'schema_version':1, 'projects':[get_project(db_path, x['id']) for x in list_projects(db_path)]}); return
+                with media_lock:
+                    self._send(200, export_backup(db_path))
+                return
+            if path == '/api/restore' and self.command == 'POST':
+                if not media_lock.acquire(blocking=False):
+                    self._send(429, {'error': 'Another image or backup operation is running. Try again shortly.'}); return
+                try:
+                    body = json.loads(self._read_body(MAX_BACKUP_BYTES))
+                    self._send(200, restore_backup(db_path, body))
+                except StorageLimitError as exc:
+                    self._send(413, {'error': str(exc)})
+                except (ValueError, TypeError) as exc:
+                    self._send(400, {'error': str(exc)})
+                finally:
+                    media_lock.release()
+                return
+            image_match = re.fullmatch(r'/api/projects/([a-f0-9]{32})/scenes/(scene-[0-9]{3})/image(/remove)?', path)
+            if image_match:
+                pid, sid, remove = image_match.groups()
+                if self.command == 'GET' and not remove:
+                    try:
+                        self._send(200, get_scene_image(db_path, pid, sid), 'image/jpeg')
+                    except LookupError as exc:
+                        self._send(404, {'error': str(exc)})
+                    return
+                if self.command == 'POST':
+                    if not media_lock.acquire(blocking=False):
+                        self._send(429, {'error': 'Another image or backup operation is running. Try again shortly.'}); return
+                    try:
+                        if remove:
+                            value = remove_scene_image(db_path, pid, sid)
+                        else:
+                            value = save_scene_image(db_path, pid, sid, self._read_body(MAX_UPLOAD_BYTES))
+                        self._send(200, value)
+                    except StorageLimitError as exc:
+                        self._send(413, {'error': str(exc)})
+                    except LookupError as exc:
+                        self._send(404, {'error': str(exc)})
+                    except (ValueError, TypeError) as exc:
+                        self._send(400, {'error': str(exc)})
+                    finally:
+                        media_lock.release()
+                    return
             if path == '/api/projects' and self.command == 'GET':
                 self._send(200, {'projects':list_projects(db_path)}); return
             m = re.fullmatch(r'/api/projects/([a-f0-9]{32})(/plan|/dry-run)?', path)
@@ -130,14 +136,16 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None):
                 self._send(200, project_plan(p) if m.group(2) else p); return
             if self.command == 'POST' and (path == '/api/projects' or (m and not m.group(2))):
                 try:
-                    size = int(self.headers.get('Content-Length', '0'))
-                    if not 0 < size <= MAX_BODY: raise ValueError('Invalid request size')
-                    body = json.loads(self.rfile.read(size))
+                    body = json.loads(self._read_body(MAX_BODY))
                     if not isinstance(body, dict): raise ValueError('Expected a JSON object')
                     if m and not get_project(db_path, m.group(1)):
                         self._send(404, {'error':'Project not found'}); return
                     p = save_project(db_path, body, m.group(1) if m else None)
                     self._send(200, p)
+                except StorageLimitError as e:
+                    self._send(413, {'error':str(e)})
+                except ProjectConflictError as e:
+                    self._send(409, {'error':str(e)})
                 except (ValueError, TypeError) as e:
                     self._send(400, {'error':str(e)})
                 return

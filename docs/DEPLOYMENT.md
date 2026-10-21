@@ -63,7 +63,27 @@ One shared token grants all project access; no accounts, per-user permissions,
 rate limiting or audit trail are implemented. Use proxy-level protections and
 keep sensitive content out until access controls suit your needs. Export JSON
 backups, keep independent storage and test a recovery procedure. Automatic
-backup schedules, JSON import/restore, database replication, multi-instance
+backup schedules, database replication, multi-instance
 SQLite hosting and browser rendering jobs are not implemented. Use one instance
 with one durable database. Do not expose the database or generated files as
 static assets.
+
+## Manual recovery on temporary storage
+
+The dashboard's **Download backup** includes saved stories and attached scene
+images. **Restore backup** accepts earlier text-only exports and new image
+exports, creating new copies without replacing existing projects. See the
+[recovery walkthrough](SCENE_IMAGES.md). Keep originals of uploaded photos:
+backups hold optimized JPEG copies, not original files.
+
+Free or otherwise ephemeral hosting still loses the SQLite database when the
+host replaces its filesystem. This feature does not add a persistent disk or
+automatic backup. Download a backup after edits and image uploads, before a
+restart or redeploy. The free test service uses `/tmp/wec-studio`; do not apply
+the paid `render.yaml` blueprint as part of this feature update. A manual
+redeploy can erase its current test projects, so export them first.
+
+A separate static host must permit `blob:` in its image CSP as well as the
+backend HTTPS origin in `connect-src`. The bundled same-server CSP already
+allows authenticated image fetches and local blob previews. Never put a token
+in an image URL, query string or static configuration file.
