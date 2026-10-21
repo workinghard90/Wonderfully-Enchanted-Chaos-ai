@@ -3,6 +3,7 @@
 Bind to loopback by default. Remote access requires TLS termination and authentication.
 """
 import argparse
+from contextlib import closing, contextmanager
 import hmac
 import json
 import os
@@ -18,20 +19,29 @@ from .orchestrator import run_production
 ROOT = Path(__file__).parent / 'studio_web'
 MAX_BODY = 128 * 1024
 
+@contextmanager
+def _database(path):
+    # SQLite's transaction context commits/rolls back but does not close handles.
+    # Explicit closure is necessary for Windows file access and long-running HTTP use.
+    with closing(sqlite3.connect(path)) as db:
+        with db:
+            yield db
+
+
 def init_db(path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as db:
+    with _database(path) as db:
         db.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, title TEXT NOT NULL, story TEXT NOT NULL, duration REAL NOT NULL, scenes INTEGER NOT NULL, updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)')
     return path
 
 def list_projects(path):
-    with sqlite3.connect(path) as db:
+    with _database(path) as db:
         db.row_factory = sqlite3.Row
         return [dict(x) for x in db.execute('SELECT id,title,duration,scenes,updated FROM projects ORDER BY updated DESC')]
 
 def get_project(path, pid):
-    with sqlite3.connect(path) as db:
+    with _database(path) as db:
         db.row_factory = sqlite3.Row
         row = db.execute('SELECT * FROM projects WHERE id=?', (pid,)).fetchone()
         return dict(row) if row else None
@@ -49,7 +59,7 @@ def save_project(path, payload, pid=None):
         raise ValueError('Scene count must be an integer')
     plan_story(story, total_duration=duration, scene_count=scenes)
     pid = pid or uuid.uuid4().hex
-    with sqlite3.connect(path) as db:
+    with _database(path) as db:
         if get_project(path, pid):
             db.execute('UPDATE projects SET title=?,story=?,duration=?,scenes=?,updated=CURRENT_TIMESTAMP WHERE id=?', (title.strip(), story.strip(), float(duration), scenes, pid))
         else:

@@ -58,6 +58,25 @@ class RegressionTests(unittest.TestCase):
                 cli(['generate',str(scene),'--comfy-url','http://127.0.0.1:9191'])
                 self.assertEqual(router.return_value.generate.call_args.args[0]['comfy_workflow'],str((root/'workflow.json').resolve()))
 
+    def test_database_connections_close_after_operations(self):
+        import sqlite3
+        from wec_engine.studio import init_db, save_project, list_projects, get_project
+        original_connect = sqlite3.connect
+        connections = []
+        def connect(path):
+            connection = original_connect(path)
+            connections.append(connection)
+            return connection
+        with tempfile.TemporaryDirectory() as td:
+            with patch('wec_engine.studio.sqlite3.connect', side_effect=connect):
+                db = init_db(Path(td)/'db')
+                project = save_project(db, {'title':'Lantern','story':'A lantern flew.','duration':5,'scenes':1})
+                self.assertEqual(len(list_projects(db)),1)
+                self.assertEqual(get_project(db,project['id'])['title'],'Lantern')
+            self.assertGreaterEqual(len(connections),5)
+            for connection in connections:
+                with self.assertRaises(sqlite3.ProgrammingError):connection.execute('SELECT 1')
+
     def test_overwrite_validation_without_media_tools(self):
         from wec_engine.production import finalize_video
         with tempfile.TemporaryDirectory() as td:
