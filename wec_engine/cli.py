@@ -28,6 +28,13 @@ def main(argv=None):
     render = sub.add_parser("render-stills")
     render.add_argument("manifest")
     render.add_argument("output")
+    movie = sub.add_parser("export-backup", help="Render a studio backup as a narrated vertical MP4, offline")
+    movie.add_argument("backup")
+    movie.add_argument("output")
+    movie.add_argument("--voice-model", required=True, help="Local Piper .onnx model with matching .onnx.json")
+    movie.add_argument("--workdir", help="New directory for images, audio, captions and verification")
+    movie.add_argument("--project-index", type=int, help="Project position in a multi-project backup, starting at 0")
+    movie.add_argument("--ambience", action="store_true", help="Add a quiet original procedural pad and transition chimes")
     anim = sub.add_parser("animate")
     anim.add_argument("workflow")
     anim.add_argument("--comfy-url", default=os.environ.get("WEC_COMFY_URL", "http://127.0.0.1:8188"))
@@ -99,6 +106,12 @@ def main(argv=None):
         print(json.dumps(HybridRouter(comfy=ComfyProvider(args.comfy_url)).generate(scene, args.out, allow_cloud=args.cloud, cloud_estimate_usd=args.cloud_estimate, cloud_budget_usd=args.cloud_budget), indent=2))
     elif args.command == "render-stills":
         print(render_stills(args.manifest, args.output))
+    elif args.command == "export-backup":
+        from .backup_video import render_backup_video
+        result = render_backup_video(args.backup, args.output, voice_model=args.voice_model,
+                                     workdir=args.workdir, project_index=args.project_index, ambience=args.ambience)
+        print(json.dumps(result, indent=2))
+        return 0 if result['ok'] else 1
     elif args.command == "animate":
         bindings = json.loads(Path(args.bindings).read_text(encoding="utf-8")) if args.bindings else {}
         print(ComfyAnimation(args.comfy_url).animate(args.workflow, args.output, bindings=bindings))
