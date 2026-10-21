@@ -125,6 +125,9 @@ class StudioVideoTests(unittest.TestCase):
         snapshot['projects'][0]['story'] = 'lantern '*101
         with self.assertRaisesRegex(VideoJobError, '100 words'):
             self.jobs.start(snapshot, self.project['id'])
+        snapshot['projects'][0]['story'] = 'lantern '*60
+        with self.assertRaisesRegex(VideoJobError, 'long scene narration'):
+            self.jobs.start(snapshot, self.project['id'])
         self.assertEqual(self.jobs.status()['attempts_today'], 0)
         from wec_engine.studio_store import remove_scene_image
         remove_scene_image(self.db, self.project['id'], 'scene-002')

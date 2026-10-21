@@ -17,6 +17,7 @@ import time
 import uuid
 
 from .studio_video_worker import write_json
+from .story import plan_story
 
 MAX_SECONDS = 35
 MAX_SCENES = 7
@@ -133,6 +134,9 @@ class VideoJobs:
                 raise VideoJobError('This video test supports up to 35 seconds and 7 scenes.')
             if len(project['story']) > 1000 or len(project['story'].split()) > MAX_STORY_WORDS:
                 raise VideoJobError('Keep this short-video test to 100 words and 1000 characters. Shorten the story before rendering.')
+            plan = plan_story(project['story'], total_duration=project['duration'], scene_count=project['scenes'])
+            if any(len(scene['narration']) > 200 or len(scene['narration'].split()) > 25 for scene in plan['scenes']):
+                raise VideoJobError('Shorten long scene narration or increase the scene count. This test allows 25 words and 200 characters per scene.')
             expected = {f'scene-{i:03d}' for i in range(1, project['scenes']+1)}
             if {image['scene_id'] for image in project.get('scene_images', [])} != expected:
                 raise VideoJobError('Attach a picture to every scene before rendering.')

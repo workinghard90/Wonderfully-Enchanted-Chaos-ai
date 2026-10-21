@@ -57,7 +57,8 @@ this implementation.
 
 - At most **35 seconds and 7 scenes**, with an image and narration for every
   scene, and **100 words / 1000 characters** of story text. Longer scripts are
-  rejected before loading a voice. One shared CPU render at a time, with a
+  rejected before loading a voice. Each scene is limited to 25 words and 200
+  characters to bound individual speech requests. One shared CPU render at a time, with a
   20-minute hard timeout.
 - **Two accepted attempts per UTC day**, including failed/cancelled jobs.
   Rejected incomplete projects do not reserve an attempt. This is a local CPU
