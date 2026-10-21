@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "title": "The Lantern That Wouldn't Wait — media integration example",
+  "duration": 35,
+  "scenes": [
+    {"id":"scene-001","start":0,"duration":5,"narration":"A lantern waited by the forest gate.","image":"../assets/scenes/scene-001.png"},
+    {"id":"scene-002","start":5,"duration":5,"narration":"Its light flickered with impatience.","image":"../assets/scenes/scene-002.png"},
+    {"id":"scene-003","start":10,"duration":5,"narration":"The path ahead shimmered.","image":"../assets/scenes/scene-003.png"},
+    {"id":"scene-004","start":15,"duration":5,"narration":"The forest listened quietly.","image":"../assets/scenes/scene-004.png"},
+    {"id":"scene-005","start":20,"duration":5,"narration":"A little breeze carried the glow.","image":"../assets/scenes/scene-005.png"},
+    {"id":"scene-006","start":25,"duration":5,"narration":"The lantern found its way.","image":"../assets/scenes/scene-006.png"},
+    {"id":"scene-007","start":30,"duration":5,"narration":"And the night was brighter.","image":"../assets/scenes/scene-007.png"}
+  ]
+}

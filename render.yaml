@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: wec-hybrid-studio
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: WEC_STUDIO_TOKEN
+        sync: false
+      - key: WEC_DATA_DIR
+        value: /var/data
+    disk:
+      name: wec-studio-data
+      mountPath: /var/data
+      sizeGB: 1

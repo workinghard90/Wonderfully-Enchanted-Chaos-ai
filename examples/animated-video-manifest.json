@@ -1,0 +1,12 @@
+{
+  "scenes": [
+    {
+      "video": "../assets/clips/scene-001.mp4",
+      "duration": 5.0
+    },
+    {
+      "video": "../assets/clips/scene-002.mp4",
+      "duration": 5.0
+    }
+  ]
+}

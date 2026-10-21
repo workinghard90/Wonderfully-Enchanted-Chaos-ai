@@ -1,0 +1,40 @@
+# Secrets and machine-specific settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Python and build artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+# Local studio data, generated assets and model weights
+.wec-studio/
+data/
+*.sqlite*
+*.db
+*.db-*
+output/
+assets/
+workflows/local/
+*.mp4
+*.webm
+*.mov
+*.wav
+*.mp3
+*.onnx
+*.safetensors
+*.ckpt
+# Developer tools
+node_modules/
+playwright-report/
+test-results/
+.DS_Store
+Thumbs.db

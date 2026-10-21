@@ -1,0 +1,7 @@
+{
+  "id": "lantern-keeper",
+  "name": "Lantern Keeper",
+  "description": "Whimsical storybook character, consistent warm amber and indigo palette",
+  "reference_images": ["assets/references/lantern-keeper-front.png"],
+  "notes": "Generate reference artwork first; bind references using compatible ComfyUI conditioning nodes."
+}
