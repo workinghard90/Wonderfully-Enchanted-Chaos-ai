@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1b1832">
+  <title>WEC Coloring Book Studio</title>
+  <link rel="stylesheet" href="/coloring/style.css">
+  <script type="module" src="/coloring/app.js"></script>
+</head>
+<body>
+<header><a href="/" target="_blank" rel="noopener">✦ WEC Story &amp; Video Studio ↗</a></header>
+<main>
+  <p class="eyebrow">YOUR CREATIVE WORKSPACE</p>
+  <h1>Coloring Book Studio</h1>
+  <p>Arrange your finished artwork, download the originals as a ZIP, or print a Letter-size PDF.</p>
+  <p class="notice"><strong>Keep your originals.</strong> Pages stay in this open tab and clear when you reload or close it. Artwork is processed on your device; importing and exporting make no server or AI calls. This workspace is separate from story backups.</p>
+  <noscript><p class="notice">Open this hosted page in Safari or another browser with JavaScript enabled. Files-app previews cannot run the studio.</p></noscript>
+  <section class="panel" aria-label="Book settings">
+    <label for="title">Book title</label>
+    <input id="title" maxlength="150" value="Pip's Cloud Magic Coloring Book">
+    <label for="upload">Add coloring pages (PNG, JPG or WebP)</label>
+    <input id="upload" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple>
+    <p class="muted">Up to 100 illustrations, 10 MiB per file, 80 MiB total and 100 megapixels total. HEIC is unsupported; export it as JPG or PNG first.</p>
+    <label class="check"><input id="blank" type="checkbox" checked> Blank back after each illustration</label>
+    <div class="controls">
+      <button id="zip" type="button" disabled>Download artwork ZIP</button>
+      <button id="print" type="button" disabled>Print / Save as PDF</button>
+      <button id="clear" type="button" class="secondary" disabled>Clear pages</button>
+    </div>
+  </section>
+  <p id="status" role="status" aria-live="polite">No pages loaded.</p>
+  <ol id="pages" aria-label="Illustrations in book order"></ol>
+  <section class="panel">
+    <h2>Before you publish</h2>
+    <p>Print settings: Letter (8.5 × 11 in), scale 100%, margins none, headers and footers off. Artwork fits inside a 7.5 × 10 in area without cropping. Resolution estimates use each image’s fitted size.</p>
+    <p>This is a book assembly prototype. Browser printing is not a validated KDP export; inspect the final PDF, page count, margins and image quality yourself. A cover, front matter and KDP checks are not included.</p>
+    <p class="muted">ZIPs contain the original artwork in the current order and a title/settings manifest. Blank backs are added only to the print layout. Reloading a ZIP is not supported yet.</p>
+  </section>
+</main>
+<div id="printPages" aria-hidden="true"></div>
+</body>
+</html>
