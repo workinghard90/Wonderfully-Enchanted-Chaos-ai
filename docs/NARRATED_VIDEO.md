@@ -12,6 +12,13 @@ AI character animation. Caption intervals follow each recorded utterance;
 individual words are not force-aligned. Quiet procedural ambience and chimes
 are optional and use no sampled music.
 
+Captions are burned into each scene during its only video encode; final assembly
+copies the finished video stream and adds AAC audio. The exporter retains the
+full-project captions and writes scene-local ASS files, with frame-quantized
+boundaries to prevent accumulated timing drift. It uses x264 `veryfast`, CRF 22
+and one filter thread without reducing resolution or frame rate. See
+[performance evidence and limits](VIDEO_PERFORMANCE.md).
+
 ## Windows
 
 Install Python 3.10+, FFmpeg (including FFprobe and the subtitles/libass filter),
@@ -50,7 +57,7 @@ through your operating system's trusted package manager.
   a new output name for another export. `--workdir` can choose a new directory.
 - The default `lantern-work/` beside `lantern.mp4` retains the extracted images,
   source plan, voice recordings, mix, SRT/ASS captions, per-scene clips, final
-  MP4 and `verification.json`. A failed export leaves these for diagnosis;
+  MP4 and `verification.json` (including stage timings). A failed export leaves these for diagnosis;
   another run needs a fresh workdir. There is no automatic resume yet.
 - Speech is fitted into its scene without cutting words. If more than a 35%
   speed increase would be required, export stops and asks for longer scenes or

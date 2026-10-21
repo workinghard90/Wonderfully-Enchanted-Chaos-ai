@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import textwrap
+import time
 import wave
 from pathlib import Path
 
@@ -21,9 +22,17 @@ from .studio_store import get_project, get_scene_image, init_db, restore_backup
 from .story import plan_story
 
 SAMPLE_RATE = 22050
+FPS = 30
 MAX_DURATION = 300
 MAX_SCENES = 30
 MAX_BACKUP_BYTES = 40 * 1024 * 1024
+ASS_HEADER = [
+    '[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920',
+    'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    'Style: Default,DejaVu Sans,62,&H00FFFFFF,&H00FFFFFF,&H00201913,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,85,85,150,1',
+    '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+]
 
 
 def _run(args, *, cwd=None):
@@ -135,6 +144,17 @@ def _ass_time(value):
     return f'{hours}:{minutes:02d}:{seconds:02d}.{cs:02d}'
 
 
+def _scene_frame_window(scene):
+    # Quantize timeline boundaries, not each duration, to avoid accumulated drift.
+    start = round(scene['start'] * FPS)
+    end = round((scene['start'] + scene['duration']) * FPS)
+    return start, max(1, end - start)
+
+
+def _ass_event(start, end, text):
+    return f'Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{text.replace(chr(10), chr(92)+"N")}'
+
+
 def make_narration(plan, root, *, ambience=False):
     """Place separate recordings on the scene timeline without cutting words.
 
@@ -146,11 +166,7 @@ def make_narration(plan, root, *, ambience=False):
     total_samples = round(plan['duration'] * SAMPLE_RATE)
     mix = [0.0] * total_samples
     timings, srt = [], []
-    ass = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920',
-           'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '[V4+ Styles]',
-           'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-           'Style: Default,DejaVu Sans,62,&H00FFFFFF,&H00FFFFFF,&H00201913,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,85,85,150,1',
-           '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text']
+    ass = list(ASS_HEADER)
     for scene in plan['scenes']:
         sid = scene['id']
         clean = root / (sid + '-voice.wav')
@@ -187,7 +203,13 @@ def make_narration(plan, root, *, ambience=False):
         start, end = start_sample / SAMPLE_RATE, (start_sample + len(samples)) / SAMPLE_RATE
         line = _caption_line(scene['narration'])
         srt.append(f'{len(srt)+1}\n{_timecode(start)} --> {_timecode(end)}\n{line}\n')
-        ass.append(f'Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{line.replace(chr(10), chr(92)+"N")}')
+        ass.append(_ass_event(start, end, line))
+        # Burn captions during the scene's only encode. Local times include the
+        # rounded frame boundary so captions remain on the global audio timeline.
+        frame_start, _ = _scene_frame_window(scene)
+        offset = frame_start / FPS
+        local = ASS_HEADER + [_ass_event(max(0, start - offset), end - offset, line)]
+        (root / (sid + '-captions.ass')).write_text('\n'.join(local) + '\n', encoding='utf-8')
         timings.append({'scene_id': sid, 'start': start, 'end': end, 'speed': speed,
                         'caption': line, 'alignment': 'measured utterance, not individual words'})
     if ambience:
@@ -222,7 +244,10 @@ def _scene_plate(source, output):
 
 def render_backup_video(backup_path, output_path, *, voice_model, workdir=None,
                         project_index=None, ambience=False, progress=None, narrator=None):
+    started = time.perf_counter()
+    stages = []
     def notify(stage, percent, message):
+        stages.append({'stage': stage, 'elapsed_seconds': round(time.perf_counter() - started, 3)})
         if progress:
             progress({'stage': stage, 'progress': percent, 'message': message})
     source, output, model = (Path(value).resolve() for value in (backup_path, output_path, voice_model))
@@ -245,33 +270,37 @@ def render_backup_video(backup_path, output_path, *, voice_model, workdir=None,
     timings = make_narration(plan, root, ambience=ambience)
     concat = []
     for scene in plan['scenes']:
-        notify('scenes', 30 + round(45 * len(concat) / len(plan['scenes'])),
+        notify('scenes', 30 + round(60 * len(concat) / len(plan['scenes'])),
                f'Building scene {len(concat)+1} of {len(plan["scenes"])}')
         plate = root / (scene['id'] + '-plate.jpg')
         _scene_plate(root / scene['image'], plate)
-        frames = max(1, round(scene['duration'] * 30))
+        _, frames = _scene_frame_window(scene)
         clip = scene['id'] + '.mp4'
-        zoom = f"zoompan=z='min(zoom+0.00012,1.018)':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s=1080x1920:fps=30"
-        _run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', str(plate),
-              '-vf', zoom, '-frames:v', str(frames), '-an', '-c:v', 'libx264', '-preset', 'fast',
-              '-crf', '22', '-threads', '2', '-pix_fmt', 'yuv420p', str(root / clip)])
+        zoom = f"zoompan=z='min(zoom+0.00012,1.018)':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s=1080x1920:fps={FPS}"
+        _run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-filter_threads', '1',
+              '-i', plate.name, '-vf', zoom + ',subtitles=filename=' + scene['id'] + '-captions.ass',
+              '-frames:v', str(frames), '-an', '-c:v', 'libx264', '-preset', 'veryfast',
+              '-crf', '22', '-threads', '2', '-pix_fmt', 'yuv420p', clip], cwd=root)
         concat.append(f"file '{clip}'")
     (root / 'clips.txt').write_text('\n'.join(concat) + '\n', encoding='utf-8')
     final = root / 'final.mp4'
-    notify('finishing', 82, 'Adding captions and finishing the movie')
-    _run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-filter_threads', '1',
+    notify('finishing', 90, 'Joining your captioned scenes and audio')
+    _run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
           '-f', 'concat', '-safe', '1', '-i', 'clips.txt', '-i', 'narration-mix.wav',
-          '-vf', 'subtitles=filename=captions.ass', '-map', '0:v:0', '-map', '1:a:0',
-          '-c:v', 'libx264', '-preset', 'fast', '-crf', '22', '-threads', '2',
-          '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2',
-          '-t', str(plan['duration']), '-movflags', '+faststart', 'final.mp4'], cwd=root)
+          '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy',
+          '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2',
+          # Both inputs are finite. Preserve all frame-quantized scene packets
+          # instead of trimming the copied stream at a fractional-second cut.
+          '-movflags', '+faststart', 'final.mp4'], cwd=root)
     notify('verification', 96, 'Checking your finished movie')
     report = verify_delivery(final, expected_duration=plan['duration'], tolerance=0.1)
     report.update({'title': plan['title'], 'narration': 'Piper local neural TTS',
                    'voice_model': model.name, 'ambience': ambience,
                    'backup_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
                    'caption_timing': 'Measured utterance intervals; not word-level forced alignment',
-                   'scenes': timings})
+                   'scenes': timings, 'rendering': 'one encode per captioned scene, final video stream copy',
+                   'encoder_preset': 'veryfast', 'stage_timings': stages,
+                   'render_seconds': round(time.perf_counter() - started, 3)})
     if not report['ok']:
         (root / 'verification.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         raise RuntimeError('Video failed delivery verification; inspect verification.json in the workdir')
