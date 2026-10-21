@@ -1,5 +1,6 @@
 """ComfyUI API client; workflow JSON must include a SaveImage node."""
 import json
+import os
 import time
 import uuid
 from pathlib import Path
@@ -7,8 +8,8 @@ from urllib.parse import quote
 import requests
 
 class ComfyProvider:
-    def __init__(self, base_url="http://127.0.0.1:8188", timeout=300):
-        self.base_url = base_url.rstrip("/")
+    def __init__(self, base_url=None, timeout=300):
+        self.base_url = (base_url or os.environ.get("WEC_COMFY_URL") or "http://127.0.0.1:8188").rstrip("/")
         self.timeout = timeout
 
     def available(self):
