@@ -1,7 +1,8 @@
 # Scene images and portable backups
 
-The dashboard accepts pictures you supply. AI image/video generation and web
-video export are still unconnected. No external service or paid API is called
+The dashboard accepts pictures you supply. Optional AI image generation needs
+[Cloudflare owner setup](CLOUDFLARE_IMAGES.md) and a first live verification. Web
+video export is still unconnected. No external service or paid API is called
 by image upload, preview, backup or restore.
 
 ## iPhone workflow

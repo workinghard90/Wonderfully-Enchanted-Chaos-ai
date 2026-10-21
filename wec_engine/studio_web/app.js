@@ -37,7 +37,7 @@ async function request(path, options = {}, retry = true) {
 async function api(path, options) { return (await request(path, options)).json(); }
 function setBusy(value) {
   busy = value;
-  document.querySelectorAll('button, #editor input, #editor textarea, #preview input').forEach(item => { item.disabled = value; });
+  document.querySelectorAll('button, #editor input, #editor textarea, #preview input, #preview textarea').forEach(item => { item.disabled = value || item.dataset.generationReady === 'false'; });
   $('editor').setAttribute('aria-busy', String(value));
 }
 async function runAction(action) {
@@ -105,6 +105,10 @@ async function showScenes() {
   requireSaved();
   const pid = selected;
   const plan = await api('/api/projects/' + pid + '/plan');
+  const generation = await api('/api/generation');
+  $('generation-status').textContent = generation.ready
+    ? `Generate one image at a time with ${generation.model}. Your prompt is sent to Cloudflare. ${generation.attempts_today}/${generation.daily_limit} attempts used today. Existing pictures are kept. Prompt edits apply to this request only.`
+    : 'AI image generation needs owner setup. You can upload pictures now.';
   clearPreview();
   const root = $('preview'); root.replaceChildren();
   for (const scene of plan.scenes) {
@@ -148,6 +152,31 @@ async function showScenes() {
         await showScenes(); await refresh(); msg('Scene image removed.');
       });
       actions.append(remove);
+    }
+    if (!scene.image_asset) {
+      let promptInput;
+      if (generation.ready) {
+        const label = document.createElement('label'); label.htmlFor = 'prompt-' + scene.id; label.textContent = 'Image prompt';
+        promptInput = document.createElement('textarea'); promptInput.id = label.htmlFor; promptInput.rows = 3;
+        promptInput.maxLength = 2048; promptInput.value = scene.prompt; promptInput.disabled = busy;
+        item.append(label, promptInput);
+      }
+      const generate = document.createElement('button'); generate.type = 'button'; generate.className = 'generate';
+      generate.textContent = 'Generate image'; generate.disabled = busy || !generation.ready;
+      generate.dataset.generationReady = generation.ready ? 'true' : 'false';
+      if (!generation.ready) generate.title = 'Owner setup is required before generating images.';
+      generate.onclick = () => runAction(async () => {
+        requireSaved();
+        const prompt = promptInput.value.trim();
+        if (!prompt || prompt.length > 2048) throw Error('Enter an image prompt between 1 and 2048 characters.');
+        if (!confirm('Send this prompt to Cloudflare to generate one image? This uses your Workers AI allowance.')) return;
+        msg('Generating one image… Keep this page open. If the connection drops, reopen the project before trying again.');
+        await api(`/api/projects/${pid}/scenes/${scene.id}/generate`, {method: 'POST', body: JSON.stringify({prompt})});
+        loadedProject = await api('/api/projects/' + pid);
+        await showScenes(); await refresh();
+        msg('Image generated and attached to ' + scene.id + '. Download a backup to keep it.');
+      });
+      actions.append(generate);
     }
     item.append(actions); root.append(item);
   }

@@ -4,7 +4,8 @@ A local-first creative studio for planning stories and assembling vertical video
 The responsive dashboard saves stories, accepts scene-image uploads, previews
 deterministic scene plans and production dry-runs, and exports/restores portable
 project backups with images. The CLI handles existing media and opt-in ComfyUI
-integration. **Live AI generation has not been validated.**
+integration. An optional Cloudflare adapter adds one-scene image generation to
+the dashboard after owner setup. **Live AI generation has not been validated.**
 
 ## Start the studio on Windows
 
@@ -41,6 +42,7 @@ FFmpeg, or voice models.
 | Create, edit, list and back up stories | Implemented; HTTP integration tests |
 | Upload/replace/remove scene images | Implemented; authenticated JPEG/PNG/WebP uploads and browser previews |
 | Restore project backups with images | Implemented; version 1 text and version 2 image backups restore as new copies |
+| Cloudflare scene images from the dashboard | Implemented behind opt-in; mocked provider/browser tests. Account setup and a first live test still required |
 | Scene planning and production dry-run | Implemented; offline deterministic word segmentation, no LLM |
 | Silent still/clip assembly, audio mux and burned-in captions | Implemented; FFmpeg smoke tests with synthetic media |
 | Production checkpoints and delivery verification | Implemented; use a fresh workdir when source media/audio changes |
@@ -48,11 +50,12 @@ FFmpeg, or voice models.
 | Character references | Metadata plus explicit reference upload/binding; no guarantee of visual consistency |
 | Piper narration | Optional adapter; binary and licensed voice model required; not live tested |
 | Cloud image fallback | Custom gateway contract; explicit CLI opt-in only; not live tested |
-| Cloud video, web rendering jobs, accounts, automatic sync/backups | Not implemented |
+| Cloud video, web video jobs, accounts, automatic sync/backups | Not implemented |
 
 Caption times are estimated from scene times, **not aligned to recorded speech**.
-Music/SFX must be supplied as a completed audio mix. The dashboard never submits
-generation jobs. No paid service calls are made by the test suite. Uploaded
+Music/SFX must be supplied as a completed audio mix. Dashboard image generation
+is off by default; optional Cloudflare setup permits one image per confirmed
+click. No paid service calls are made by the test suite. Uploaded
 images are stored for preview and backup; the dashboard does not render them into movies. See the
 [scene images and recovery guide](docs/SCENE_IMAGES.md) for the iPhone workflow,
 file limits and backup compatibility.
@@ -93,7 +96,8 @@ fails. Finalization trims to the shorter audio/video input; verify duration.
 `.env.example` documents settings. **The app does not automatically read `.env`.**
 Export environment variables in your shell or configure them on the host.
 See [configuration and API](docs/CONFIGURATION.md) and
-[generation setup](docs/GENERATION.md). Never commit secrets or model weights.
+[generation setup](docs/GENERATION.md). For the hosted one-scene image test, see
+[Cloudflare setup](docs/CLOUDFLARE_IMAGES.md). Never commit secrets or model weights.
 
 ## iPhone and online access
 
@@ -124,6 +128,7 @@ checks require Node and Playwright:
 npm install --no-save playwright@1.62.1
 npx playwright install chromium
 node tests/browser_smoke.cjs
+node tests/browser_generation.cjs
 ```
 
 Set `PYTHON` to the installed Python executable if `python` is outside your

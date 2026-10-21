@@ -59,6 +59,18 @@ A complete set of stills/clips is required; no placeholder art is generated
 implicitly. Workdirs are single-process checkpoints, not a job queue. Fresh
 workdirs are required when replacing media/audio at unchanged file paths.
 
+## Optional dashboard images through Cloudflare
+
+The studio now has a provider-specific Workers AI adapter, disabled by default.
+See [Cloudflare scene-image setup](CLOUDFLARE_IMAGES.md). It sends one reviewed
+prompt to FLUX.1 schnell, stores the returned picture as a scene attachment and
+includes it in standard version 2 backups. Tests use mocked REST responses and
+a synthetic browser fixture; **no live model output has been verified**.
+
+This is separate from the CLI custom gateway below. Enabling the studio does
+not enable CLI cloud fallback, private workers, narration, animation or web video
+rendering. Prompt edits are one-request inputs, not saved project fields.
+
 ## Custom cloud image gateway
 
 `providers/cloud.py` defines a generic contract, not a provider-specific API.
