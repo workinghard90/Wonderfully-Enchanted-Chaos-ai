@@ -73,7 +73,8 @@ this implementation.
   capacity. Confirm one live render after deployment before relying on it.
 - Finished job state survives a process restart only when the data directory
   survives. Interrupted jobs are marked as interrupted, not automatically
-  retried. Free Render storage disappears on restart/spin-down/redeploy; keep
+  retried. A process-scoped OS file lease prevents overlapping jobs and handles
+  containers reusing a PID after restart. Free Render storage disappears on restart/spin-down/redeploy; keep
   backups and movies on your device. This remains a test setup, not durable
   production video hosting.
 
