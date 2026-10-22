@@ -51,6 +51,15 @@ because browser storage can be cleared. It uses no generation credits and is sep
 backups. On iPhone use the hosted page in Safari. See the
 [coloring workflow and prototype limits](docs/COLORING_STUDIO.md).
 
+## High-resolution artwork workers
+
+Use `wec artwork JOB.json OUTPUT_DIR` to validate a reviewed ComfyUI artwork job
+offline. Add `--execute` to submit one job to a separately prepared local GPU
+worker, retain the original PNG and check its actual print-size resolution.
+[Model candidates, Windows setup and limits](docs/HIGH_RES_ARTWORK.md).
+This CLI path requires a worker/model; it is not enabled on the free Render
+dashboard, and no live high-resolution model run has been verified.
+
 ## What works and what needs setup
 
 | Capability | Status |

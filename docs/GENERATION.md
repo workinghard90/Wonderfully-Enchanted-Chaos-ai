@@ -71,6 +71,14 @@ This is separate from the CLI custom gateway below. Enabling the studio does
 not enable CLI cloud fallback, private workers, narration, animation or web video
 rendering. Prompt edits are one-request inputs, not saved project fields.
 
+## Full-resolution artwork export
+
+For individual coloring illustrations and high-resolution original files, use
+[the artwork job command](HIGH_RES_ARTWORK.md). It adds explicit bindings,
+optional reference upload, final-output selection, original-byte preservation
+and actual pixel/PPI checks. This is distinct from the existing scene-image
+path and does not downsize the original into a story preview.
+
 ## Custom cloud image gateway
 
 `providers/cloud.py` defines a generic contract, not a provider-specific API.
