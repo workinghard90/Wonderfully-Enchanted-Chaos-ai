@@ -23,6 +23,7 @@ class ColoringAssetsTests(unittest.TestCase):
                                     ('/coloring/app.js', 'application/javascript'),
                                     ('/coloring/zip.js', 'application/javascript'),
                                     ('/coloring/project-store.js', 'application/javascript'),
+                                    ('/coloring/print-check.js', 'application/javascript'),
                                     ('/coloring/style.css', 'text/css')]:
                     with self.subTest(route=route), urlopen(base + route) as response:
                         self.assertEqual(response.status, 200)

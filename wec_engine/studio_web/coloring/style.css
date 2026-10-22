@@ -29,6 +29,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .quality-low { color: #ffc58f; }
 .quality-met { color: #98e3ad; }
 #printPages { display: none; }
+[hidden] { display: none !important; }
+#print-checks, #print-problems { padding-left: 22px; line-height: 1.6; overflow-wrap: anywhere; }
+#print-problems { color: #ffc58f; }
+details summary { min-height: 44px; padding: 12px 0; cursor: pointer; }
+details summary:focus-visible { outline: 3px solid #dac3ff; outline-offset: 3px; }
 @media(max-width: 500px) { main { padding: 16px; } .panel, .notice { padding: 16px; } }
 @page { size: letter; margin: 0; }
 @media print {

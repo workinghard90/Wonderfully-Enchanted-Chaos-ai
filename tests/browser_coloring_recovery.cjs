@@ -110,8 +110,16 @@ with zipfile.ZipFile(sys.argv[1]) as a,zipfile.ZipFile(sys.argv[2]) as b:
  assert b.testzip() is None
 `,source,output],{encoding:'utf8'});assert.equal(roundtrip.status,0,roundtrip.stderr);
    await page.reload();await idle(page);assert.equal(await page.locator('.page').count(),book.pages.length);
+   assert.match(await page.locator('#print-check-status').innerText(), /needs work/);
+   assert.match(await page.locator('#print-checks').innerText(), /4 exported pages/);
+   const checking=page.waitForEvent('download');await page.locator('#print-report').click();
+   const checkPath=path.join(root,'actual-pip-check.json');await(await checking).saveAs(checkPath);
+   const check=JSON.parse(fs.readFileSync(checkPath,'utf8'));
+   assert.equal(check.title,book.title);assert.equal(check.pdf_file_inspected,false);
+   assert.equal(check.pages.length,2);assert.ok(check.pages.every(p=>p.effective_ppi>146&&p.effective_ppi<147));
+   assert.deepEqual(check.pages.map(p=>p.pdf_page),[1,3]);assert.equal(check.basic_checks_pass,false);
    if(process.env.WEC_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.WEC_SCREENSHOT_DIR,'actual-pip-recovery.png'),fullPage:true});
-   console.log('PASS supplied Pip ZIP: original title/order/settings and all image SHA-256 values survive import, device reload and ZIP re-export');await context.close();
+   console.log('PASS supplied Pip ZIP: original title/order/settings and all image SHA-256 values survive import, device reload and ZIP re-export; print check flags four pages and low PPI');await context.close();
   }
   const context=await browser.newContext({acceptDownloads:true});await context.addInitScript(()=>Object.defineProperty(window,'indexedDB',{get(){throw new DOMException('Synthetic blocked storage','SecurityError')}}));
   const page=await context.newPage();await page.goto(base+'/coloring/');await idle(page);await page.locator('#device-status').filter({hasText:'storage is unavailable'}).waitFor();

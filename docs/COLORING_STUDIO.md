@@ -26,6 +26,40 @@ blank back, with a 0.5 inch inset. Images keep their aspect ratio and are not
 cropped. PPI estimates use the actual fitted size inside 7.5 × 10 inches; they
 are informational and do not resample or certify the artwork.
 
+## Print-readiness planning
+
+The **Print readiness** panel recalculates page count, minimum margins and
+fitted artwork resolution whenever pages, order or blank backs change.
+**Download print check** saves a JSON report with the title, page numbers,
+pixel dimensions, fitted inches, effective PPI, requirements and source links.
+It contains no artwork bytes and makes no network or generation calls.
+Short proofs remain printable even when checks fail.
+
+The fixed profile is **paperback, black ink on white paper, 8.5 x 11 inches,
+no bleed**. KDP guidance checked October 21, 2026 specifies 24–590 pages for
+this profile, images at least 300 DPI, outside margins at least 0.25 inches,
+and inside margins of 0.375 inches through 150 pages, 0.5 through 300, 0.625
+through 500 and 0.75 through 700. KDP rounds odd page counts up to an even
+number; the panel warns about that extra blank page. The current 0.5-inch
+layout therefore fails the gutter check above 300 pages, even if the profile's
+page-count range passes. The studio currently limits imports to 100 artworks.
+Other paper, ink, trim and bleed choices need a different profile.
+
+Sources: [Paperback submission guidelines](https://kdp.amazon.com/help/topic/G201857950),
+[trim size and margins](https://kdp.amazon.com/help/topic/GVBQ3CMEQW3W2VL6),
+and [image formatting](https://kdp.amazon.com/help/topic/G202169030).
+Requirements can change; consult them again before publishing.
+
+These checks inspect the **open book, not an exported PDF**. Even a passing
+report requires a separate PDF review: exact sheet size and page count,
+uncropped artwork, margins, blank backs, line clarity, transparency, grayscale
+and print settings. Add front matter and a correctly sized cover separately;
+any additions change pagination and may change gutter requirements. Use KDP
+Print Previewer and order a physical proof before approving publication.
+Changing a DPI tag or enlarging pixels cannot restore missing image detail;
+use higher-resolution originals or a smaller print size when needed. This
+feature does not resize, upscale, convert or certify artwork.
+
 ## Storage, privacy and cost
 
 Artwork is processed in the open browser tab. Import, order, ZIP and print make
@@ -81,9 +115,10 @@ pressure but do not guarantee a particular phone can print the maximum book.
 
 ## Deployment and Windows
 
-The existing Python package and Docker image include all five coloring assets.
+The existing Python package and Docker image include all six coloring assets.
 The server serves only fixed asset paths: `/coloring`, `/coloring/`,
-`/coloring/app.js`, `/coloring/zip.js`, `/coloring/project-store.js` and
+`/coloring/app.js`, `/coloring/zip.js`, `/coloring/project-store.js`,
+`/coloring/print-check.js` and
 `/coloring/style.css`. Static assets
 are public like the story shell; all existing story/media API routes remain
 protected by the configured studio token. No upload endpoint, generation
@@ -100,7 +135,11 @@ Do not apply a paid service template merely to enable this page.
 The browser regression covers imports, errors, ordering, original-byte ZIP/CRC
 validation with Python's independent ZIP reader, loading-operation exclusion,
 no artwork/API traffic, clear cancellation, layouts at phone/desktop widths,
-and a four-sheet Letter PDF fixture with blank backs. HTTP tests cover packaged
+and a four-sheet Letter PDF fixture with blank backs. An independent Poppler
+check verifies actual PDF sheet sizes, rasterized ink bounds, centered fitted
+artwork, original embedded pixel dimensions, empty backs and absence of UI text.
+Print-check fixtures cover PPI/aspect ratios, odd rounding, page-count limits
+and gutter transitions; browser checks download and validate the report. HTTP tests cover packaged
 assets, content security policy, exact-path routing and protected APIs. Wheel
 installation is checked outside the source tree. ZIP-parser fixtures cover CRC
 damage, truncation, bounds, invalid manifests, duplicate/traversal paths,
