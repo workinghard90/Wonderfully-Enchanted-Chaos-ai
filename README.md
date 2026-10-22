@@ -43,6 +43,8 @@ It includes no GPU stack.
 Open **Coloring Book Studio** from the dashboard, or visit `/coloring/` on the
 same server. Add finished PNG/JPG/WebP artwork, reorder pages, download an
 original-artwork ZIP and print a Letter-size PDF with optional blank backs.
+Print-readiness checks flag page-count, margin and image-resolution issues;
+download the check report before reviewing the final PDF.
 The browser automatically saves one book and reopens it after refresh. Open a
 WEC artwork ZIP to recover a book or move it between devices; keep ZIPs and originals
 because browser storage can be cleared. It uses no generation credits and is separate from story

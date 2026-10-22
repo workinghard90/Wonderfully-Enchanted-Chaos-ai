@@ -46,6 +46,7 @@ Image.new('RGB',(300,600),'#167c8b').save(p/'tall.jpg')
       await page.waitForFunction(() => !document.querySelector('#upload').disabled);
       assert.equal(await page.locator('header a').getAttribute('target'), '_blank');
       assert.ok(await page.locator('#zip').isDisabled());
+      assert.ok(await page.locator('#print-report').isDisabled());
       const loadedTraffic = traffic.length;
       await page.locator('#upload').setInputFiles([
         {name: 'wide-unknown-mime.png', mimeType: '', buffer: wide},
@@ -60,6 +61,20 @@ Image.new('RGB',(300,600),'#167c8b').save(p/'tall.jpg')
       await page.getByRole('button', {name: 'Move later: page 1', exact: true}).click();
       assert.match(await page.locator('.page').first().innerText(), /tall.jpg/);
       await page.locator('#title').fill('My Test Book');
+      assert.match(await page.locator('#print-check-status').innerText(), /needs work/);
+      assert.match(await page.locator('#print-checks').innerText(), /4 exported pages/);
+      assert.match(await page.locator('#print-problems').innerText(), /tall.jpg/);
+      const reportDownload = page.waitForEvent('download');
+      await page.locator('#print-report').click();
+      const reportPath = path.join(directory, 'print-check.json');
+      await (await reportDownload).saveAs(reportPath);
+      const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+      assert.equal(report.title, 'My Test Book');
+      assert.equal(report.exported_pages, 4);
+      assert.equal(report.basic_checks_pass, false);
+      assert.equal(report.pdf_file_inspected, false);
+      assert.equal(report.pages[0].name, 'tall.jpg');
+      assert.equal(report.pages[1].effective_ppi, 400);
       const downloaded = page.waitForEvent('download');
       await page.locator('#zip').click();
       const archive = await downloaded;
@@ -86,6 +101,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
       await page.waitForFunction(() => window.printCalls === 1);
       assert.equal(await page.title(), 'My Test Book');
       const pdf = await page.pdf({preferCSSPageSize: true, printBackground: true});
+      const proofPath = path.join(directory, `proof-${viewport.width}.pdf`);
+      fs.writeFileSync(proofPath, pdf);
+      const inspection = spawnSync(python, [path.join(__dirname, 'inspect_coloring_pdf.py'), proofPath], {encoding: 'utf8'});
+      assert.equal(inspection.status, 0, inspection.stdout + inspection.stderr);
       const text = pdf.toString('latin1');
       assert.equal((text.match(/\/Type \/Page\b/g) || []).length, 4);
       assert.match(text, /\/MediaBox\s*\[0 0 612 792\]/);
@@ -95,6 +114,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
       }
       await page.locator('#blank').uncheck();
       assert.equal(await page.locator('#printPages .print-page').count(), 2);
+      assert.match(await page.locator('#print-checks').innerText(), /2 exported pages/);
       await page.locator('#clear').click(); // Cancel: original workspace remains.
       assert.equal(await page.locator('.page').count(), 2);
       // Slow a real import to verify controls can't race a clear/export against it.
@@ -110,7 +130,9 @@ with zipfile.ZipFile(sys.argv[1]) as z:
       assert.ok(await page.locator('#zip').isDisabled());
       assert.ok(await page.getByRole('button', {name: 'Move later: page 1', exact: true}).isDisabled());
       await page.locator('#status').filter({hasText: '3 illustration(s), 3 printable pages'}).waitFor();
+      assert.ok(await page.locator('#print-odd-count').isVisible());
       await page.getByRole('button', {name: 'Remove page 3', exact: true}).click();
+      assert.ok(await page.locator('#print-odd-count').isHidden());
       assert.equal(await page.locator('.page').count(), 2);
       await page.locator('#upload').setInputFiles({name: 'huge.png', mimeType: 'image/png', buffer: Buffer.alloc(10 * 1024 * 1024 + 1)});
       await page.locator('#status').filter({hasText: '10 MiB'}).waitFor();

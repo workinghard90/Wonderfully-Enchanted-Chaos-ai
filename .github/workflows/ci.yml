@@ -57,6 +57,8 @@ jobs:
       - run: node tests/browser_generation.cjs
       - run: node tests/browser_recovery.cjs
       - run: node tests/browser_video.cjs
+      - run: sudo apt-get install -y poppler-utils
+      - run: node tests/coloring_print_check.cjs
       - run: node tests/browser_coloring.cjs
       - run: node tests/coloring_zip.cjs
       - run: node tests/browser_coloring_recovery.cjs

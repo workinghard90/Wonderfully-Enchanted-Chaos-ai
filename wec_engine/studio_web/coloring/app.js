@@ -1,3 +1,4 @@
+import {checkBook, fittedArtwork} from '/coloring/print-check.js';
 import {makeZip, readZip, LIMITS} from '/coloring/zip.js';
 import {readBook, writeBook, validateSnapshot} from '/coloring/project-store.js';
 
@@ -16,7 +17,7 @@ function summary() {
 
 function updateControls() {
   for (const id of ['upload', 'title', 'blank', 'open-book']) $(id).disabled = busy;
-  for (const id of ['zip', 'print', 'clear']) $(id).disabled = busy || !images.length;
+  for (const id of ['zip', 'print', 'clear', 'print-report']) $(id).disabled = busy || !images.length;
   document.querySelectorAll('.page-actions button').forEach(button => {
     button.disabled = busy || button.dataset.atBoundary === 'true';
   });
@@ -29,7 +30,7 @@ function updateControls() {
 
 function resolution(item) {
   // Contain-fit preserves aspect ratio. The limiting dimension determines PPI.
-  return Math.floor(Math.max(item.width / 7.5, item.height / 10));
+  return Math.floor(fittedArtwork(item.width, item.height).effective_ppi);
 }
 
 function render() {
@@ -79,6 +80,7 @@ function render() {
     }
   });
   status.textContent = summary();
+  renderPrintCheck();
   updateControls();
 }
 
@@ -200,6 +202,44 @@ window.addEventListener('beforeunload', event => {
   if (dirty) { event.preventDefault(); event.returnValue = ''; }
 });
 
+
+function currentPrintCheck() { return checkBook(images, $('blank').checked, $('title').value); }
+
+function renderPrintCheck() {
+  const report = currentPrintCheck(), list = $('print-checks'), problems = $('print-problems');
+  const summary = $('print-check-status');
+  summary.textContent = !images.length ? 'Add artwork to check this book.'
+    : report.basic_checks_pass ? 'Basic checks pass — inspect the final PDF next.' : 'This proof needs work before publishing.';
+  summary.className = report.basic_checks_pass ? 'quality-met' : 'quality-low';
+  list.replaceChildren(); problems.replaceChildren();
+  for (const check of report.checks) {
+    const item = document.createElement('li');
+    item.textContent = (check.passes ? 'Pass: ' : 'Needs work: ') + check.message;
+    list.append(item);
+  }
+  const low = report.pages.filter(page => !page.meets_target);
+  for (const page of low.slice(0, 6)) {
+    const item = document.createElement('li');
+    item.textContent = `Illustration ${page.illustration} (${page.name}), PDF page ${page.pdf_page}: `
+      + `${Math.floor(page.effective_ppi)} PPI at ${page.width_inches.toFixed(2)} × ${page.height_inches.toFixed(2)} in. `
+      + `At this size, 300 PPI needs about ${page.pixels_at_target.join(' × ')} original pixels.`;
+    problems.append(item);
+  }
+  if (low.length > 6) {
+    const item = document.createElement('li'); item.textContent = `${low.length - 6} more illustrations need higher-resolution originals. See the downloaded check for every page.`;
+    problems.append(item);
+  }
+  $('print-odd-count').hidden = report.exported_pages % 2 === 0;
+}
+
+$('print-report').onclick = () => {
+  if (busy || !images.length) return;
+  const report = currentPrintCheck();
+  const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], {type: 'application/json'}));
+  const link = document.createElement('a'); link.href = url; link.download = 'wec-print-check.json';
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+};
 
 function snapshot() {
   return {schema_version: 1, title: $('title').value, blank_backs: $('blank').checked,
