@@ -25,6 +25,12 @@ def main(argv=None):
     gen.add_argument("--cloud", action="store_true")
     gen.add_argument("--cloud-estimate", type=float)
     gen.add_argument("--cloud-budget", type=float, default=0)
+    art = sub.add_parser("artwork", help="Validate or explicitly execute a local high-resolution ComfyUI artwork job")
+    art.add_argument("job", help="Artwork job JSON with an exported API workflow and explicit bindings")
+    art.add_argument("output", help="Fresh output directory; existing directories are never reused")
+    art.add_argument("--execute", action="store_true", help="Submit exactly one job to the configured local GPU worker")
+    art.add_argument("--comfy-url", default=os.environ.get("WEC_COMFY_URL", "http://127.0.0.1:8188"))
+    art.add_argument("--wait-seconds", type=int, default=600)
     render = sub.add_parser("render-stills")
     render.add_argument("manifest")
     render.add_argument("output")
@@ -104,6 +110,12 @@ def main(argv=None):
         if workflow and not Path(workflow).is_absolute():
             scene["comfy_workflow"] = str((Path(args.scene_json).resolve().parent / workflow).resolve())
         print(json.dumps(HybridRouter(comfy=ComfyProvider(args.comfy_url)).generate(scene, args.out, allow_cloud=args.cloud, cloud_estimate_usd=args.cloud_estimate, cloud_budget_usd=args.cloud_budget), indent=2))
+    elif args.command == "artwork":
+        from .artwork import run_artwork_job
+        result = run_artwork_job(args.job, args.output, execute=args.execute,
+                                 comfy_url=args.comfy_url, wait_seconds=args.wait_seconds)
+        print(json.dumps(result, indent=2))
+        return 0 if not args.execute or result.get('pixel_checks_pass') else 1
     elif args.command == "render-stills":
         print(render_stills(args.manifest, args.output))
     elif args.command == "export-backup":
