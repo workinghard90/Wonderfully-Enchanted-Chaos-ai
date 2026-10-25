@@ -162,3 +162,12 @@ After review/merge, deploy the approved commit to the existing host, visit
 `/studio/`, import one project, and verify a local export before enabling any
 new AI setting. Keep the old backup on the phone. Publishing to KDP/TikTok and
 cross-device/cloud synchronization are separate actions, not automated here.
+
+## Video validation
+
+Planning, AI video drafts and render admission now share the web renderer's
+100-word/1000-character total and 25-word/200-character per-scene limits.
+Changing narration or scene count after splitting requires splitting and
+reviewing pictures again before video handoff. A rejected handoff creates no
+server project. Actual speech duration is still checked during rendering.
+See [engineering audit and roadmap](ENGINEERING_AUDIT.md).

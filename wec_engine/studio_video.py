@@ -17,11 +17,8 @@ import time
 import uuid
 
 from .studio_video_worker import write_json
-from .story import plan_story
+from .video_limits import plan_video, MAX_SECONDS, MAX_SCENES, MAX_STORY_WORDS
 
-MAX_SECONDS = 35
-MAX_SCENES = 7
-MAX_STORY_WORDS = 100
 DAILY_LIMIT = 2
 MAX_JOBS = 3
 MAX_MOVIE_BYTES = 20_000_000
@@ -165,18 +162,13 @@ class VideoJobs:
             if self.closed or not self.ready():
                 raise VideoJobError('Video rendering needs owner setup.', 503)
             project = snapshot['projects'][0]
-            if project['duration'] > MAX_SECONDS or project['scenes'] > MAX_SCENES:
-                raise VideoJobError('This video test supports up to 35 seconds and 7 scenes.')
-            if len(project['story']) > 1000 or len(project['story'].split()) > MAX_STORY_WORDS:
-                raise VideoJobError('Keep this short-video test to 100 words and 1000 characters. Shorten the story before rendering.')
-            plan = plan_story(project['story'], total_duration=project['duration'], scene_count=project['scenes'])
-            if any(len(scene['narration']) > 200 or len(scene['narration'].split()) > 25 for scene in plan['scenes']):
-                raise VideoJobError('Shorten long scene narration or increase the scene count. This test allows 25 words and 200 characters per scene.')
+            try:
+                plan_video(project['story'], duration=project['duration'], scenes=project['scenes'])
+            except ValueError as exc:
+                raise VideoJobError(str(exc)) from None
             expected = {f'scene-{i:03d}' for i in range(1, project['scenes']+1)}
             if {image['scene_id'] for image in project.get('scene_images', [])} != expected:
                 raise VideoJobError('Attach a picture to every scene before rendering.')
-            if len(project['story'].split()) < project['scenes']:
-                raise VideoJobError('Every scene needs narration. Reduce the scene count.')
             if type(ambience) is not bool:
                 raise VideoJobError('Ambience must be true or false.')
             if len(self.status()['jobs']) >= MAX_JOBS:

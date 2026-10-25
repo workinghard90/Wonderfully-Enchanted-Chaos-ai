@@ -102,6 +102,53 @@ class CreativeTests(unittest.TestCase):
             with self.assertRaises(store.GenerationLimitError):
                 store.reserve_text_generation(db)
 
+    def test_video_planning_rejects_renderer_limits(self):
+        for story, count, message in [
+            ('word ' * 101, 7, '100 words'),
+            ('word ' * 26, 1, '25 words'),
+            ('abcdefghij ' * 20, 1, '200 characters'),
+            (('x' * 100 + ' ') * 10, 7, '1000 characters'),
+            ('Hi', 2, 'Every scene needs narration'),
+        ]:
+            with self.subTest(count=count, message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    creative.plan({'story': story, 'scenes': count, 'duration': 35})
+        accepted = creative.plan({'story': 'word ' * 100, 'scenes': 4, 'duration': 35})
+        self.assertEqual(len(accepted['scenes']), 4)
+
+    def test_video_handoff_checks_current_narration_before_decoding_or_saving(self):
+        with tempfile.TemporaryDirectory() as temp:
+            db = store.init_db(Path(temp)/'studio.sqlite3')
+            value = project('video')
+            value['narration'] = 'An edited script with different words.'
+            value['sceneCount'] = 2
+            with patch.object(creative, 'prepare') as decode:
+                with self.assertRaisesRegex(ValueError, 'Narration changed'):
+                    creative.video_project(db, value)
+                decode.assert_not_called()
+            value['narration'] = '  ' + '\n'.join(p['text'] for p in value['pages']) + ' '
+            for count in (1, True, 2.0):
+                value['sceneCount'] = count
+                with self.assertRaisesRegex(ValueError, 'Scene count changed'):
+                    creative.video_project(db, value)
+            self.assertEqual(store.list_projects(db), [])
+            value['sceneCount'] = 2
+            creative.video_project(db, value)
+            self.assertEqual(len(store.list_projects(db)), 1)
+
+    def test_overlong_handoff_and_ai_draft_rejected_before_use(self):
+        with tempfile.TemporaryDirectory() as temp:
+            db = store.init_db(Path(temp)/'studio.sqlite3')
+            value = project('video', 1)
+            value['pages'][0]['text'] = 'word ' * 26
+            with self.assertRaisesRegex(ValueError, '25 words'):
+                creative.video_project(db, value)
+            self.assertEqual(store.list_projects(db), [])
+            settings = draft_settings({'kind': 'video', 'idea': 'A cloud', 'count': 1})
+            with self.assertRaisesRegex(ValueError, '25 words'):
+                validate_draft({'title': 'Cloud', 'narration': 'word ' * 26}, settings)
+            self.assertEqual(validate_draft({'title': 'Cloud', 'narration': 'A cloud smiled.'}, settings)['narration'], 'A cloud smiled.')
+
     def test_draft_schema_and_invalid_responses_never_retry(self):
         settings = draft_settings({'kind': 'storybook', 'idea': 'A cloud', 'count': 1})
         self.assertEqual(validate_draft({'title': 'A', 'pages': [{'text': 'A cloud smiled.', 'prompt': 'Cloud at sunrise'}]}, settings)['title'], 'A')
@@ -158,6 +205,17 @@ class CreativeHTTPTests(unittest.TestCase):
             status,_,_=self.request('/api/creative/image',{'prompt':'A friendly cloud'})
             self.assertEqual(status,503);call.assert_not_called()
         self.assertEqual(store.generation_usage(self.db),0)
+
+    def test_invalid_video_handoff_is_a_client_error_without_side_effects(self):
+        value = project('video')
+        value['narration'] = 'New script that has not been split.'
+        code, body, _ = self.request('/api/creative/video', value)
+        self.assertEqual(code, 400)
+        self.assertIn('Narration changed', json.loads(body)['error'])
+        self.assertEqual(store.list_projects(self.db), [])
+        code, _, _ = self.request('/api/creative/plan', {'story': 'word '*26, 'scenes': 1, 'duration': 35})
+        self.assertEqual(code, 400)
+        self.assertEqual(store.generation_usage(self.db), 0)
 
 
 if __name__ == '__main__':
