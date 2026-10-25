@@ -252,8 +252,34 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "2 picture(s) added and saved" })
         .waitFor();
+      // Later narration/count edits must never hand off older scenes or erase art.
+      let handoffs = 0;
+      page.on("request", (request) => {
+        if (request.url() === base + "/api/creative/video") handoffs++;
+      });
+      const originalNarration = await page.locator("#narration").inputValue();
+      await page.locator("#narration").fill("A newly edited script.");
+      await page.locator("#video").click();
+      await ready(page);
+      assert.match(await page.locator("#status").innerText(), /Use Split narration/);
+      assert.equal(handoffs, 0);
+      assert.equal(await page.locator(".page img").count(), 2);
+      await page.locator("#narration").fill(originalNarration);
+      await page.locator("#scene-count").fill("3");
+      await page.locator("#video").click();
+      await ready(page);
+      assert.match(await page.locator("#status").innerText(), /Use Split narration/);
+      assert.equal(handoffs, 0);
+      await page.locator("#narration").fill("word ".repeat(101));
+      await page.locator("#split").click();
+      await ready(page);
+      assert.match(await page.locator("#status").innerText(), /100 words/);
+      assert.equal(await page.locator(".page img").count(), 2);
+      await page.locator("#narration").fill(originalNarration);
+      await page.locator("#scene-count").fill("2");
       await page.locator("#video").click();
       await page.waitForURL(/\?project=/);
+      assert.equal(handoffs, 1);
       await page.locator("#preview .scene").first().waitFor();
       assert.equal(await page.locator(".scene-image").count(), 2);
       assert.equal(errors.length, 0, errors.join("\n"));

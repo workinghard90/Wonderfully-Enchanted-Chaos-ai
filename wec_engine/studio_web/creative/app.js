@@ -376,6 +376,15 @@ function readiness() {
   const count = project.kind === "coloring" ? 2 + n * 2 : 2 + n + (n % 2);
   $("readiness").textContent =
     `${complete}/${n} pictures ready${project.kind === "video" ? "" : ` · ${count} PDF pages`}${low ? ` · ${low} image(s) below the 300 PPI print target` : ""}. ${project.kind === "storybook" ? "Every picture needs its own story text." : ""}`;
+  if (project.kind === "video" && videoSceneIssue())
+    $("readiness").textContent += " " + videoSceneIssue();
+}
+function videoSceneIssue() {
+  const normalized = (value) => value.trim().replace(/\s+/g, " ");
+  if (project.sceneCount !== project.pages.length ||
+      normalized(project.narration) !== normalized(project.pages.map((p) => p.text).join(" ")))
+    return "Narration or scene count changed. Use Split narration and review the pictures before opening Video Studio.";
+  return "";
 }
 async function inspect(file, source) {
   if (!file.size || file.size > 10 * 1024 * 1024)
@@ -461,6 +470,8 @@ function download(blob, suffix) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 async function generate(page) {
+  if (project.kind === "video" && videoSceneIssue())
+    throw Error(videoSceneIssue());
   const prompt = promptFor(page);
   if (prompt.length > 2048)
     throw Error(
@@ -745,6 +756,8 @@ $("pdf").onclick = () =>
   });
 $("video").onclick = () =>
   run(async () => {
+    readFields();
+    if (videoSceneIssue()) throw Error(videoSceneIssue());
     await persist();
     say("Preparing a new server copy with these pictures…");
     const value = await (

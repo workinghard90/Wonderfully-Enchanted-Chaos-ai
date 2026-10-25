@@ -8,7 +8,7 @@ import threading
 import warnings
 
 from PIL import Image, ImageOps, UnidentifiedImageError
-from .story import plan_story
+from .video_limits import plan_video
 from .studio_store import _read_image, restore_backup, StorageLimitError
 
 MAX_CREATIVE_BODY = 42 * 1024 * 1024
@@ -39,10 +39,7 @@ def plan(payload):
         raise ValueError('Choose 1-7 scenes for phone video export')
     if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or not 1 <= duration <= 35:
         raise ValueError('Choose a video duration from 1 to 35 seconds')
-    result = plan_story(story, scene_count=count, total_duration=duration)
-    if any(not scene['narration'] for scene in result['scenes']):
-        raise ValueError('Use more words or fewer scenes')
-    return result
+    return plan_video(story, scenes=count, duration=duration)
 
 
 def prepare(payload):
@@ -182,13 +179,25 @@ def book_pdf(payload):
 
 
 def video_project(db_path, payload):
-    value = prepare(payload)
-    if value['kind'] != 'video':
+    if not isinstance(payload, dict) or payload.get('kind') != 'video':
         raise ValueError('Choose a video project')
-    story = ' '.join(page['text'] for page in value['pages'])
-    planned = plan({'story': story, 'scenes': len(value['pages']), 'duration': payload.get('duration', 35)})
-    if any(' '.join(page['text'].split()) != scene['narration'] for page, scene in zip(value['pages'], planned['scenes'])):
+    pages = payload.get('pages')
+    if not isinstance(pages, list) or not 1 <= len(pages) <= 7 or any(not isinstance(p, dict) for p in pages):
+        raise ValueError('Add 1-7 video scenes')
+    words = [text(p.get('text', ''), 'Scene text', 1800) for p in pages]
+    story = ' '.join(words)
+    # Older API clients supply only page text. New workspace payloads also carry
+    # the editable narration and count: never silently discard those edits.
+    if 'narration' in payload:
+        narration = text(payload['narration'], 'Narration', 30000, True)
+        if ' '.join(narration.split()) != ' '.join(story.split()):
+            raise ValueError('Narration changed. Use Split narration and review the pictures before opening Video Studio.')
+    if 'sceneCount' in payload and (type(payload['sceneCount']) is not int or payload['sceneCount'] != len(pages)):
+        raise ValueError('Scene count changed. Use Split narration and review the pictures before opening Video Studio.')
+    planned = plan({'story': story, 'scenes': len(pages), 'duration': payload.get('duration', 35)})
+    if any(' '.join(page_text.split()) != scene['narration'] for page_text, scene in zip(words, planned['scenes'])):
         raise ValueError('Scene text changed. Use Split narration before attaching pictures so scene boundaries match the video renderer')
+    value = prepare(payload)
     images = []
     for index, page in enumerate(value['pages'], 1):
         raw, _, _ = _read_image(page['raw'])
