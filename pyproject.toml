@@ -3,11 +3,11 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "wec-ai-engine"
-version = "0.11.0"
+version = "0.12.0"
 readme = "README.md"
 description = "Hybrid scene generation and video assembly for Wonderfully Enchanted Chaos"
 requires-python = ">=3.10"
-dependencies = ["Pillow>=10.0", "requests>=2.31"]
+dependencies = ["Pillow>=10.0", "requests>=2.31", "reportlab>=4.0,<5"]
 [project.optional-dependencies]
 narration = ["piper-tts>=1.3,<2"]
 [project.scripts]
@@ -17,4 +17,4 @@ wec-studio = "wec_engine.studio:main"
 include = ["wec_engine*"]
 
 [tool.setuptools.package-data]
-wec_engine = ["studio_web/*.html", "studio_web/*.js", "studio_web/*.css", "studio_web/coloring/*.html", "studio_web/coloring/*.js", "studio_web/coloring/*.css"]
+wec_engine = ["studio_web/*.html", "studio_web/*.js", "studio_web/*.css", "studio_web/coloring/*.html", "studio_web/coloring/*.js", "studio_web/coloring/*.css", "studio_web/creative/*.html", "studio_web/creative/*.js", "studio_web/creative/*.css", "fonts/*.ttf", "fonts/*.txt"]

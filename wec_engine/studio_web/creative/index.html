@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#171d29" />
+    <title>WEC Creative Studio</title>
+    <link rel="stylesheet" href="/studio/style.css" />
+    <script type="module" src="/studio/app.js"></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/studio/">✦ WEC <span>CREATIVE STUDIO</span></a
+      ><a href="/">Video renders &amp; saved stories ↗</a>
+    </header>
+    <main>
+      <section class="hero">
+        <p class="eyebrow">ONE IDEA. A WORLD OF POSSIBILITIES.</p>
+        <h1>Your next creation starts here.</h1>
+        <p>
+          Make faceless videos, build an art collection, and turn your
+          characters into coloring books and illustrated stories.
+        </p>
+      </section>
+      <nav class="formats" aria-label="Create a project">
+        <button data-kind="video">
+          <span>01 / MOTION</span>Faceless video<small
+            >Narration → scenes → movie</small
+          >
+        </button>
+        <button data-kind="art">
+          <span>02 / IMAGINATION</span>Art collection<small
+            >Prompts → pictures → originals</small
+          >
+        </button>
+        <button data-kind="coloring">
+          <span>03 / PLAY</span>Coloring book<small
+            >Line art → page order → print PDF</small
+          >
+        </button>
+        <button data-kind="storybook">
+          <span>04 / WONDER</span>Storybook<small
+            >Story text + pictures → print PDF</small
+          >
+        </button>
+      </nav>
+      <p class="notice">
+        Projects save in this browser on this device. Download a project backup
+        to protect your originals or move to another device. Browser storage can
+        be cleared; this is not cloud sync.
+      </p>
+      <p id="status" role="status" aria-live="polite">
+        Opening your project library…
+      </p>
+      <div class="workspace">
+        <aside class="panel">
+          <p class="eyebrow">YOUR COLLECTION</p>
+          <h2>Project library</h2>
+          <label class="file-button"
+            >Open project backup<input
+              id="restore"
+              type="file"
+              accept="application/json,.json"
+          /></label>
+          <label class="file-button"
+            >Import coloring ZIP<input
+              id="import-zip"
+              type="file"
+              accept="application/zip,.zip"
+          /></label>
+          <div id="library"></div>
+          <h3>Existing video projects</h3>
+          <button id="server-refresh" class="secondary">
+            Load server stories
+          </button>
+          <div id="server-projects"></div>
+        </aside>
+        <section id="editor" class="panel" hidden>
+          <div class="section-heading">
+            <div>
+              <p id="kind-label" class="eyebrow"></p>
+              <h2 id="editor-heading">Your project</h2>
+            </div>
+            <span id="save-status" role="status">Not saved yet</span>
+          </div>
+          <label for="title">Project title</label
+          ><input
+            id="title"
+            maxlength="150"
+            placeholder="Give your creation a name"
+          />
+          <label for="author">Author / creator</label
+          ><input
+            id="author"
+            maxlength="100"
+            placeholder="Your name or creative brand"
+          />
+          <details class="character">
+            <summary>Character &amp; visual style</summary>
+            <label for="profile">Saved character descriptions</label
+            ><select id="profile">
+              <option value="">Choose a character</option>
+            </select>
+            <label for="character-name">Character / brand name</label
+            ><input id="character-name" maxlength="80" placeholder="Pip" />
+            <label for="character">Character description</label
+            ><textarea
+              id="character"
+              rows="3"
+              maxlength="700"
+              placeholder="Appearance, clothing, colors and details to keep consistent"
+            ></textarea>
+            <label for="style">Visual style</label
+            ><textarea
+              id="style"
+              rows="2"
+              maxlength="300"
+              placeholder="Soft watercolor, warm cream, lavender and sky blue"
+            ></textarea>
+            <button id="save-profile" class="secondary">
+              Save character description
+            </button>
+            <p class="muted">
+              Descriptions are included in each image prompt. The current
+              Cloudflare model uses text only; matching a character across
+              pictures still needs visual review.
+            </p>
+          </details>
+          <details class="character">
+            <summary>Start from an idea with AI</summary>
+            <label for="idea">What would you like to make?</label
+            ><textarea
+              id="idea"
+              maxlength="1500"
+              rows="3"
+              placeholder="A cozy adventure about Pip helping a lost firefly"
+            ></textarea>
+            <label for="draft-count"
+              >Pages / scenes in this draft (up to 12; videos up to 7)</label
+            ><input id="draft-count" type="number" min="1" max="12" value="7" />
+            <button id="draft">Draft this idea</button>
+            <p id="draft-status" class="muted">Checking AI drafting…</p>
+            <p class="muted">
+              Review the draft before generating pictures. Book drafts add
+              pages; video drafts replace scene text after confirmation. Each
+              click makes one text request, never an image batch.
+            </p>
+          </details>
+          <div id="video-settings" hidden>
+            <label for="narration">Full narration</label
+            ><textarea
+              id="narration"
+              rows="5"
+              maxlength="30000"
+              placeholder="Paste your finished script here"
+            ></textarea>
+            <div class="two">
+              <div>
+                <label for="scene-count">Scenes (1–7)</label
+                ><input
+                  id="scene-count"
+                  type="number"
+                  min="1"
+                  max="7"
+                  value="7"
+                />
+              </div>
+              <div>
+                <label for="duration">Movie length, seconds (1–35)</label
+                ><input
+                  id="duration"
+                  type="number"
+                  min="1"
+                  max="35"
+                  value="35"
+                />
+              </div>
+            </div>
+            <button id="split" class="secondary">
+              Split narration into scenes
+            </button>
+            <p class="muted">
+              This arranges your text; it does not write a new story or call an
+              AI model. Final movies use narrated stills, captions and gentle
+              ambience. Animated video generation needs a separate worker.
+            </p>
+          </div>
+          <p id="generation-status" class="muted">Checking image generation…</p>
+          <div id="book-planner">
+            <label for="outline">Page ideas or story paragraphs</label
+            ><textarea
+              id="outline"
+              rows="4"
+              maxlength="30000"
+              placeholder="For art/coloring: one scene idea per line. For storybooks: separate each page's story text with a blank line."
+            ></textarea
+            ><button id="plan-pages" class="secondary">
+              Create pages from these ideas
+            </button>
+            <p class="muted">
+              Your words become page text or image prompts. Existing pages stay
+              in place.
+            </p>
+          </div>
+          <div class="toolbar">
+            <button id="save">Save project</button
+            ><button id="add" class="secondary">Add page</button
+            ><label class="file-button"
+              >Add pictures<input
+                id="pictures"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+                multiple
+            /></label>
+          </div>
+          <details>
+            <summary>Use this idea in another format</summary>
+            <label for="variant-kind">New format</label
+            ><select id="variant-kind">
+              <option value="video">Faceless video</option>
+              <option value="art">Art collection</option>
+              <option value="coloring">Coloring book</option>
+              <option value="storybook">Storybook</option></select
+            ><button id="variant" class="secondary">
+              Create a separate project copy
+            </button>
+            <p class="muted">
+              Your original stays saved. Coloring variants need new line art;
+              existing color pictures are not turned into outlines. Video
+              variants keep images only when scene text still matches exactly.
+            </p>
+          </details>
+          <p id="page-help" class="muted"></p>
+          <ol id="pages"></ol>
+          <section class="delivery">
+            <h3>Make something you can keep.</h3>
+            <p id="readiness"></p>
+            <details id="cover-settings">
+              <summary>Paperback cover</summary>
+              <label for="cover-picture"
+                >Optional cover picture (uses first page if empty)</label
+              ><input
+                id="cover-picture"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+              />
+              <p id="cover-info" class="muted">No separate cover picture.</p>
+              <label for="back-text">Back-cover description</label
+              ><textarea
+                id="back-text"
+                rows="4"
+                maxlength="800"
+                placeholder="Introduce your book to its readers"
+              ></textarea
+              ><button id="cover">Download wraparound cover PDF</button>
+              <p class="muted">
+                Template: Letter paperback, white paper, black-ink coloring
+                interior or premium-color story/art interior. Page count matches
+                this studio’s interior export. No spine text; barcode space
+                reserved. Changing trim, paper or ink requires a different
+                cover. Review in KDP before ordering a proof.
+              </p>
+            </details>
+            <div class="toolbar">
+              <button id="backup" class="secondary">
+                Download project backup</button
+              ><button id="zip" class="secondary">Download artwork ZIP</button
+              ><button id="pdf">Download book PDF</button
+              ><button id="video">Open in Video Studio</button>
+            </div>
+            <p id="export-note" class="muted"></p>
+          </section>
+        </section>
+        <section id="empty" class="panel empty">
+          <span>✦</span>
+          <h2>A home for every idea.</h2>
+          <p>
+            Choose a format above, or open a project from your library. Start
+            with artwork you already have, or generate one picture at a time
+            when your provider is ready.
+          </p>
+        </section>
+      </div>
+    </main>
+    <footer>
+      Wonderfully Enchanted Chaos · Create deliberately. Keep your originals.
+    </footer>
+  </body>
+</html>
