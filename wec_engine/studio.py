@@ -22,6 +22,9 @@ from .studio_store import (
 from .orchestrator import run_production
 from .providers.cloudflare_images import CloudflareImages, GenerationError, validate_prompt
 from .studio_video import VideoJobs, VideoJobError
+from . import creative
+from .studio_store import reserve_creative_generation, reserve_text_generation
+from .providers.cloudflare_text import CloudflareText, MODEL as TEXT_MODEL, draft_settings
 
 ROOT = Path(__file__).parent / 'studio_web'
 MAX_BODY = 128 * 1024
@@ -41,6 +44,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
     data_dir = Path(data_dir).resolve()
     media_lock = threading.Lock()
     image_provider = CloudflareImages()
+    text_provider = CloudflareText()
     videos = video_jobs or VideoJobs(data_dir/'video-jobs')
     class Handler(BaseHTTPRequestHandler):
         video_jobs = videos
@@ -118,6 +122,16 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             path = urlparse(self.path).path
             if self.command == 'GET' and path == '/':
                 self._send(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8'); return
+            creative_assets = {
+                '/studio': ('index.html', 'text/html; charset=utf-8'),
+                '/studio/': ('index.html', 'text/html; charset=utf-8'),
+                '/studio/app.js': ('app.js', 'application/javascript; charset=utf-8'),
+                '/studio/store.js': ('store.js', 'application/javascript; charset=utf-8'),
+                '/studio/style.css': ('style.css', 'text/css; charset=utf-8'),
+            }
+            if self.command == 'GET' and path in creative_assets:
+                name, mime = creative_assets[path]
+                self._send(200, (ROOT / 'creative' / name).read_bytes(), mime); return
             # Fixed asset allowlist: user artwork is handled in the browser only.
             coloring_assets = {
                 '/coloring': ('index.html', 'text/html; charset=utf-8'),
@@ -137,6 +151,52 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             if path == '/api/health' and self.command == 'GET':
                 self._send(200, {'ok':True}); return
             if not self._authorized(): return
+            if path == '/api/creative/text' and self.command == 'GET':
+                self._send(200, {'ready': bool(text_provider.ready() and token and len(token) >= 32), 'model': TEXT_MODEL, 'daily_limit': 5}); return
+            if path in ('/api/creative/plan', '/api/creative/image', '/api/creative/pdf', '/api/creative/cover', '/api/creative/video', '/api/creative/draft') and self.command == 'POST':
+                if not media_lock.acquire(blocking=False):
+                    self._send(429, {'error': 'Another image, export or backup operation is running.'}); return
+                try:
+                    limit = 128 * 1024 if path.endswith(('/plan', '/image', '/draft')) else creative.MAX_CREATIVE_BODY
+                    body = json.loads(self._read_body(limit))
+                    if path.endswith('/plan'):
+                        self._send(200, creative.plan(body))
+                    elif path.endswith('/pdf'):
+                        self._send(200, creative.book_pdf(body), 'application/pdf')
+                    elif path.endswith('/cover'):
+                        self._send(200, creative.cover_pdf(body), 'application/pdf')
+                    elif path.endswith('/video'):
+                        self._send(200, creative.video_project(db_path, body))
+                    elif path.endswith('/draft'):
+                        if not token or len(token) < 32 or not text_provider.ready():
+                            raise GenerationError('AI drafting needs owner setup and a studio token of at least 32 characters.', 503)
+                        settings = draft_settings(body)
+                        reserve_text_generation(db_path)
+                        self._send(200, text_provider.generate(settings))
+                    else:
+                        if not token or len(token) < 32:
+                            raise GenerationError('Creative image generation requires a studio token of at least 32 characters.', 503)
+                        prompt = validate_prompt(body.get('prompt') if isinstance(body, dict) else None)
+                        if not image_provider.ready():
+                            raise GenerationError('Image generation needs owner setup before it can run.', 503)
+                        reserve_creative_generation(db_path)
+                        raw = image_provider.generate(prompt)
+                        import io
+                        from PIL import Image
+                        with Image.open(io.BytesIO(raw)) as image:
+                            mime = Image.MIME[image.format]
+                        self._send(200, raw, mime)
+                except GenerationError as exc:
+                    self._send(exc.status, {'error': str(exc)})
+                except GenerationLimitError as exc:
+                    self._send(429, {'error': str(exc)})
+                except StorageLimitError as exc:
+                    self._send(413, {'error': str(exc)})
+                except (ValueError, TypeError, KeyError, OSError) as exc:
+                    self._send(400, {'error': str(exc)})
+                finally:
+                    media_lock.release()
+                return
             if path == '/api/video' and self.command == 'GET':
                 if not token or len(token) < 32:
                     self._send(200, {'ready': False, 'message': 'Set a studio access token of at least 32 characters to enable video export.',

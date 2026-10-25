@@ -54,6 +54,7 @@ def init_db(path):
         db.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, title TEXT NOT NULL, story TEXT NOT NULL, duration REAL NOT NULL, scenes INTEGER NOT NULL, updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)')
         db.execute('CREATE TABLE IF NOT EXISTS scene_images (project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, scene_id TEXT NOT NULL, image BLOB NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (project_id,scene_id))')
         db.execute('CREATE TABLE IF NOT EXISTS image_generation_usage (day TEXT PRIMARY KEY, attempts INTEGER NOT NULL)')
+        db.execute('CREATE TABLE IF NOT EXISTS text_generation_usage (day TEXT PRIMARY KEY, attempts INTEGER NOT NULL)')
     return path
 
 
@@ -316,3 +317,24 @@ def reserve_generation(path, pid, sid, expected_project):
         if row and row[0] >= MAX_GENERATIONS_PER_DAY:
             raise GenerationLimitError('This studio has used its 20 image attempts for today. Try after midnight UTC.')
         db.execute('INSERT INTO image_generation_usage(day,attempts) VALUES (?,1) ON CONFLICT(day) DO UPDATE SET attempts=attempts+1', (day,))
+
+
+def reserve_creative_generation(path):
+    """Share the existing daily allowance with the device-based creative studio."""
+    with _database(path) as db:
+        db.execute('BEGIN IMMEDIATE')
+        day = _generation_day()
+        row = db.execute('SELECT attempts FROM image_generation_usage WHERE day=?', (day,)).fetchone()
+        if row and row[0] >= MAX_GENERATIONS_PER_DAY:
+            raise GenerationLimitError('This studio has used its 20 image attempts for today. Try after midnight UTC.')
+        db.execute('INSERT INTO image_generation_usage(day,attempts) VALUES (?,1) ON CONFLICT(day) DO UPDATE SET attempts=attempts+1', (day,))
+
+
+def reserve_text_generation(path):
+    with _database(path) as db:
+        db.execute('BEGIN IMMEDIATE')
+        day = _generation_day()
+        row = db.execute('SELECT attempts FROM text_generation_usage WHERE day=?', (day,)).fetchone()
+        if row and row[0] >= 5:
+            raise GenerationLimitError('This studio has used its five text draft attempts today. Try after midnight UTC.')
+        db.execute('INSERT INTO text_generation_usage(day,attempts) VALUES (?,1) ON CONFLICT(day) DO UPDATE SET attempts=attempts+1', (day,))

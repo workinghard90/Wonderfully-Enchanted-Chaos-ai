@@ -9,6 +9,20 @@ the dashboard after owner setup. A live FLUX image request has been verified
 through the hosted studio API. The offline `export-backup` command turns a
 complete image backup into a narrated vertical MP4.
 
+## Creative Studio: videos, art and books
+
+Open **`/studio/`** on your existing studio host for a shared iPhone/Windows
+workspace: multiple device-saved projects, reusable character descriptions,
+optional AI scripts/page drafts, one-picture generation, original artwork ZIPs,
+coloring/storybook interior PDFs, matching cover templates and a handoff into
+the narrated video renderer. Create separate format variants without replacing
+your source project. Keep downloaded JSON project backups; browser storage is
+not cloud sync. [Workflow, limits and setup](docs/CREATIVE_STUDIO.md).
+
+Text drafting is opt-in and **not live tested** in this release. Existing image
+setup is reused; character matching and native high-resolution output are not
+guaranteed. No paid calls, public deployments or automatic publishing were made.
+
 ## Start the studio on Windows
 
 Requires Python 3.10 or newer. Run from the folder containing `pyproject.toml`:
@@ -50,6 +64,15 @@ WEC artwork ZIP to recover a book or move it between devices; keep ZIPs and orig
 because browser storage can be cleared. It uses no generation credits and is separate from story
 backups. On iPhone use the hosted page in Safari. See the
 [coloring workflow and prototype limits](docs/COLORING_STUDIO.md).
+
+## High-resolution artwork workers
+
+Use `wec artwork JOB.json OUTPUT_DIR` to validate a reviewed ComfyUI artwork job
+offline. Add `--execute` to submit one job to a separately prepared local GPU
+worker, retain the original PNG and check its actual print-size resolution.
+[Model candidates, Windows setup and limits](docs/HIGH_RES_ARTWORK.md).
+This CLI path requires a worker/model; it is not enabled on the free Render
+dashboard, and no live high-resolution model run has been verified.
 
 ## What works and what needs setup
 

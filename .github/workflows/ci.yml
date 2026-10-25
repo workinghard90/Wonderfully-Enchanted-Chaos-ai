@@ -62,6 +62,7 @@ jobs:
       - run: node tests/browser_coloring.cjs
       - run: node tests/coloring_zip.cjs
       - run: node tests/browser_coloring_recovery.cjs
+      - run: node tests/browser_creative.cjs
   container:
     runs-on: ubuntu-latest
     steps:

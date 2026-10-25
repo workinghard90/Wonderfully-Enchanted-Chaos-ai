@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "workflow": "../workflows/local/artwork-api.json",
+  "source_method": "reference_edit",
+  "save_image_node": "9",
+  "expected_pixels": [2304, 3072],
+  "artwork_box_inches": [7.5, 10],
+  "target_ppi": 300,
+  "bindings": {
+    "6.text": "A single children's coloring illustration of Pip, a round fluffy cloud sprite with two tiny stub arms, large round eyes and one curl on top, smiling below a rainbow and friendly stars. Clean black outlines, white background, open coloring areas, no lettering. Match the supplied character reference."
+  },
+  "reference": {
+    "file": "../assets/references/pip.png",
+    "input_binding": "7.image"
+  }
+}

@@ -417,4 +417,8 @@ $('render-video').onclick = () => runAction(async () => {
   msg('Movie rendering started. You can follow its progress below.');
 });
 window.addEventListener('beforeunload', event => { if (dirty || busy) { event.preventDefault(); event.returnValue = ''; } });
-runAction(async () => { await deviceTask(readDevice); await refresh(); await refreshVideos(); });
+runAction(async () => {
+  await deviceTask(readDevice); await refresh(); await refreshVideos();
+  const id = new URLSearchParams(location.search).get('project');
+  if (id && /^[a-f0-9]{32}$/.test(id)) { load(await api('/api/projects/' + id)); await showScenes(); }
+});
