@@ -130,6 +130,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 '/studio/': ('index.html', 'text/html; charset=utf-8'),
                 '/studio/app.js': ('app.js', 'application/javascript; charset=utf-8'),
                 '/studio/video.js': ('video.js', 'application/javascript; charset=utf-8'),
+                '/studio/artwork-picker.js': ('artwork-picker.js', 'application/javascript; charset=utf-8'),
                 '/studio/store.js': ('store.js', 'application/javascript; charset=utf-8'),
                 '/studio/style.css': ('style.css', 'text/css; charset=utf-8'),
             }

@@ -286,3 +286,20 @@ already have consumed an attempt, so check before retrying.
 
 See [the generation audit and current limits](GENERATION_TROUBLESHOOTING.md) for
 verified findings, deployment evidence and the remaining live-account checks.
+
+## Reuse saved artwork across studios
+
+Each page or video scene now offers **Reuse saved artwork**. Choose another
+saved project from this browser, preview its page pictures and select one.
+Replacing an existing picture asks for confirmation. Cancel or Escape keeps the
+current picture. The picker reads one source project at a time and copies the
+original bytes into the destination, subject to the usual image/project limits.
+No AI request is made. Source artwork, destination text and prompts remain unchanged.
+
+This works across all four formats without an export/upload round trip. Save
+source work first; the picker sees saved page pictures, not unsaved edits, covers
+or reference-only images. Copies are independent, so later source edits do not
+update the destination. Backups include the copied original. This is a first
+step toward a shared asset library, not cloud sync or deduplicated storage.
+Colored pictures remain colored originals; choosing one for a coloring project
+does not convert it into line art. Review suitability and print quality before export.

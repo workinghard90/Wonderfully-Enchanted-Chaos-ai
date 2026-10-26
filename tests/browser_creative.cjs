@@ -216,6 +216,53 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "1 picture(s) added and saved" })
         .waitFor();
+      // Reuse a saved storybook original in a coloring page, independently.
+      const reuseButton = () => page.getByRole('button', {name:'Reuse saved artwork', exact:true}).first();
+      await reuseButton().click();
+      const picker = page.getByRole('dialog', {name:'Reuse saved artwork'});
+      await picker.getByLabel('Saved source project').selectOption(backup.id);
+      await picker.getByRole('button', {name:/Use page 1/}).waitFor();
+      await picker.screenshot({path:path.join(directory, `artwork-picker-${viewport.width}.png`)});
+      assert.equal(await picker.evaluate(el => el.scrollWidth <= el.clientWidth), true);
+      await picker.getByRole('button', {name:'Cancel', exact:true}).click(); await ready(page);
+      assert.equal(await picker.count(), 0);
+      await reuseButton().click();
+      await picker.getByLabel('Saved source project').selectOption(backup.id);
+      accept = false;
+      await picker.getByRole('button', {name:/Use page 1/}).click(); await ready(page);
+      accept = true;
+      assert.notEqual(JSON.parse((await download(page, '#backup')).toString()).pages[0].asset.source, 'Reused saved original');
+      await reuseButton().click();
+      await picker.getByLabel('Saved source project').selectOption(backup.id);
+      await picker.getByRole('button', {name:/Use page 1/}).click();
+      await page.locator('#status').filter({hasText:'Saved artwork copied'}).waitFor();
+      const copied = JSON.parse((await download(page, '#backup')).toString());
+      assert.equal(copied.pages[0].asset.image_base64, png.toString('base64'));
+      assert.equal(copied.pages[0].asset.source, 'Reused saved original');
+      const sourceAsset = await page.evaluate(async id => {
+        const store = await import('/studio/store.js');
+        return (await store.get(id)).pages[0].asset.source;
+      }, backup.id);
+      assert.equal(sourceAsset, backup.pages[0].asset.source);
+      const extraSources = await page.evaluate(async () => {
+        const store = await import('/studio/store.js');
+        const emptyId = crypto.randomUUID(), badId = crypto.randomUUID();
+        await store.save({id:emptyId, title:'Empty source', kind:'art', pages:[]});
+        await store.save({id:badId, title:'Broken image source', kind:'art', pages:[{asset:{name:'broken.png', blob:new Blob(['bad image']), width:40, height:30}}]});
+        return {emptyId, badId};
+      });
+      await reuseButton().click();
+      await picker.getByLabel('Saved source project').selectOption(extraSources.emptyId);
+      await picker.getByRole('status').filter({hasText:'no saved page pictures'}).waitFor();
+      assert.equal(await picker.getByRole('button', {name:/Use page/}).count(), 0);
+      await picker.getByLabel('Saved source project').selectOption(extraSources.badId);
+      await picker.getByRole('button', {name:/Use page 1/}).click(); await ready(page);
+      assert.match(await page.locator('#status').innerText(), /Choose a PNG, JPG or WebP/);
+      assert.equal(JSON.parse((await download(page, '#backup')).toString()).pages[0].asset.image_base64, png.toString('base64'));
+      await reuseButton().click();
+      await picker.waitFor({state:'visible'});
+      await page.keyboard.press('Escape'); await ready(page);
+      assert.equal(await picker.count(), 0);
       const colorPdf = await download(page, "#pdf");
       assert.equal(
         (colorPdf.toString("latin1").match(/\/Type \/Page\b/g) || []).length,
@@ -517,7 +564,7 @@ const assert = require("node:assert/strict");
         passed: true,
         viewports: [390, 1440],
         checks:
-          "four formats, PDF/ZIP, original bytes, drafts, profiles with original references across four formats, reference backup/restore/isolation/variants, refresh, restore, conflict protection, inline render consent/progress/playback/MP4/reload/removal, no-retry image failure",
+          "saved-artwork picker: original copies, source isolation, cancel/Escape, rejected replacement, empty/corrupt sources, phone layout; four formats, PDF/ZIP, original bytes, drafts, profiles with original references across four formats, reference backup/restore/isolation/variants, refresh, restore, conflict protection, inline render consent/progress/playback/MP4/reload/removal, no-retry image failure",
         evidence: directory,
       }),
     );

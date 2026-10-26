@@ -1,4 +1,5 @@
 import { videoPanel } from "/studio/video.js";
+import { chooseSavedArtwork } from "/studio/artwork-picker.js";
 import * as storage from "/studio/store.js";
 import { makeZip, readZip } from "/coloring/zip.js";
 const $ = (id) => document.getElementById(id),
@@ -345,6 +346,18 @@ function render() {
       });
     fileLabel.append(upload);
     visual.append(fileLabel);
+    visual.append(button("Reuse saved artwork", async () => {
+      const chosen = await chooseSavedArtwork(storage, project.id);
+      if (!chosen) return;
+      if (page.asset && !confirm("Replace this page's picture with the selected saved artwork? The source project stays unchanged.")) return;
+      const asset = await inspect(new File([chosen.blob], chosen.name, { type: chosen.blob.type }), "Reused saved original");
+      checkAssets(asset, page);
+      page.asset = asset;
+      dirty = true;
+      await persist();
+      render();
+      say("Saved artwork copied to this page. Review its suitability for this project before exporting.");
+    }));
     if (project.kind === "storybook" || project.kind === "video") {
       const l = document.createElement("label");
       l.textContent =
