@@ -763,7 +763,7 @@ $("video").onclick = () =>
     const value = await (
       await api("/api/creative/video", await payload())
     ).json();
-    location.href = "/?project=" + encodeURIComponent(value.projects[0].id);
+    location.href = "/video/?project=" + encodeURIComponent(value.projects[0].id);
   });
 async function restore(file) {
   if (file.size > MAX_BYTES * 1.4 + 1024 * 1024)

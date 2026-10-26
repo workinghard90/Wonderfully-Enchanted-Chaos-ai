@@ -87,7 +87,13 @@ const assert = require("node:assert/strict");
         errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       page.on("dialog", (d) => d.accept());
-      await page.goto(base + "/studio/");
+      await page.goto(base + "/");
+      await page.locator('a[href="/video/"]').click();
+      await page.locator('#story').waitFor();
+      await page.getByRole('link', {name: 'All studios'}).click();
+      await page.locator('a[href="/coloring/"]').click();
+      await page.locator('#open-book').waitFor();
+      await page.getByRole('link', {name: 'All studios'}).click();
       await page
         .locator("#status")
         .filter({ hasText: "Choose a format" })
@@ -278,7 +284,7 @@ const assert = require("node:assert/strict");
       await page.locator("#narration").fill(originalNarration);
       await page.locator("#scene-count").fill("2");
       await page.locator("#video").click();
-      await page.waitForURL(/\?project=/);
+      await page.waitForURL(/\/video\/\?project=/);
       assert.equal(handoffs, 1);
       await page.locator("#preview .scene").first().waitFor();
       assert.equal(await page.locator(".scene-image").count(), 2);

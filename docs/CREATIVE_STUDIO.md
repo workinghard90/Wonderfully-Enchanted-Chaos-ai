@@ -171,3 +171,19 @@ Changing narration or scene count after splitting requires splitting and
 reviewing pictures again before video handoff. A rejected handoff creates no
 server project. Actual speech duration is still checked during rendering.
 See [engineering audit and roadmap](ENGINEERING_AUDIT.md).
+
+## Central entrance and existing projects
+
+The site root (`/`) now opens the shared Creative Studio with Video, Artwork,
+Coloring, and Storybook choices. `/studio/` remains a compatible alias and uses
+the same browser project library.
+
+“Continue an existing project” links to `/video/` for saved stories and video
+renders, and `/coloring/` for original coloring projects. Both tools include an
+“All studios” link back home. Video preparation now opens `/video/?project=…`;
+older `/?project=…` bookmarks still open the correct story editor.
+
+This change unifies navigation, not storage: existing projects remain in their
+current stores. No automatic migration or deletion occurs. Download backups
+from each tool before moving projects. Full rendering integration and consolidation of project storage remain
+subsequent work. Existing import controls remain available in the shared library.
