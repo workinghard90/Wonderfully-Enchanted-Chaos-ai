@@ -20,7 +20,7 @@ from .studio_store import (
     generation_usage, reserve_generation, MAX_GENERATIONS_PER_DAY, GenerationLimitError,
 )
 from .orchestrator import run_production
-from .providers.cloudflare_images import CloudflareImages, GenerationError, validate_prompt
+from .providers.cloudflare_images import CloudflareImages, GenerationError, validate_prompt, prepare_reference
 from .studio_video import VideoJobs, VideoJobError
 from . import creative
 from .studio_store import reserve_creative_generation, reserve_text_generation
@@ -161,7 +161,8 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 if not media_lock.acquire(blocking=False):
                     self._send(429, {'error': 'Another image, export or backup operation is running.'}); return
                 try:
-                    limit = 128 * 1024 if path.endswith(('/plan', '/image', '/draft')) else creative.MAX_CREATIVE_BODY
+                    limit = (14 * 1024 * 1024 if path.endswith('/image') else
+                             128 * 1024 if path.endswith(('/plan', '/draft')) else creative.MAX_CREATIVE_BODY)
                     body = json.loads(self._read_body(limit))
                     if path.endswith('/plan'):
                         self._send(200, creative.plan(body))
@@ -183,8 +184,18 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                         prompt = validate_prompt(body.get('prompt') if isinstance(body, dict) else None)
                         if not image_provider.ready():
                             raise GenerationError('Image generation needs owner setup before it can run.', 503)
+                        if set(body) - {'prompt', 'mode', 'reference_image_base64'}:
+                            raise ValueError('Unsupported image generation options')
+                        mode = body.get('mode', 'text')
+                        if mode not in ('text', 'reference'):
+                            raise ValueError('Choose text or reference generation')
+                        reference = None
+                        if mode == 'reference':
+                            reference = prepare_reference(body.get('reference_image_base64'))
+                        elif 'reference_image_base64' in body:
+                            raise ValueError('Choose reference mode to send a reference image')
                         reserve_creative_generation(db_path)
-                        raw = image_provider.generate(prompt)
+                        raw = image_provider.generate(prompt, reference=reference) if reference is not None else image_provider.generate(prompt)
                         import io
                         from PIL import Image
                         with Image.open(io.BytesIO(raw)) as image:
@@ -243,7 +254,8 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     return
             if path == '/api/generation' and self.command == 'GET':
                 self._send(200, {'ready': image_provider.ready(), 'provider': 'Cloudflare Workers AI',
-                                 'model': 'FLUX.1 schnell', 'attempts_today': generation_usage(db_path),
+                                 'model': 'FLUX.1 schnell', 'reference_ready': image_provider.ready(),
+                                 'reference_model': 'FLUX.2 klein 4B', 'attempts_today': generation_usage(db_path),
                                  'daily_limit': MAX_GENERATIONS_PER_DAY})
                 return
             generate_match = re.fullmatch(r'/api/projects/([a-f0-9]{32})/scenes/(scene-[0-9]{3})/generate', path)

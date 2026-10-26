@@ -207,6 +207,35 @@ class CreativeHTTPTests(unittest.TestCase):
         self.assertEqual(self.request('/api/creative/pdf',[])[0],400)
         self.assertEqual(self.request('/api/creative/plan',{'story':'A','scenes':True})[0],400)
 
+    def test_reference_api_validation_quota_and_protocol(self):
+        from test_cloudflare_images import image_response, image_bytes, response
+        import base64
+        reference = base64.b64encode(image_bytes()).decode()
+        body = {'prompt':'Keep image 0 character', 'mode':'reference', 'reference_image_base64':reference}
+        with patch('wec_engine.providers.cloudflare_images.CloudflareImages.ready', return_value=True), \
+             patch('wec_engine.providers.cloudflare_images.requests.post') as post:
+            self.assertTrue(json.loads(self.request('/api/generation')[1])['reference_ready'])
+            post.return_value = image_response()
+            self.assertEqual(self.request('/api/creative/image', body, token=False)[0], 401)
+            for invalid in ({**body, 'reference_image_base64':'bad'}, {**body, 'mode':'text'},
+                            {'prompt':'Pip', 'mode':'reference'}, {**body, 'mode':'unknown'},
+                            {**body, 'url':'https://example.com'}):
+                self.assertEqual(self.request('/api/creative/image', invalid)[0], 400)
+            post.assert_not_called()
+            self.assertEqual(store.generation_usage(self.db), 0)
+            status, raw, headers = self.request('/api/creative/image', body)
+            self.assertEqual(status, 200); self.assertEqual(raw, image_bytes())
+            self.assertEqual(headers['Content-Type'], 'image/jpeg')
+            self.assertEqual(store.generation_usage(self.db), 1)
+            self.assertIn('input_image_0', post.call_args.kwargs['files'])
+            post.return_value = response(status=429)
+            self.assertEqual(self.request('/api/creative/image', body)[0], 429)
+            self.assertEqual(post.call_count, 2)
+            self.assertEqual(store.generation_usage(self.db), 2)
+            with patch.object(store, 'MAX_GENERATIONS_PER_DAY', 2):
+                self.assertEqual(self.request('/api/creative/image', body)[0], 429)
+            self.assertEqual(post.call_count, 2)
+
     def test_disabled_generation_never_calls_upstream(self):
         with patch('wec_engine.providers.cloudflare_images.requests.post') as call:
             status,_,_=self.request('/api/creative/image',{'prompt':'A friendly cloud'})

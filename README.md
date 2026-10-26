@@ -13,7 +13,8 @@ complete image backup into a narrated vertical MP4.
 
 Open **`/`** (or `/studio/`) on your existing studio host for a shared iPhone/Windows
 workspace: multiple device-saved projects, reusable character/style profiles with
-approved visual references and manual comparison (generation remains text-only),
+approved visual references, manual comparison and optional reference-guided
+generation through Cloudflare FLUX.2 klein 4B,
 optional AI scripts/page drafts, one-picture generation, original artwork ZIPs,
 coloring/storybook interior PDFs, matching cover templates and inline narrated
 video rendering, progress, playback and MP4 download. Create separate format variants without replacing

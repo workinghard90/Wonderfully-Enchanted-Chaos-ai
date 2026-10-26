@@ -1,4 +1,4 @@
-"""Opt-in Workers AI FLUX.1 schnell REST adapter; no retries or paid fallback."""
+"""Opt-in Workers AI text/reference adapters; no retries or automatic fallback."""
 import base64
 import binascii
 import io
@@ -7,10 +7,12 @@ import os
 import re
 import warnings
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 import requests
 
 MODEL = '@cf/black-forest-labs/flux-1-schnell'
+REFERENCE_MODEL = '@cf/black-forest-labs/flux-2-klein-4b'
+MAX_REFERENCE = 10 * 1024 * 1024
 MAX_PROMPT = 2048
 MAX_RESPONSE = 12 * 1024 * 1024
 MAX_IMAGE = 8 * 1024 * 1024
@@ -33,6 +35,31 @@ def validate_prompt(prompt):
     return prompt.strip()
 
 
+def prepare_reference(encoded):
+    """Validate before reserving an attempt; upload a small metadata-free copy."""
+    try:
+        if not isinstance(encoded, str) or len(encoded) > 4 * ((MAX_REFERENCE + 2) // 3):
+            raise ValueError('Invalid reference size')
+        raw = base64.b64decode(encoded, validate=True)
+        if not raw or len(raw) > MAX_REFERENCE:
+            raise ValueError('Invalid reference size')
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(raw)) as source:
+                if source.format not in ('PNG', 'JPEG', 'WEBP') or source.width * source.height > 12_000_000:
+                    raise ValueError('Unsupported reference')
+                source.load()
+                image = ImageOps.exif_transpose(source).convert('RGBA')
+                image.thumbnail((512, 512), Image.Resampling.LANCZOS)
+                clean = Image.new('RGB', image.size, 'white')
+                clean.paste(image, mask=image.getchannel('A'))
+                output = io.BytesIO()
+                clean.save(output, format='PNG')
+                return output.getvalue()
+    except (ValueError, TypeError, binascii.Error, OSError, Image.DecompressionBombWarning, Image.DecompressionBombError):
+        raise ValueError('Choose a valid PNG, JPEG or WebP reference up to 10 MiB and 12 megapixels.') from None
+
+
 class CloudflareImages:
     def __init__(self, account_id=None, api_token=None, enabled=None):
         self.account_id = account_id if account_id is not None else os.getenv('WEC_CLOUDFLARE_ACCOUNT_ID', '')
@@ -46,13 +73,20 @@ class CloudflareImages:
     def ready(self):
         return self.enabled is True and self.configured()
 
-    def generate(self, prompt):
+    def generate(self, prompt, *, reference=None):
         prompt = validate_prompt(prompt)
         if not self.ready():
             raise GenerationError('Image generation needs owner setup before it can run.', 503)
-        endpoint = f'https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{MODEL}'
+        model = REFERENCE_MODEL if reference is not None else MODEL
+        endpoint = f'https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{model}'
+        inputs = {'json': {'prompt': prompt, 'steps': 4}}
+        if reference is not None:
+            # Callers use prepare_reference before quota admission. Requests supplies
+            # the multipart boundary; never set Content-Type manually.
+            inputs = {'data': {'prompt': prompt, 'width': '1024', 'height': '1024'},
+                      'files': {'input_image_0': ('reference.png', reference, 'image/png')}}
         try:
-            with requests.post(endpoint, json={'prompt': prompt, 'steps': 4},
+            with requests.post(endpoint, **inputs,
                                headers={'Authorization': f'Bearer {self.api_token}'},
                                timeout=(5, 45), stream=True, allow_redirects=False) as response:
                 if response.status_code in (401, 403):
