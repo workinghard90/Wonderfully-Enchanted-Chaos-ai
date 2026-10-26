@@ -39,6 +39,7 @@ function fresh(kind) {
     kind,
     title: "Untitled " + labels[kind].toLowerCase(),
     author: "",
+    reference: null,
     characterName: "",
     character: "",
     style: "",
@@ -198,6 +199,19 @@ function render() {
   $("cover-info").textContent = project.cover
     ? `${project.cover.name} · ${project.cover.width} × ${project.cover.height}`
     : "No separate cover picture. The first page will be used.";
+  const reference = $("reference-preview");
+  reference.replaceChildren();
+  let referenceURL = null;
+  if (project.reference) {
+    referenceURL = URL.createObjectURL(project.reference.blob);
+    urls.push(referenceURL);
+    const img = document.createElement("img");
+    img.src = referenceURL; img.alt = "Approved character reference";
+    reference.append(img);
+    const name = document.createElement("p"); name.textContent = project.reference.name;
+    reference.append(name);
+  } else reference.textContent = "No approved reference selected.";
+  $("remove-reference").hidden = !project.reference;
   $("kind-label").textContent = labels[project.kind];
   $("video-settings").hidden = project.kind !== "video";
   $("book-planner").hidden = project.kind === "video";
@@ -239,6 +253,20 @@ function render() {
       info.className = "muted";
       info.textContent = `${page.asset.width} × ${page.asset.height} · ${page.asset.source} · ${ppi(page)} PPI at planned size`;
       visual.append(info);
+      visual.append(button("Use as approved reference", async () => {
+        if (!confirm("Use this picture as the approved character reference for this project? Save the character profile to reuse it elsewhere.")) return;
+        checkAssets(page.asset, project.reference);
+        project.reference = structuredClone(page.asset);
+        dirty = true; await persist(); render();
+        say("Approved reference saved. Save the character profile to reuse it in other projects.");
+      }));
+      if (referenceURL) {
+        const comparison = document.createElement("details");
+        const summary = document.createElement("summary"); summary.textContent = "Compare with approved reference";
+        const ref = document.createElement("img"); ref.src = referenceURL;
+        ref.alt = "Approved reference for comparison"; ref.loading = "lazy";
+        comparison.append(summary, ref); visual.append(comparison);
+      }
     } else {
       const p = document.createElement("p");
       p.className = "muted";
@@ -426,6 +454,7 @@ function checkAssets(asset, replaced = null) {
     .filter((p) => p !== replaced && p.asset)
     .map((p) => p.asset);
   if (project.cover && project.cover !== replaced) rest.push(project.cover);
+  if (project.reference && project.reference !== replaced) rest.push(project.reference);
   if (
     rest.reduce((n, a) => n + a.blob.size, asset.blob.size) > MAX_BYTES ||
     rest.reduce((n, a) => n + a.width * a.height, asset.width * asset.height) >
@@ -446,6 +475,7 @@ async function encoded(blob) {
 async function payload() {
   readFields();
   const value = snapshot();
+  delete value.reference; // Visual review only; never sent to text-only generation/export APIs.
   for (const page of value.pages) {
     if (!page.asset) throw Error("Every page needs a picture before export.");
     page.image_base64 = await encoded(page.asset.blob);
@@ -639,15 +669,31 @@ $("pictures").onchange = () =>
     }
     say(`${added} picture(s) added and saved. Review page order and text.`);
   });
+$("reference-picture").onchange = () => run(async () => {
+  const file = $("reference-picture").files[0];
+  $("reference-picture").value = "";
+  if (!file) return;
+  const asset = await inspect(file, "Approved reference");
+  checkAssets(asset, project.reference);
+  if (project.reference && !confirm("Replace this project's approved reference? Saved profiles and other projects stay unchanged.")) return;
+  project.reference = asset; dirty = true;
+  await persist(); render();
+  say("Approved reference saved. Save the character profile to reuse it elsewhere.");
+});
+$("remove-reference").onclick = () => run(async () => {
+  if (!confirm("Remove the reference from this project? Saved character profiles stay unchanged.")) return;
+  project.reference = null; dirty = true; await persist(); render();
+});
 $("save-profile").onclick = () =>
   run(async () => {
     readFields();
     if (!project.characterName.trim() || !project.character.trim())
       throw Error("Add a character name and description first.");
     const old = profiles.find((p) => p.name === project.characterName);
-    if (old && !confirm("Update this saved character description?")) return;
+    if (old && !confirm("Update this saved character profile, including its reference and style? Existing projects keep their copies.")) return;
     await storage.profile({
       id: old?.id || crypto.randomUUID(),
+      reference: project.reference ? structuredClone(project.reference) : null,
       name: project.characterName,
       character: project.character,
       style: project.style,
@@ -655,12 +701,16 @@ $("save-profile").onclick = () =>
     profiles = await storage.all("profiles");
     fillProfiles();
     await persist();
-    say("Character description saved for reuse in other projects.");
+    say("Character profile saved with its style and approved reference for reuse in other projects.");
   });
 $("profile").onchange = () =>
   run(async () => {
     const p = profiles.find((p) => p.id === $("profile").value);
     if (!p) return;
+    if ((project.character || project.style || project.reference) &&
+        !confirm("Apply this character profile and replace this project's character, style and reference? Page artwork stays unchanged.")) return;
+    if (p.reference) checkAssets(p.reference, project.reference);
+    project.reference = p.reference ? structuredClone(p.reference) : null;
     project.characterName = p.name;
     project.character = p.character;
     project.style = p.style;
@@ -673,6 +723,10 @@ $("backup").onclick = () =>
     readFields();
     const value = snapshot();
     delete value.revision;
+    if (value.reference) {
+      value.reference = { ...value.reference, image_base64: await encoded(value.reference.blob) };
+      delete value.reference.blob;
+    }
     if (value.cover) {
       value.cover = {
         ...value.cover,
@@ -884,6 +938,16 @@ async function restore(file) {
     if (total > MAX_BYTES || pixels > MAX_PIXELS)
       throw Error("Project exceeds its image budget");
   }
+  if (v.reference) {
+    const a = v.reference;
+    if (typeof a.image_base64 !== "string" || a.image_base64.length > 14 * 1024 * 1024 ||
+        !/^[A-Za-z0-9+/]*={0,2}$/.test(a.image_base64)) throw Error("Invalid reference image");
+    const raw = Uint8Array.from(atob(a.image_base64), c => c.charCodeAt(0));
+    candidate.reference = await inspect(new File([raw], typeof a.name === "string" ? a.name : "reference.png"), "Restored approved reference");
+    total += candidate.reference.blob.size;
+    pixels += candidate.reference.width * candidate.reference.height;
+    if (total > MAX_BYTES || pixels > MAX_PIXELS) throw Error("Project exceeds its image budget");
+  }
   return candidate;
 }
 $("restore").onchange = () =>
@@ -979,6 +1043,7 @@ $("variant").onclick = () =>
         ...fresh(kind),
         title: (source.title + " - " + labels[kind]).slice(0, 150),
         author: source.author,
+        reference: source.reference ? structuredClone(source.reference) : null,
         characterName: source.characterName,
         character: source.character,
         style: source.style,

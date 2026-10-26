@@ -8,7 +8,7 @@ a multi-project workspace without migrating or replacing either older store.
 
 1. Choose Faceless video, Art collection, Coloring book or Storybook.
 2. Name it and add your author/creator name. Save a character description and
-   visual style to reuse in other projects. Prompts include these descriptions;
+   visual style plus an approved reference picture to reuse in other projects. Prompts include these descriptions;
    the current image provider does not accept reference images.
 3. Write/paste content or use the optional **Start from an idea with AI** section.
    Drafts are reviewed before any pictures are generated. Book drafts append
@@ -208,3 +208,30 @@ Rendering uses a saved snapshot. You can edit the browser project after submissi
 without changing the movie underway. Download movies separately: browser JSON
 backups contain source pictures/text, not MP4s. Rendering remains a still-image
 movie with narration/captions and optional ambience, not AI character animation.
+
+## Approved character references
+
+In **Character & visual style**, upload an approved PNG/JPG/WebP reference or
+choose **Use as approved reference** under an existing page picture. Save the
+character profile to keep the name, description, style and original reference
+bytes together. Select that profile in any of the four project formats to copy
+it into the project. Applying a profile replaces character/style/reference only,
+not page artwork; replacing existing settings asks for confirmation.
+
+Each page with artwork offers **Compare with approved reference**. Review key
+features such as Pip's curl, eyes, arms and colors before approving artwork for
+publication. This is a manual visual comparison, not an automatic consistency
+score. The current Cloudflare model receives text descriptions only; reference
+images are never sent to that model and do not condition generation.
+
+References remain local, survive refresh, and are included in project JSON
+backups and format variants. Restore a project backup on another device, then
+save its character profile there to reuse it. Page ZIP/PDF/video exports do not
+include the reference image as an output page. Changing/removing a project
+reference does not alter previously saved profiles or other projects. Older
+text-only profiles and backups continue to work without a reference.
+
+Reference images use the same 10 MiB / 12 megapixel per-image limit and count
+toward the project's existing 30 MiB / 320 megapixel budget. Invalid references
+are rejected before a restored project is saved. Keep downloaded backups: this
+is browser storage, not cloud synchronization.

@@ -106,7 +106,7 @@
           />
           <details class="character">
             <summary>Character &amp; visual style</summary>
-            <label for="profile">Saved character descriptions</label
+            <label for="profile">Saved character profiles</label
             ><select id="profile">
               <option value="">Choose a character</option>
             </select>
@@ -126,13 +126,17 @@
               maxlength="300"
               placeholder="Soft watercolor, warm cream, lavender and sky blue"
             ></textarea>
+            <label for="reference-picture">Approved reference picture (PNG, JPG or WebP)</label>
+            <input id="reference-picture" type="file" accept="image/png,image/jpeg,image/webp" />
+            <div id="reference-preview"></div>
+            <button id="remove-reference" class="secondary" hidden>Remove project reference</button>
+            <p class="muted">Choose a picture you approve. The original is saved on this device with your project and character profile. Compare page artwork with it before publishing.</p>
             <button id="save-profile" class="secondary">
-              Save character description
+              Save character profile
             </button>
             <p class="muted">
               Descriptions are included in each image prompt. The current
-              Cloudflare model uses text only; matching a character across
-              pictures still needs visual review.
+              Cloudflare model uses text only: reference pictures are for your visual review, not sent to the model. Exact character matching is not guaranteed. Download a project backup to keep the reference and restore it on another device.
             </p>
           </details>
           <details class="character">

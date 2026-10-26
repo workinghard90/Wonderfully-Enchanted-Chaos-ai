@@ -103,6 +103,8 @@ const assert = require("node:assert/strict");
         .locator("#character")
         .fill("A round lavender cloud with a curl and tiny arms.");
       await page.locator("#style").fill("Soft watercolor on cream.");
+      await page.locator('#reference-picture').setInputFiles(fixture);
+      await ready(page);
       await page.locator("#save-profile").click();
       await ready(page);
       await page
@@ -123,7 +125,10 @@ const assert = require("node:assert/strict");
       const backup = JSON.parse(
         (await download(page, "#backup")).toString("utf8"),
       );
+      assert.equal(backup.reference.image_base64, png.toString('base64'));
       assert.equal(backup.pages.length, 2);
+      await page.getByText('Compare with approved reference', {exact:true}).first().click();
+      await page.locator('.character').first().screenshot({path:path.join(directory, `reference-${viewport.width}.png`)});
       assert.equal(backup.pages[0].asset.image_base64, png.toString("base64"));
       assert.match(backup.character, /lavender/);
       assert.equal(backup.pages[1].text, "Together they found their way home.");
@@ -137,7 +142,7 @@ const assert = require("node:assert/strict");
         .waitFor();
       await page.locator("#library .library-item button").first().click();
       await ready(page);
-      assert.equal(await page.locator(".page img").count(), 2);
+      assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 2);
       assert.equal(
         await page.locator("#title").inputValue(),
         "Pip story " + viewport.width,
@@ -154,6 +159,13 @@ const assert = require("node:assert/strict");
         .filter({ hasText: "Backup restored" })
         .waitFor();
       assert.equal(await page.locator("#library .library-item").count(), 2);
+      const restoredReference = JSON.parse((await download(page, '#backup')).toString());
+      assert.equal(restoredReference.reference.image_base64, png.toString('base64'));
+      const invalidReference = {...backup, reference:{name:'bad.png', image_base64:'not-an-image'}};
+      await page.locator('#restore').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(invalidReference))});
+      await ready(page);
+      assert.match(await page.locator('#status').innerText(), /Invalid reference image/);
+      assert.equal(await page.locator('#library .library-item').count(), 2);
       // Cross-tab conflict: don't overwrite a newer saved project.
       const other = await context.newPage();
       other.on("dialog", (d) => d.accept());
@@ -180,6 +192,21 @@ const assert = require("node:assert/strict");
       await other.close();
       await page.locator("[data-kind=coloring]").click();
       await ready(page);
+      await page.locator('.character').first().locator('summary').click();
+      await page.locator('#profile').selectOption({label:'Pip'});
+      await ready(page);
+      const reused = JSON.parse((await download(page, '#backup')).toString());
+      assert.equal(reused.reference.image_base64, png.toString('base64'));
+      assert.equal(reused.character, backup.character);
+      assert.equal(reused.style, backup.style);
+      await page.locator('#remove-reference').click(); await ready(page);
+      assert.equal(JSON.parse((await download(page, '#backup')).toString()).reference, null);
+      const sourceReference = await page.evaluate(async id => {
+        const store = await import('/studio/store.js');
+        return (await store.get(id)).reference.blob.size;
+      }, backup.id);
+      assert.equal(sourceReference, png.length);
+
       assert.equal(
         await page.locator("#title").inputValue(),
         "Untitled coloring book",
@@ -218,9 +245,14 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "Coloring ZIP imported" })
         .waitFor();
-      assert.equal(await page.locator(".page img").count(), 1);
+      assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 1);
       await page.locator("[data-kind=art]").click();
       await ready(page);
+      if (await page.locator('.character').first().getAttribute('open') === null)
+        await page.locator('.character').first().locator('summary').click();
+      await page.locator('#profile').selectOption({label:'Pip'}); await ready(page);
+      assert.equal(JSON.parse((await download(page, '#backup')).toString()).reference.image_base64, png.toString('base64'));
+
       await page
         .locator("#outline")
         .fill("A floating island\nA moonlit garden");
@@ -239,6 +271,11 @@ const assert = require("node:assert/strict");
       });
       await page.locator("[data-kind=video]").click();
       await ready(page);
+      if (await page.locator('.character').first().getAttribute('open') === null)
+        await page.locator('.character').first().locator('summary').click();
+      await page.locator('#profile').selectOption({label:'Pip'}); await ready(page);
+      assert.equal(JSON.parse((await download(page, '#backup')).toString()).reference.image_base64, png.toString('base64'));
+
       await page
         .locator("#narration")
         .fill("A cloud found a little star. The star shone bright at home.");
@@ -264,7 +301,7 @@ const assert = require("node:assert/strict");
       await ready(page);
       assert.match(await page.locator("#status").innerText(), /Use Split narration/);
       assert.equal(handoffs, 0);
-      assert.equal(await page.locator(".page img").count(), 2);
+      assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 2);
       await page.locator("#narration").fill(originalNarration);
       await page.locator("#scene-count").fill("3");
       await page.locator("#video").click();
@@ -275,7 +312,7 @@ const assert = require("node:assert/strict");
       await page.locator("#split").click();
       await ready(page);
       assert.match(await page.locator("#status").innerText(), /100 words/);
-      assert.equal(await page.locator(".page img").count(), 2);
+      assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 2);
       await page.locator("#narration").fill(originalNarration);
       await page.locator("#scene-count").fill("2");
       // Admission failures must not create server copies or consume attempts.
@@ -396,6 +433,8 @@ const assert = require("node:assert/strict");
       .locator("#status")
       .filter({ hasText: "1 picture(s) added and saved" })
       .waitFor();
+    await p.getByRole('button', {name:'Use as approved reference',exact:true}).click();
+    await ready(p);
     await p.locator("[data-generate]").click();
     await p
       .locator("#status")
@@ -404,6 +443,7 @@ const assert = require("node:assert/strict");
     assert.equal(calls, 1);
     const preserved = JSON.parse((await download(p, "#backup")).toString());
     assert.equal(preserved.pages[0].asset.image_base64, png.toString("base64"));
+    assert.equal(preserved.reference.image_base64, png.toString("base64"));
     await p.locator("[data-kind=storybook]").click();
     await ready(p);
     await c.route("**/api/creative/draft", (r) =>
@@ -432,6 +472,8 @@ const assert = require("node:assert/strict");
       .filter({ has: p.locator("#variant-kind") })
       .locator("summary")
       .click();
+    await p.locator('.character').first().locator('summary').click();
+    await p.locator('#reference-picture').setInputFiles(fixture); await ready(p);
     await p.locator("#variant-kind").selectOption("coloring");
     await p.locator("#variant").click();
     await p
@@ -439,14 +481,15 @@ const assert = require("node:assert/strict");
       .filter({ hasText: "Created a separate Coloring book" })
       .waitFor();
     assert.equal(await p.locator(".page").count(), 2);
-    assert.equal(await p.locator(".page img").count(), 0);
+    assert.equal(await p.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 0);
+    assert.equal(JSON.parse((await download(p, '#backup')).toString()).reference.image_base64, png.toString('base64'));
     await c.close();
     console.log(
       JSON.stringify({
         passed: true,
         viewports: [390, 1440],
         checks:
-          "four formats, PDF/ZIP, original bytes, drafts, profiles, refresh, restore, conflict protection, inline render consent/progress/playback/MP4/reload/removal, no-retry image failure",
+          "four formats, PDF/ZIP, original bytes, drafts, profiles with original references across four formats, reference backup/restore/isolation/variants, refresh, restore, conflict protection, inline render consent/progress/playback/MP4/reload/removal, no-retry image failure",
         evidence: directory,
       }),
     );
