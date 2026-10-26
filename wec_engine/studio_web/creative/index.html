@@ -275,7 +275,7 @@
                 Download project backup</button
               ><button id="zip" class="secondary">Download artwork ZIP</button
               ><button id="pdf">Download book PDF</button
-              ><button id="video">Open in Video Studio</button>
+              ><button id="video">Render video</button>
             </div>
             <p id="export-note" class="muted"></p>
           </section>
@@ -290,6 +290,19 @@
           </p>
         </section>
       </div>
+      <section id="renders" class="panel" aria-labelledby="renders-heading">
+        <h2 id="renders-heading">Video renders</h2>
+        <p>Render progress and finished movies from all your server projects appear here.
+          Each movie uses the saved version from when rendering started. Later edits do not change it.</p>
+        <button id="refresh-renders" class="secondary">Refresh renders</button>
+        <p id="render-availability" role="status">Refresh to load saved movies or reconnect to a running render.</p>
+        <div id="render-jobs"></div>
+        <div id="render-player" hidden>
+          <h3 id="render-player-title"></h3>
+          <video id="render-movie" controls playsinline preload="metadata"></video>
+        </div>
+        <p class="muted">Download finished MP4s to keep them. Browser project backups include your pictures and text, not rendered movies. No automatic publishing.</p>
+      </section>
     </main>
     <footer>
       Wonderfully Enchanted Chaos · Create deliberately. Keep your originals.

@@ -1,3 +1,4 @@
+import { videoPanel } from "/studio/video.js";
 import * as storage from "/studio/store.js";
 import { makeZip, readZip } from "/coloring/zip.js";
 const $ = (id) => document.getElementById(id),
@@ -204,7 +205,7 @@ function render() {
   $("pdf").hidden = project.kind === "video";
   $("page-help").textContent =
     project.kind === "video"
-      ? "Split your finished narration first, then attach one picture per scene. Opening the Video Studio creates a new server copy; rendering is a separate action."
+      ? "Split your finished narration first, then attach one picture per scene. Render video builds a movie here from a saved copy of your scenes."
       : "Up to 80 pages, 10 MiB / 12 megapixels per image, 30 MiB / 320 megapixels across a project. Your original image bytes are kept.";
   $("export-note").textContent =
     project.kind === "coloring"
@@ -754,16 +755,35 @@ $("pdf").onclick = () =>
       "PDF download opened. Review page count, linework and margins before publishing. A cover is separate.",
     );
   });
+const renders = videoPanel({ api, run, busy: () => busy });
 $("video").onclick = () =>
   run(async () => {
     readFields();
     if (videoSceneIssue()) throw Error(videoSceneIssue());
+    if (!project.pages.length || project.pages.some(page => !page.asset))
+      throw Error("Attach a picture to every scene before rendering.");
+    if (!confirm("Build a narrated movie from this project and its pictures? This uses one local render attempt, saves a server copy, and does not generate new images.")) return;
+    const state = await renders.refresh();
+    if (!state.ready) throw Error(state.message || "Video rendering is unavailable.");
+    if (state.jobs.some(job => ["queued", "running"].includes(job.status)))
+      throw Error("A video is already rendering. Follow its progress below.");
+    if (state.attempts_today >= state.daily_limit)
+      throw Error("Today's render limit has been reached. Download an existing movie or try another day.");
+    if (state.jobs.length >= state.max_saved_videos)
+      throw Error("Server movie storage is full. Download and remove an older render first.");
     await persist();
-    say("Preparing a new server copy with these pictures…");
+    say("Preparing a saved copy of these scenes…");
     const value = await (
       await api("/api/creative/video", await payload())
     ).json();
-    location.href = "/video/?project=" + encodeURIComponent(value.projects[0].id);
+    try {
+      await api(`/api/projects/${value.projects[0].id}/video`, { ambience: true });
+    } catch (error) {
+      throw Error(`Render could not be confirmed: ${error.message} Refresh renders before trying again. Your prepared copy is available in Video renders & saved stories.`);
+    }
+    say("Movie rendering started. Follow its progress in Video renders below. You can keep editing; this render uses the saved version.");
+    await renders.refresh();
+    $("renders").scrollIntoView({ block: "start", behavior: "smooth" });
   });
 async function restore(file) {
   if (file.size > MAX_BYTES * 1.4 + 1024 * 1024)

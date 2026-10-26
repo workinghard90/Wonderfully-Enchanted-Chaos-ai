@@ -426,3 +426,8 @@ footer {
     max-width: 100%;
   }
 }
+
+#renders { margin-top: 24px; }
+#render-movie { display: block; width: 100%; max-width: 420px; max-height: 70vh; background: #000; }
+.render-job { border-top: 1px solid var(--border); padding: 16px 0; overflow-wrap: anywhere; }
+.render-job progress { width: 100%; }

@@ -1,7 +1,7 @@
 # One studio for videos, artwork and books
 
-Open **`/studio/`** on the same studio host. The original story/video dashboard
-at `/` and coloring editor at `/coloring/` remain available. This release adds
+Open **`/`** (or `/studio/`) on the same studio host. The original story/video dashboard
+at `/video/` and coloring editor at `/coloring/` remain available. This release adds
 a multi-project workspace without migrating or replacing either older store.
 
 ## Create and keep a project
@@ -39,7 +39,7 @@ large imports can still be demanding on an iPhone. Keep the backup/originals.
 
 | Format | What the app produces | Further review/setup |
 | --- | --- | --- |
-| Faceless video | Original script arranged into scenes, attached/generated pictures, a new server project opened in the existing narrated MP4 renderer | Configure Piper/FFmpeg; existing 35-second/seven-scene bounds and render allowance apply. Still-image movies are not AI character animation. |
+| Faceless video | Original script arranged into scenes, attached/generated pictures, a saved server snapshot rendered, previewed and downloaded inside the shared workspace | Configure Piper/FFmpeg; existing 35-second/seven-scene bounds and render allowance apply. Still-image movies are not AI character animation. |
 | Art | Individual picture prompts, original-byte artwork ZIP and optional Letter portfolio PDF | Visually review character consistency and source resolution. |
 | Coloring book | Ordered grayscale Letter PDF with two opening pages and a blank back per illustration; original artwork ZIP | New line art is required for a coloring variant of colored artwork. Grayscale conversion does not create coloring outlines. |
 | Storybook | Ordered pictures plus editable page text in a Letter color PDF; artwork ZIP | Review story, text fit, image resolution, color print cost and minimum pages. |
@@ -180,10 +180,31 @@ the same browser project library.
 
 “Continue an existing project” links to `/video/` for saved stories and video
 renders, and `/coloring/` for original coloring projects. Both tools include an
-“All studios” link back home. Video preparation now opens `/video/?project=…`;
+“All studios” link back home. The older renderer remains available at `/video/?project=…`;
 older `/?project=…` bookmarks still open the correct story editor.
 
 This change unifies navigation, not storage: existing projects remain in their
 current stores. No automatic migration or deletion occurs. Download backups
-from each tool before moving projects. Full rendering integration and consolidation of project storage remain
-subsequent work. Existing import controls remain available in the shared library.
+from each tool before moving projects. Consolidation of project storage remains subsequent work. Existing import controls remain available in the shared library.
+
+## Render videos without leaving the workspace
+
+After splitting narration and attaching every scene picture, choose **Render
+video** and confirm the local render attempt. The studio checks availability,
+active jobs, daily allowance and saved-movie capacity before creating the server
+copy. The existing server still enforces all limits. No automatic retries or new
+image requests occur. If starting fails after preparation, the saved story copy
+remains accessible through `/video/`; no browser originals are removed.
+
+The **Video renders** panel lists all server projects, rather than implying that
+a finished movie reflects whichever browser project is currently open. Progress
+polls while jobs are active. Cancel, preview, download MP4 and remove-server-copy
+controls use the existing authenticated endpoints. Playback uses a temporary blob
+URL; tokens are not placed in media URLs. Preview URLs are revoked on replacement,
+removal and page exit. After reloading, use **Refresh renders** to reconnect.
+A polling failure stops polling and offers refresh; it never starts another job.
+
+Rendering uses a saved snapshot. You can edit the browser project after submission
+without changing the movie underway. Download movies separately: browser JSON
+backups contain source pictures/text, not MP4s. Rendering remains a still-image
+movie with narration/captions and optional ambience, not AI character animation.
