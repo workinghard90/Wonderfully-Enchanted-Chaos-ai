@@ -11,11 +11,11 @@ complete image backup into a narrated vertical MP4.
 
 ## Creative Studio: videos, art and books
 
-Open **`/studio/`** on your existing studio host for a shared iPhone/Windows
+Open **`/`** (or `/studio/`) on your existing studio host for a shared iPhone/Windows
 workspace: multiple device-saved projects, reusable character descriptions,
 optional AI scripts/page drafts, one-picture generation, original artwork ZIPs,
-coloring/storybook interior PDFs, matching cover templates and a handoff into
-the narrated video renderer. Create separate format variants without replacing
+coloring/storybook interior PDFs, matching cover templates and inline narrated
+video rendering, progress, playback and MP4 download. Create separate format variants without replacing
 your source project. Keep downloaded JSON project backups; browser storage is
 not cloud sync. [Workflow, limits and setup](docs/CREATIVE_STUDIO.md).
 

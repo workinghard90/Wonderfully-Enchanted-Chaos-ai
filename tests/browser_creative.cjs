@@ -15,14 +15,7 @@ const assert = require("node:assert/strict");
     token = "test-only-creative-browser-32-characters";
   const server = spawn(
     process.env.PYTHON || "python",
-    [
-      "-m",
-      "wec_engine.studio",
-      "--port",
-      String(port),
-      "--data-dir",
-      directory,
-    ],
+    [path.join(__dirname, "browser_video_server.py"), String(port), directory, token],
     {
       cwd: os.tmpdir(),
       env: {
@@ -84,9 +77,11 @@ const assert = require("node:assert/strict");
         token,
       );
       const page = await context.newPage(),
-        errors = [];
+        errors = [], fileRequests = [];
+      page.on('request', r => { if (r.url().includes('/api/video-jobs/') && r.url().endsWith('/file')) fileRequests.push(r); });
       page.on("pageerror", (e) => errors.push(e.message));
-      page.on("dialog", (d) => d.accept());
+      let accept = true;
+      page.on("dialog", (d) => accept ? d.accept() : d.dismiss());
       await page.goto(base + "/");
       await page.locator('a[href="/video/"]').click();
       await page.locator('#story').waitFor();
@@ -283,14 +278,88 @@ const assert = require("node:assert/strict");
       assert.equal(await page.locator(".page img").count(), 2);
       await page.locator("#narration").fill(originalNarration);
       await page.locator("#scene-count").fill("2");
+      // Admission failures must not create server copies or consume attempts.
+      for (const [state, message] of [
+        [{ready:false, message:'Owner setup required', jobs:[]}, /Owner setup required/],
+        [{ready:true, jobs:[{id:'busy', title:'Other render', status:'running', progress:10, message:'Working'}]}, /already rendering/],
+        [{ready:true, jobs:[], attempts_today:2, daily_limit:2}, /render limit/],
+        [{ready:true, jobs:[{id:'full', title:'Old movie', status:'failed', message:'Failed'}], max_saved_videos:1}, /storage is full/],
+      ]) {
+        await page.route('**/api/video', r => r.fulfill({json:state}));
+        await page.locator('#video').click(); await ready(page);
+        assert.match(await page.locator('#status').innerText(), message);
+        assert.equal(handoffs, 0);
+        await page.unroute('**/api/video');
+      }
+      accept = false;
       await page.locator("#video").click();
-      await page.waitForURL(/\/video\/\?project=/);
-      assert.equal(handoffs, 1);
-      await page.locator("#preview .scene").first().waitFor();
-      assert.equal(await page.locator(".scene-image").count(), 2);
+      await ready(page);
+      assert.equal(handoffs, 0);
+      accept = true;
+      let failedStarts = 0;
+      await page.route('**/api/projects/*/video', r => {
+        failedStarts++; return r.fulfill({status:503, json:{error:'Worker unavailable'}});
+      });
+      await page.locator('#video').click(); await ready(page);
+      assert.match(await page.locator('#status').innerText(), /Refresh renders before trying again/);
+      assert.equal(failedStarts, 1);
+      await page.unroute('**/api/projects/*/video');
+      await page.locator("#video").click();
+      await ready(page);
+      assert.equal(new URL(page.url()).pathname, "/");
+      assert.equal(handoffs, 2);
+      const job = page.locator('.render-job');
+      await job.getByRole('button', {name: 'Play video'}).waitFor();
+      await job.getByRole('button', {name: 'Play video'}).click();
+      await page.waitForFunction(() => document.querySelector('#render-movie').readyState >= 1);
+      assert.ok((await page.locator('#render-movie').getAttribute('src')).startsWith('blob:'));
+      assert.equal(await page.locator('#render-movie').getAttribute('playsinline'), '');
+      await page.locator('#renders').screenshot({path:path.join(directory, `renders-${viewport.width}.png`)});
+      const movieDownload = page.waitForEvent('download');
+      await job.getByRole('button', {name: 'Download MP4'}).click();
+      const movie = await movieDownload;
+      assert.ok(fs.statSync(await movie.path()).size > 1000);
+      await page.reload();
+      await page.locator('#refresh-renders').click();
+      await job.getByRole('button', {name: 'Play video'}).waitFor();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await job.getByRole('button', {name: 'Remove server copy'}).click();
+      await page.waitForFunction(() => !document.querySelector('.render-job'));
+      for (const request of fileRequests) {
+        assert.equal(new URL(request.url()).search, '');
+        assert.equal(request.headers()['x-wec-token'], token);
+      }
       assert.equal(errors.length, 0, errors.join("\n"));
       await context.close();
     }
+    const queueContext = await browser.newContext();
+    await queueContext.addInitScript(t => sessionStorage.setItem('wec_token', t), token);
+    let queueState = 'running', cancels = 0, polling = 0, dialogs = 0;
+    await queueContext.route('**/api/video', r => {
+      polling++;
+      if (queueState === 'offline') return r.fulfill({status:401, json:{error:'Session expired'}});
+      return r.fulfill({json:{ready:true, attempts_today:1, daily_limit:2, jobs:[{id:'fixture-job', title:'Queued movie', status:queueState, message:queueState, progress:30}]}});
+    });
+    await queueContext.route('**/api/video-jobs/fixture-job/cancel', r => {
+      cancels++; queueState = 'cancelled'; return r.fulfill({json:{}});
+    });
+    const queuePage = await queueContext.newPage();
+    queuePage.on('dialog', d => {dialogs++; d.dismiss();});
+    await queuePage.goto(base);
+    await queuePage.locator('#refresh-renders').click();
+    await queuePage.getByRole('button', {name:'Cancel render', exact:true}).click();
+    await queuePage.locator('.render-job').getByText('cancelled', {exact:true}).waitFor();
+    assert.equal(cancels, 1);
+    queueState = 'running';
+    await queuePage.locator('#refresh-renders').click();
+    await queuePage.locator('progress').waitFor();
+    queueState = 'offline';
+    await queuePage.locator('#render-availability').filter({hasText:'Use Refresh renders to reconnect'}).waitFor();
+    const stoppedAt = polling;
+    await queuePage.waitForTimeout(2800);
+    assert.equal(polling, stoppedAt);
+    assert.equal(dialogs, 0);
+    await queueContext.close();
     // Provider failure makes one request and preserves the attached original.
     const c = await browser.newContext({ acceptDownloads: true });
     await c.addInitScript((t) => sessionStorage.setItem("wec_token", t), token);
@@ -377,14 +446,14 @@ const assert = require("node:assert/strict");
         passed: true,
         viewports: [390, 1440],
         checks:
-          "four formats, PDF/ZIP, original bytes, drafts, profiles, refresh, restore, conflict protection, video handoff, no-retry image failure",
+          "four formats, PDF/ZIP, original bytes, drafts, profiles, refresh, restore, conflict protection, inline render consent/progress/playback/MP4/reload/removal, no-retry image failure",
         evidence: directory,
       }),
     );
   } finally {
     if (browser) await browser.close();
     server.kill("SIGTERM");
-    await new Promise((r) => server.once("exit", r));
+    await new Promise((r) => server.exitCode !== null ? r() : server.once("exit", r));
   }
 })().catch((e) => {
   console.error(e);
