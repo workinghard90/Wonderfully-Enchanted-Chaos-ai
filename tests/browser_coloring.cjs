@@ -44,7 +44,9 @@ Image.new('RGB',(300,600),'#167c8b').save(p/'tall.jpg')
       await page.goto(base + '/coloring');
       await page.waitForFunction(() => document.querySelector('#status').textContent.includes('0 illustration'));
       await page.waitForFunction(() => !document.querySelector('#upload').disabled);
-      assert.equal(await page.locator('header a').getAttribute('target'), '_blank');
+      assert.equal(await page.locator('header a').getAttribute('href'), '/');
+      assert.equal(await page.locator('header a').getAttribute('target'), null);
+      assert.match(await page.locator('header a').innerText(), /All studios/);
       assert.ok(await page.locator('#zip').isDisabled());
       assert.ok(await page.locator('#print-report').isDisabled());
       const loadedTraffic = traffic.length;

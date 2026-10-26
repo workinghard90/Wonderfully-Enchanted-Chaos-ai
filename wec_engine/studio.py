@@ -183,7 +183,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                             raise GenerationError('Creative image generation requires a studio token of at least 32 characters.', 503)
                         prompt = validate_prompt(body.get('prompt') if isinstance(body, dict) else None)
                         if not image_provider.ready():
-                            raise GenerationError('Image generation needs owner setup before it can run.', 503)
+                            raise GenerationError(image_provider.setup_message(), 503)
                         if set(body) - {'prompt', 'mode', 'reference_image_base64'}:
                             raise ValueError('Unsupported image generation options')
                         mode = body.get('mode', 'text')
@@ -254,7 +254,11 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     return
             if path == '/api/generation' and self.command == 'GET':
                 self._send(200, {'ready': image_provider.ready(), 'provider': 'Cloudflare Workers AI',
-                                 'model': 'FLUX.1 schnell', 'reference_ready': image_provider.ready(),
+                                 'model': 'FLUX.1 schnell',
+                                 'creative_ready': bool(image_provider.ready() and token and len(token) >= 32),
+                                 'message': (image_provider.setup_message() if token and len(token) >= 32 else
+                                             'Creative generation requires WEC_STUDIO_TOKEN with at least 32 characters on the server.'),
+                                 'reference_ready': bool(image_provider.ready() and token and len(token) >= 32),
                                  'reference_model': 'FLUX.2 klein 4B', 'attempts_today': generation_usage(db_path),
                                  'daily_limit': MAX_GENERATIONS_PER_DAY})
                 return
@@ -266,7 +270,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     body = json.loads(self._read_body(16 * 1024))
                     prompt = validate_prompt(body.get('prompt') if isinstance(body, dict) else None)
                     if not image_provider.ready():
-                        raise GenerationError('Image generation needs owner setup before it can run.', 503)
+                        raise GenerationError(image_provider.setup_message(), 503)
                     pid, sid = generate_match.groups()
                     project = get_project(db_path, pid)
                     if not project:

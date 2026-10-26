@@ -63,6 +63,24 @@ class ProviderTests(unittest.TestCase):
         self.assertFalse(kwargs['allow_redirects']); self.assertTrue(kwargs['stream'])
         self.assertEqual(post.call_count, 1)
 
+    def test_setup_messages_explain_missing_configuration_without_secrets(self):
+        self.assertIn('WEC_ENABLE_IMAGE_GENERATION', CloudflareImages(ACCOUNT, TOKEN, False).setup_message())
+        self.assertIn('WEC_CLOUDFLARE_ACCOUNT_ID', CloudflareImages('bad', TOKEN, True).setup_message())
+        self.assertIn('WEC_CLOUDFLARE_API_TOKEN', CloudflareImages(ACCOUNT, '', True).setup_message())
+        self.assertNotIn(TOKEN, self.provider().setup_message())
+        self.assertNotIn(ACCOUNT, self.provider().setup_message())
+
+    @patch('wec_engine.providers.cloudflare_images.requests.post')
+    def test_provider_error_codes_are_bounded_and_redacted(self, post):
+        post.return_value = response({'errors':[{'code':3030,'message':TOKEN}]}, status=400)
+        with self.assertRaises(GenerationError) as caught: self.provider().generate('Pip')
+        self.assertIn('HTTP 400; code 3030', str(caught.exception))
+        self.assertNotIn(TOKEN, str(caught.exception))
+        self.assertEqual(post.call_count,1)
+        post.return_value = response(status=500, chunks=[b'x'*65537])
+        with self.assertRaises(GenerationError) as caught: self.provider().generate('Pip')
+        self.assertIn('HTTP 500', str(caught.exception))
+
     @patch('wec_engine.providers.cloudflare_images.requests.post')
     def test_invalid_prompts_make_no_call(self, post):
         for prompt in (None, {}, '', ' ', 'x' * 2049, '\ud800'):
@@ -163,7 +181,7 @@ class GenerationApiTests(unittest.TestCase):
         for path, payload in (('/api/generation', None), (self.route, {'prompt': 'A lantern'})):
             self.assertEqual(self.request(path, payload, token='wrong')[0], 401)
         code, value = self.request('/api/generation')
-        self.assertEqual(code, 200); self.assertTrue(value['ready']); self.assertEqual(value['attempts_today'], 0)
+        self.assertEqual(code, 200); self.assertTrue(value['ready']); self.assertFalse(value['creative_ready']); self.assertFalse(value['reference_ready']); self.assertIn('32 characters', value['message']); self.assertEqual(value['attempts_today'], 0)
         self.assertNotIn(TOKEN, json.dumps(value)); self.assertNotIn(ACCOUNT, json.dumps(value))
         post.assert_not_called()
 

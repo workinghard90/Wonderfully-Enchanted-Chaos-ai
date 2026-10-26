@@ -274,3 +274,15 @@ Official protocol and pricing sources:
 
 Automated tests use mocked Cloudflare responses. Live account access and actual
 character consistency require a first confirmed generation after deployment.
+
+## When saving works but generation does not
+
+Saving is local to your browser. Open **AI connection → Connect / check AI** to
+authenticate and refresh setup/allowance status without generating anything.
+Missing settings and the shared daily cap are shown explicitly. Errors remain
+visible while scrolling. A request that receives no response headers within
+90 seconds releases the controls without an automatic retry. Provider work may
+already have consumed an attempt, so check before retrying.
+
+See [the generation audit and current limits](GENERATION_TROUBLESHOOTING.md) for
+verified findings, deployment evidence and the remaining live-account checks.
