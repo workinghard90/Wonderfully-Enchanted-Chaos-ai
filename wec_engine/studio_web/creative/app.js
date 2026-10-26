@@ -91,6 +91,8 @@ function lock(value) {
     document
       .querySelectorAll("[data-generate]")
       .forEach((n) => (n.disabled = !generation?.ready));
+    document.querySelectorAll('[data-reference-generate]').forEach(n =>
+      n.disabled = !generation?.reference_ready || !project?.reference);
     $("draft").disabled = !textReady;
   }
 }
@@ -320,6 +322,7 @@ function render() {
     promptBox.oninput = () => {
       page.prompt = promptBox.value;
       preview.textContent = promptFor(page);
+      refPreview.textContent = promptFor(page, true);
       changed();
     };
     l.append(promptBox);
@@ -339,6 +342,15 @@ function render() {
     );
     gen.dataset.generate = "true";
     words.append(gen);
+    const refGen = button("Generate using reference", () => generate(page, true),
+      !generation?.reference_ready || !project.reference);
+    refGen.dataset.referenceGenerate = "true";
+    words.append(refGen);
+    const refDetail = document.createElement("details");
+    const refSummary = document.createElement("summary"); refSummary.textContent = "Reference generation prompt";
+    const refPreview = document.createElement("p"); refPreview.textContent = promptFor(page, true);
+    refPreview.className = "prompt-preview";
+    refDetail.append(refSummary, refPreview); words.append(refDetail);
     grid.append(visual, words);
     card.append(grid);
     const actions = document.createElement("div");
@@ -380,14 +392,14 @@ function render() {
   }
   readiness();
 }
-function promptFor(page) {
+function promptFor(page, useReference = false) {
   const format =
     project.kind === "coloring"
       ? "Children's coloring page, black outlines on pure white, closed clear shapes, no shading, no gray, no text, no border."
       : project.kind === "video"
         ? "Portrait 9:16 illustration for a faceless narrated video."
         : "Portrait children's book illustration, no lettering or captions.";
-  return [project.character, project.style, format, page.prompt || page.text]
+  return [useReference ? "Use the character in image 0 as the reference. Preserve its defining features while following the scene and style below." : "", project.character, project.style, format, page.prompt || page.text]
     .filter(Boolean)
     .join("\n");
 }
@@ -500,16 +512,19 @@ function download(blob, suffix) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-async function generate(page) {
+async function generate(page, useReference = false) {
+  if (useReference && (!project.reference || !generation?.reference_ready))
+    throw Error("Choose an approved reference and connect reference generation first.");
   if (project.kind === "video" && videoSceneIssue())
     throw Error(videoSceneIssue());
-  const prompt = promptFor(page);
+  const prompt = promptFor(page, useReference);
   if (prompt.length > 2048)
     throw Error(
       "Shorten the character, style or scene description to fit 2048 characters.",
     );
   if (
     !confirm(
+      (useReference ? `Send a resized copy of ${project.reference.name} to Cloudflare FLUX.2 klein 4B with this prompt? Original stays on your device. Estimated list price about $0.0012 before free allowance; actual billing depends on your account. ` : "") +
       "Generate ONE picture with your configured Cloudflare account? This uses provider allowance and may incur charges under your account settings. No automatic retries. Existing artwork is kept unless the new image is saved.",
     )
   )
@@ -523,12 +538,21 @@ async function generate(page) {
   )
     return;
   say("Generating one picture. Keep this page open; do not click again.");
-  const r = await api("/api/creative/image", { prompt });
+  const body = { prompt, mode: useReference ? "reference" : "text" };
+  if (useReference) body.reference_image_base64 = await encoded(project.reference.blob);
+  let r;
+  try { r = await api("/api/creative/image", body); }
+  finally {
+    try {
+      generation = await (await api("/api/generation", undefined, false)).json();
+      $("generation-status").textContent = `${generation.attempts_today}/${generation.daily_limit} image attempts today across text and reference generation. No automatic retries.`;
+    } catch { /* Never retry a generation when status refresh fails. */ }
+  }
   const asset = await inspect(
     new File([await r.blob()], "generated.png", {
       type: r.headers.get("Content-Type"),
     }),
-    "Cloudflare generated",
+    useReference ? "Cloudflare FLUX.2 klein 4B · reference-guided" : "Cloudflare generated",
   );
   checkAssets(asset, page);
   page.asset = asset;
@@ -1190,7 +1214,7 @@ run(async () => {
   try {
     generation = await (await api("/api/generation")).json();
     $("generation-status").textContent = generation.ready
-      ? `${generation.provider} ${generation.model} · one picture per confirmed click · ${generation.attempts_today}/${generation.daily_limit} image attempts today. Generated images may need higher-resolution originals for print.`
+      ? `${generation.provider} ${generation.model} · one picture per confirmed click · ${generation.attempts_today}/${generation.daily_limit} image attempts today. ${generation.reference_ready ? "Reference generation: FLUX.2 klein 4B ready." : "Reference generation unavailable."} Generated images may need higher-resolution originals for print.`
       : "AI pictures need owner setup. You can upload artwork and make books now.";
   } catch (e) {
     $("generation-status").textContent =

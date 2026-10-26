@@ -9,7 +9,7 @@ a multi-project workspace without migrating or replacing either older store.
 1. Choose Faceless video, Art collection, Coloring book or Storybook.
 2. Name it and add your author/creator name. Save a character description and
    visual style plus an approved reference picture to reuse in other projects. Prompts include these descriptions;
-   the current image provider does not accept reference images.
+   standard generation uses those descriptions; choose Generate using reference to send the approved image to the reference-capable model.
 3. Write/paste content or use the optional **Start from an idea with AI** section.
    Drafts are reviewed before any pictures are generated. Book drafts append
    pages; replacing a video draft requires confirmation.
@@ -221,8 +221,9 @@ not page artwork; replacing existing settings asks for confirmation.
 Each page with artwork offers **Compare with approved reference**. Review key
 features such as Pip's curl, eyes, arms and colors before approving artwork for
 publication. This is a manual visual comparison, not an automatic consistency
-score. The current Cloudflare model receives text descriptions only; reference
-images are never sent to that model and do not condition generation.
+score. Standard generation uses FLUX.1 schnell with text descriptions. The separate
+Generate using reference action sends a resized copy to FLUX.2 klein 4B; character
+matching still needs visual review.
 
 References remain local, survive refresh, and are included in project JSON
 backups and format variants. Restore a project backup on another device, then
@@ -235,3 +236,41 @@ Reference images use the same 10 MiB / 12 megapixel per-image limit and count
 toward the project's existing 30 MiB / 320 megapixel budget. Invalid references
 are rejected before a restored project is saved. Keep downloaded backups: this
 is browser storage, not cloud synchronization.
+
+## Reference-guided generation
+
+Select or upload an approved reference, review the **Reference generation prompt**
+on a page, then choose **Generate using reference**. Confirm the provider upload
+and any replacement of existing artwork. The request uses Cloudflare
+`@cf/black-forest-labs/flux-2-klein-4b` with the reference as `input_image_0` in
+multipart form data and a fixed 1024×1024 output request. Standard **Generate this
+picture** continues to use FLUX.1 schnell without sending the reference.
+
+No additional service or environment switch is needed beyond the existing
+`WEC_ENABLE_IMAGE_GENERATION=1`, Cloudflare account/token settings and a studio
+token of at least 32 characters. Status means locally configured, not that the
+new model has been successfully called on your account. Provider permissions,
+allowance and availability can still reject requests. There is no automatic
+fallback or retry.
+
+The server validates the original (10 MiB / 12 megapixels), applies EXIF
+orientation, resizes proportionally to fit 512×512, flattens transparency on white
+and removes metadata before sending a PNG copy. The project reference retains
+its original bytes. Input validation occurs before reserving an attempt; provider
+failures consume an attempt. Both models and older scene generation share the
+same 20-attempt UTC daily allowance. The UI refreshes attempt counts after requests.
+This is an attempt counter, not a provider billing ledger.
+
+Cloudflare's published rates checked October 26, 2026 list $0.000059 per input
+512×512 tile and $0.000287 per output tile for Klein 4B. One input tile and four
+output tiles gives an estimated $0.001207 list price per request before the
+account's free allowance. Account billing and other usage determine actual cost.
+The UI displays an approximate estimate; it is not a spending guarantee.
+
+Official protocol and pricing sources:
+- https://developers.cloudflare.com/changelog/post/2026-01-15-flux-2-klein-4b-workers-ai/
+- https://developers.cloudflare.com/workers-ai/models/flux-2-klein-4b/
+- https://developers.cloudflare.com/workers-ai/platform/pricing/
+
+Automated tests use mocked Cloudflare responses. Live account access and actual
+character consistency require a first confirmed generation after deployment.

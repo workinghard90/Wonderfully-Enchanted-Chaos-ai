@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 
 from PIL import Image
 import requests
-from wec_engine.providers.cloudflare_images import CloudflareImages, GenerationError, MODEL
+from wec_engine.providers.cloudflare_images import CloudflareImages, GenerationError, MODEL, REFERENCE_MODEL, prepare_reference
 from wec_engine import studio_store as store
 from wec_engine.studio import create_handler
 
@@ -94,6 +94,48 @@ class ProviderTests(unittest.TestCase):
         post.return_value = image_response()
         with patch('wec_engine.providers.cloudflare_images.MAX_RESPONSE', 1), self.assertRaises(GenerationError):
             self.provider().generate('A lantern')
+
+
+class ReferenceProviderTests(unittest.TestCase):
+    def test_normalization_preserves_source_and_bounds_upload(self):
+        source = io.BytesIO()
+        Image.new('RGBA', (1400, 700), (80, 40, 130, 128)).save(source, format='PNG')
+        original = source.getvalue()
+        normalized = prepare_reference(base64.b64encode(original).decode())
+        with Image.open(io.BytesIO(normalized)) as image:
+            self.assertEqual(image.size, (512, 256))
+            self.assertEqual(image.mode, 'RGB')
+            self.assertEqual(image.format, 'PNG')
+            self.assertFalse(image.info)
+        self.assertEqual(source.getvalue(), original)
+
+    def test_invalid_references_fail_locally(self):
+        for encoded in (None, '', '%%%', base64.b64encode(b'<svg/>').decode()):
+            with self.subTest(encoded=encoded), self.assertRaises(ValueError):
+                prepare_reference(encoded)
+        with patch('wec_engine.providers.cloudflare_images.MAX_REFERENCE', 1), self.assertRaises(ValueError):
+            prepare_reference(base64.b64encode(image_bytes()).decode())
+        source = io.BytesIO(); Image.new('RGB', (4000, 3001)).save(source, format='PNG')
+        with self.assertRaises(ValueError): prepare_reference(base64.b64encode(source.getvalue()).decode())
+
+    @patch('wec_engine.providers.cloudflare_images.requests.post')
+    def test_multipart_reference_protocol_no_fallback(self, post):
+        ref = prepare_reference(base64.b64encode(image_bytes()).decode())
+        provider = CloudflareImages(ACCOUNT, TOKEN, enabled=True)
+        post.return_value = image_response()
+        self.assertEqual(provider.generate('Keep image 0 character', reference=ref), image_bytes())
+        args, kwargs = post.call_args
+        self.assertTrue(args[0].endswith(REFERENCE_MODEL))
+        self.assertEqual(kwargs['data'], {'prompt':'Keep image 0 character', 'width':'1024', 'height':'1024'})
+        self.assertEqual(kwargs['files']['input_image_0'], ('reference.png', ref, 'image/png'))
+        self.assertNotIn('json', kwargs)
+        self.assertNotIn('Content-Type', kwargs['headers'])
+        self.assertFalse(kwargs['allow_redirects'])
+        for status in (429, 500):
+            post.reset_mock(); post.return_value = response(status=status)
+            with self.assertRaises(GenerationError): provider.generate('Keep character', reference=ref)
+            self.assertEqual(post.call_count, 1)
+            self.assertTrue(post.call_args.args[0].endswith(REFERENCE_MODEL))
 
 
 class GenerationApiTests(unittest.TestCase):

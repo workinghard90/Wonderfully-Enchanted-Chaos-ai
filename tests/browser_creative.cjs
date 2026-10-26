@@ -404,6 +404,7 @@ const assert = require("node:assert/strict");
       r.fulfill({
         json: {
           ready: true,
+          reference_ready: true,
           provider: "Fixture",
           model: "fixture",
           attempts_today: 0,
@@ -414,16 +415,18 @@ const assert = require("node:assert/strict");
     await c.route("**/api/creative/text", (r) =>
       r.fulfill({ json: { ready: true } }),
     );
-    let calls = 0;
+    let calls = 0, sent = [];
     await c.route("**/api/creative/image", (r) => {
       calls++;
+      sent.push(r.request().postDataJSON());
       return r.fulfill({
         status: 502,
         json: { error: "Fixture provider failure" },
       });
     });
     const p = await c.newPage();
-    p.on("dialog", (d) => d.accept());
+    let acceptGeneration = true;
+    p.on("dialog", (d) => acceptGeneration ? d.accept() : d.dismiss());
     await p.goto(base + "/studio/");
     await p.locator("#status").filter({ hasText: "Choose a format" }).waitFor();
     await p.locator("[data-kind=art]").click();
@@ -433,6 +436,7 @@ const assert = require("node:assert/strict");
       .locator("#status")
       .filter({ hasText: "1 picture(s) added and saved" })
       .waitFor();
+    assert.equal(await p.locator('[data-reference-generate]').isDisabled(), true);
     await p.getByRole('button', {name:'Use as approved reference',exact:true}).click();
     await ready(p);
     await p.locator("[data-generate]").click();
@@ -444,6 +448,30 @@ const assert = require("node:assert/strict");
     const preserved = JSON.parse((await download(p, "#backup")).toString());
     assert.equal(preserved.pages[0].asset.image_base64, png.toString("base64"));
     assert.equal(preserved.reference.image_base64, png.toString("base64"));
+    assert.equal(sent[0].mode, 'text');
+    assert.equal(sent[0].reference_image_base64, undefined);
+    acceptGeneration = false;
+    await p.locator('[data-reference-generate]').click(); await ready(p);
+    assert.equal(calls, 1);
+    acceptGeneration = true;
+    await p.locator('[data-reference-generate]').click(); await ready(p);
+    assert.equal(calls, 2);
+    assert.equal(sent[1].mode, 'reference');
+    assert.equal(sent[1].reference_image_base64, png.toString('base64'));
+    assert.match(sent[1].prompt, /character in image 0/);
+    const afterFailure = JSON.parse((await download(p, '#backup')).toString());
+    assert.equal(afterFailure.pages[0].asset.image_base64, png.toString('base64'));
+    assert.equal(afterFailure.reference.image_base64, png.toString('base64'));
+    await c.unroute('**/api/creative/image');
+    await c.route('**/api/creative/image', r => {
+      calls++; return r.fulfill({contentType:'image/png', body:png});
+    });
+    await p.locator('[data-reference-generate]').click(); await ready(p);
+    assert.equal(calls, 3);
+    const generated = JSON.parse((await download(p, '#backup')).toString());
+    assert.match(generated.pages[0].asset.source, /reference-guided/);
+    assert.equal(generated.reference.image_base64, png.toString('base64'));
+
     await p.locator("[data-kind=storybook]").click();
     await ready(p);
     await c.route("**/api/creative/draft", (r) =>
