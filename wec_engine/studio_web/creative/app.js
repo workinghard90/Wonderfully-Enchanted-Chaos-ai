@@ -80,7 +80,47 @@ function changed() {
   saveTimer = setTimeout(() => {
     if (!busy) run(persist);
   }, 900);
+  document.querySelectorAll(".prompt-preview[data-page]").forEach(node => {
+    const page = project.pages.find(p => p.id === node.dataset.page);
+    if (page) node.textContent = promptFor(page, node.dataset.reference === "true");
+  });
   readiness();
+}
+function canGenerate(reference = false) {
+  const configured = reference ? generation?.reference_ready : (generation?.creative_ready ?? generation?.ready);
+  return Boolean(configured && (!reference || project?.reference) &&
+    !(generation.attempts_today >= generation.daily_limit));
+}
+function showGenerationStatus() {
+  const ready = generation?.creative_ready ?? generation?.ready;
+  const message = generation?.message || (ready ? "AI image generation configured." : "AI image generation needs owner setup.");
+  const usage = generation ? ` ${generation.attempts_today}/${generation.daily_limit} image attempts today (text and reference combined).` : "";
+  const limit = generation && generation.attempts_today >= generation.daily_limit ? " Daily limit reached; it resets at 00:00 UTC." : "";
+  $("generation-status").textContent = message + usage + limit;
+  $("ai-connection-status").textContent = message + usage + limit;
+}
+async function refreshAI(interactive = false) {
+  generation = null;
+  textReady = false;
+  try {
+    generation = await (await api("/api/generation", undefined, interactive)).json();
+    showGenerationStatus();
+  } catch (error) {
+    const message = `${error.message} Saving projects on this device works separately from AI. Use Connect / check AI to reconnect.`;
+    $("generation-status").textContent = message;
+    $("ai-connection-status").textContent = message;
+    $("draft-status").textContent = "Connect to check AI drafting.";
+    return;
+  }
+  try {
+    const t = await (await api("/api/creative/text", undefined, false)).json();
+    textReady = t.ready;
+    $("draft-status").textContent = t.ready
+      ? "AI drafting configured · up to five confirmed requests per day."
+      : "AI drafting is disabled or needs owner setup (WEC_ENABLE_TEXT_GENERATION). You can write or paste text.";
+  } catch (error) {
+    $("draft-status").textContent = `AI drafting unavailable: ${error.message}`;
+  }
 }
 function lock(value) {
   busy = value;
@@ -90,9 +130,9 @@ function lock(value) {
   if (!value) {
     document
       .querySelectorAll("[data-generate]")
-      .forEach((n) => (n.disabled = !generation?.ready));
+      .forEach((n) => (n.disabled = !canGenerate()));
     document.querySelectorAll('[data-reference-generate]').forEach(n =>
-      n.disabled = !generation?.reference_ready || !project?.reference);
+      n.disabled = !canGenerate(true));
     $("draft").disabled = !textReady;
   }
 }
@@ -125,17 +165,27 @@ function snapshot() {
 async function api(path, body, retry = true) {
   const headers = { "X-WEC-Token": sessionStorage.getItem("wec_token") || "" };
   if (body) headers["Content-Type"] = "application/json";
-  const r = await fetch(path, {
-    method: body ? "POST" : "GET",
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  let r;
+  try {
+    r = await fetch(path, {
+      method: body ? "POST" : "GET", headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw Error(error.name === "AbortError"
+      ? "The server did not respond within 90 seconds. No automatic retry was made. Check your connection and saved results before retrying."
+      : "Cannot reach the studio server. Check your connection or wait for the server to wake, then use Connect / check AI.");
+  } finally { clearTimeout(timer); }
   if (r.status === 401 && retry) {
     const value = prompt("Studio access token (kept in this browser tab):");
     if (value === null) throw Error("Authentication cancelled");
     sessionStorage.setItem("wec_token", value);
     return api(path, body, false);
   }
+  if (r.status === 401) throw Error("Studio authentication is required or the access token is incorrect.");
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
     throw Error(
@@ -332,24 +382,26 @@ function render() {
     summary.textContent = "Full generation prompt";
     const preview = document.createElement("p");
     preview.className = "prompt-preview";
+    preview.dataset.page = page.id;
     preview.textContent = promptFor(page);
     detail.append(summary, preview);
     words.append(detail);
     const gen = button(
       "Generate this picture",
       () => generate(page),
-      !generation?.ready,
+      !canGenerate(),
     );
     gen.dataset.generate = "true";
     words.append(gen);
     const refGen = button("Generate using reference", () => generate(page, true),
-      !generation?.reference_ready || !project.reference);
+      !canGenerate(true));
     refGen.dataset.referenceGenerate = "true";
     words.append(refGen);
     const refDetail = document.createElement("details");
     const refSummary = document.createElement("summary"); refSummary.textContent = "Reference generation prompt";
     const refPreview = document.createElement("p"); refPreview.textContent = promptFor(page, true);
     refPreview.className = "prompt-preview";
+    refPreview.dataset.page = page.id; refPreview.dataset.reference = "true";
     refDetail.append(refSummary, refPreview); words.append(refDetail);
     grid.append(visual, words);
     card.append(grid);
@@ -513,6 +565,8 @@ function download(blob, suffix) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 async function generate(page, useReference = false) {
+  if (!canGenerate(useReference))
+    throw Error("Image generation is unavailable or the daily limit is reached. Check AI connection status and your approved reference.");
   if (useReference && (!project.reference || !generation?.reference_ready))
     throw Error("Choose an approved reference and connect reference generation first.");
   if (project.kind === "video" && videoSceneIssue())
@@ -545,7 +599,7 @@ async function generate(page, useReference = false) {
   finally {
     try {
       generation = await (await api("/api/generation", undefined, false)).json();
-      $("generation-status").textContent = `${generation.attempts_today}/${generation.daily_limit} image attempts today across text and reference generation. No automatic retries.`;
+      showGenerationStatus();
     } catch { /* Never retry a generation when status refresh fails. */ }
   }
   const asset = await inspect(
@@ -1201,23 +1255,6 @@ run(async () => {
   profiles = await storage.all("profiles");
   fillProfiles();
   say("Choose a format or open a saved project.");
-  try {
-    const t = await (await api("/api/creative/text")).json();
-    textReady = t.ready;
-    $("draft-status").textContent = t.ready
-      ? "AI drafting ready · up to five confirmed text requests per day."
-      : "AI drafting needs owner setup. You can write or paste text now.";
-  } catch {
-    $("draft-status").textContent =
-      "AI drafting status unavailable. You can paste your text now.";
-  }
-  try {
-    generation = await (await api("/api/generation")).json();
-    $("generation-status").textContent = generation.ready
-      ? `${generation.provider} ${generation.model} · one picture per confirmed click · ${generation.attempts_today}/${generation.daily_limit} image attempts today. ${generation.reference_ready ? "Reference generation: FLUX.2 klein 4B ready." : "Reference generation unavailable."} Generated images may need higher-resolution originals for print.`
-      : "AI pictures need owner setup. You can upload artwork and make books now.";
-  } catch (e) {
-    $("generation-status").textContent =
-      "Image generation status unavailable. Upload your artwork, or try again after connecting.";
-  }
+  await refreshAI(false);
 });
+$("check-ai").onclick = () => run(() => refreshAI(true));

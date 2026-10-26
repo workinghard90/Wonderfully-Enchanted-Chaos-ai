@@ -11,6 +11,7 @@ from wec_engine.studio import create_handler
 
 class SyntheticProvider:
     def ready(self): return True
+    def setup_message(self): return "Synthetic Cloudflare fixture configured."
     def generate(self, prompt):
         if prompt == 'simulate provider failure':
             raise GenerationError('Simulated provider failure', 503)

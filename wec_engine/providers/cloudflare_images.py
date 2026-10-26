@@ -35,6 +35,26 @@ def validate_prompt(prompt):
     return prompt.strip()
 
 
+def provider_error_code(response):
+    chunks, size = [], 0
+    for chunk in response.iter_content(chunk_size=4096):
+        size += len(chunk)
+        if size > 65536:
+            return ''
+        chunks.append(chunk)
+    try:
+        value = json.loads(b''.join(chunks))
+        errors = value.get('errors', []) if isinstance(value, dict) else []
+        if isinstance(errors, list):
+            for error in errors[:5]:
+                code = error.get('code') if isinstance(error, dict) else None
+                if type(code) is int and 0 <= code <= 999999:
+                    return f'; code {code}'
+    except (ValueError, TypeError, RecursionError):
+        pass
+    return ''
+
+
 def prepare_reference(encoded):
     """Validate before reserving an attempt; upload a small metadata-free copy."""
     try:
@@ -73,10 +93,19 @@ class CloudflareImages:
     def ready(self):
         return self.enabled is True and self.configured()
 
+    def setup_message(self):
+        if not self.enabled:
+            return 'Image generation is disabled on the server. Enable WEC_ENABLE_IMAGE_GENERATION=1 in Render.'
+        if not re.fullmatch(r'[a-fA-F0-9]{32}', self.account_id):
+            return 'Cloudflare account setup is incomplete. Check WEC_CLOUDFLARE_ACCOUNT_ID in Render.'
+        if not self.api_token or not all(33 <= ord(c) <= 126 for c in self.api_token):
+            return 'Cloudflare token setup is incomplete. Check WEC_CLOUDFLARE_API_TOKEN in Render.'
+        return 'Cloudflare is configured. Model access is verified only when a generation succeeds.'
+
     def generate(self, prompt, *, reference=None):
         prompt = validate_prompt(prompt)
         if not self.ready():
-            raise GenerationError('Image generation needs owner setup before it can run.', 503)
+            raise GenerationError(self.setup_message(), 503)
         model = REFERENCE_MODEL if reference is not None else MODEL
         endpoint = f'https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{model}'
         inputs = {'json': {'prompt': prompt, 'steps': 4}}
@@ -89,12 +118,13 @@ class CloudflareImages:
             with requests.post(endpoint, **inputs,
                                headers={'Authorization': f'Bearer {self.api_token}'},
                                timeout=(5, 45), stream=True, allow_redirects=False) as response:
+                diagnostic = f' (HTTP {response.status_code}{provider_error_code(response)})' if response.status_code != 200 else ''
                 if response.status_code in (401, 403):
-                    raise GenerationError('Cloudflare rejected access. The owner should check the Workers AI token and account.', 503)
+                    raise GenerationError('Cloudflare rejected access' + diagnostic + '. Check the Workers AI token, account and model permissions in Render/Cloudflare.', 503)
                 if response.status_code == 429:
-                    raise GenerationError('Cloudflare is busy or its allowance is used. Try again later.', 429)
+                    raise GenerationError('Cloudflare is busy or its allowance is used' + diagnostic + '. Check Cloudflare usage before trying again.', 429)
                 if response.status_code != 200:
-                    raise GenerationError('Cloudflare could not generate this image. Review the prompt or try later.')
+                    raise GenerationError('Cloudflare could not generate this image' + diagnostic + '. Review the prompt and check provider availability. No automatic retry was made.')
                 chunks, size = [], 0
                 for chunk in response.iter_content(chunk_size=65536):
                     size += len(chunk)
