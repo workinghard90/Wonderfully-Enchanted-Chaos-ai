@@ -25,7 +25,7 @@ const net=require('node:net'),assert=require('node:assert/strict');
    const page=await context.newPage(),errors=[],fileRequests=[];let accept=false,startCalls=0;
    page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>accept?d.accept():d.dismiss());
    page.on('request',r=>{if(r.url().endsWith('/file'))fileRequests.push(r);if(r.method()==='POST'&&r.url().endsWith('/video'))startCalls++});
-   await page.goto(base);
+   await page.goto(base + "/video/");
    assert.equal(await page.locator('#render-video').isDisabled(),true);
    await page.locator('#title').fill('Browser video '+viewport.width);
    await page.locator('#story').fill('A little lantern glows.');await page.locator('#scenes').fill('1');await page.locator('#duration').fill('2');

@@ -187,8 +187,15 @@ class CreativeHTTPTests(unittest.TestCase):
         except HTTPError as e:return e.code,e.read(),e.headers
 
     def test_static_routes_and_authentication(self):
-        for path in ['/studio/','/studio/app.js','/studio/store.js','/studio/style.css']:
+        for path in ['/','/studio/','/studio/app.js','/studio/store.js','/studio/style.css', '/video', '/video/', '/?project=old-id']:
             self.assertEqual(self.request(path,token=False)[0],200)
+        home = self.request('/', token=False)[1]
+        self.assertEqual(home, self.request('/studio/', token=False)[1])
+        self.assertIn(b'Artwork Studio', home)
+        video = self.request('/video/', token=False)[1]
+        self.assertEqual(video, self.request('/?project=old-id', token=False)[1])
+        self.assertIn(b'id="story"', video)
+        self.assertIn(b'src="/app.js"', video)
         self.assertEqual(self.request('/api/creative/pdf',project(),False)[0],401)
         self.assertEqual(self.request('/studio/../../studio.py',token=False)[0],401)
 

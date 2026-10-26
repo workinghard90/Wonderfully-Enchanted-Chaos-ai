@@ -11,7 +11,7 @@ import signal
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, urlsplit
+from urllib.parse import parse_qs, urlparse, urlsplit
 from .studio_store import (
     init_db, list_projects, get_project, save_project, project_plan,
     save_scene_image, get_scene_image, remove_scene_image,
@@ -120,9 +120,12 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             return True
         def _route(self):
             path = urlparse(self.path).path
-            if self.command == 'GET' and path == '/':
+            # Preserve old project bookmarks while making the shared studio the home page.
+            if self.command == 'GET' and (path in ('/video', '/video/') or
+                    (path == '/' and 'project' in parse_qs(urlparse(self.path).query))):
                 self._send(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8'); return
             creative_assets = {
+                '/': ('index.html', 'text/html; charset=utf-8'),
                 '/studio': ('index.html', 'text/html; charset=utf-8'),
                 '/studio/': ('index.html', 'text/html; charset=utf-8'),
                 '/studio/app.js': ('app.js', 'application/javascript; charset=utf-8'),

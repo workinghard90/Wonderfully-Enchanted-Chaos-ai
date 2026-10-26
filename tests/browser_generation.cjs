@@ -26,7 +26,7 @@ const net=require('node:net'),assert=require('node:assert/strict');
    page.on('dialog',d=>consent?d.accept():d.dismiss());
    page.on('pageerror',error=>errors.push(error.message));
    page.on('request',r=>{if(r.url().endsWith('/generate'))calls++});
-   await page.goto(base);
+   await page.goto(base + "/video/");
    await page.locator('#title').fill('Synthetic generation '+viewport.width);
    await page.locator('#story').fill('A lantern helps a fox.');await page.locator('#scenes').fill('2');
    await page.locator('#save-top').click();await page.locator('#message').filter({hasText:'Project saved'}).waitFor();
