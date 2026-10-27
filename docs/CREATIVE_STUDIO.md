@@ -322,3 +322,22 @@ This panel describes input readiness, not completed render status. Follow actual
 jobs and downloads in **Video renders**. Server limits, narration timing and
 provider availability are still checked by the existing APIs. No automatic
 batch generation, retries, publishing or additional paid dependency is added.
+
+## Book review before PDF export
+
+The **Review before printing → Check book** panel checks editor pages locally:
+missing pictures, missing storybook text, the existing 300 PPI interior target,
+and exact duplicate files grouped by SHA-256. Page numbers refer to editor
+pages, not printed sheet numbers. Each listed page issue has a navigation button.
+
+Both interior and wrap-cover exports rerun the review. Missing required content
+blocks the request before it reaches the server. Warnings allow an explicit
+review export, so intentional repetition remains possible. Cancelling does not
+submit an export, change artwork or remove pages. Project backups still support
+unfinished drafts. Editing refreshes the panel's reminder to check again.
+
+Hashing runs on this device, one picture at a time, and makes no AI request.
+Different encodings/crops of the same drawing are not detected; this is not
+near-duplicate matching. PPI checks describe the interior box, not cover fit.
+Text overflow remains enforced by the PDF backend. These checks are not a KDP
+certification: visually review the exported interior and cover before publishing.

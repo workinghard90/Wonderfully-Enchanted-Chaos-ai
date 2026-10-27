@@ -234,6 +234,7 @@ function render() {
   urls.forEach((u) => URL.revokeObjectURL(u));
   urls = [];
   $("video-workflow").hidden = project?.kind !== "video";
+  $("book-review").hidden = !project || project.kind === "video";
   $("editor").hidden = !project;
   $("empty").hidden = !!project;
   if (!project) return;
@@ -477,6 +478,8 @@ function ppi(page) {
 }
 function readiness() {
   if (!project) return;
+  $("book-review-status").textContent = "Check the current pages before printing. Export checks them again automatically.";
+  $("book-review-issues").replaceChildren();
   if (project.kind === "video") {
     const hasScript = Boolean(project.narration.trim());
     const arranged = hasScript && project.pages.length > 0 && !videoSceneIssue();
@@ -914,16 +917,53 @@ $("zip").onclick = () =>
       "Original artwork ZIP download opened. Project JSON keeps your full editable workspace.",
     );
   });
+async function checkBook() {
+  readFields();
+  const issues = [], hashes = new Map();
+  if (!project.pages.length) issues.push({error:true, text:"Add at least one page."});
+  for (const [i, page] of project.pages.entries()) {
+    if (!page.asset) issues.push({error:true, index:i, text:`Page ${i + 1}: missing picture.`});
+    if (project.kind === "storybook" && !page.text.trim())
+      issues.push({error:true, index:i, text:`Page ${i + 1}: missing story text.`});
+    if (!page.asset) continue;
+    if (ppi(page) < 300) issues.push({index:i, text:`Page ${i + 1}: below the 300 PPI interior target (${ppi(page)} PPI).`});
+    const digest = await crypto.subtle.digest("SHA-256", await page.asset.blob.arrayBuffer());
+    const hash = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, "0")).join("");
+    if (!hashes.has(hash)) hashes.set(hash, []);
+    hashes.get(hash).push(i);
+  }
+  for (const pages of hashes.values()) {
+    if (pages.length > 1) issues.push({index:pages[1], text:`Exact duplicate artwork on pages ${pages.map(i => i + 1).join(", ")}. Keep only if the repetition is intentional.`});
+  }
+  $("book-review-issues").replaceChildren(...issues.map(issue => {
+    const li = document.createElement("li"); li.textContent = issue.text + " ";
+    if (issue.index !== undefined) li.append(button("Go to page " + (issue.index + 1), () => {
+      const card = $("pages").children[issue.index];
+      card.tabIndex = -1; card.scrollIntoView({block:"center", behavior:"smooth"}); card.focus({preventScroll:true});
+    }));
+    return li;
+  }));
+  const errors = issues.filter(i => i.error).length;
+  $("book-review-status").textContent = issues.length
+    ? `${errors} blocking issue(s), ${issues.length - errors} review warning(s).`
+    : "Basic checks passed. Inspect the exported PDF for text layout, margins and artwork quality.";
+  return {issues, errors};
+}
+$("check-book").onclick = () => run(async () => {
+  await checkBook();
+  $("book-review").scrollIntoView({block:"center", behavior:"smooth"});
+});
+async function approveBookExport() {
+  const result = await checkBook();
+  if (result.errors) {
+    $("book-review").scrollIntoView({block:"center", behavior:"smooth"});
+    throw Error("Fix the missing book content listed in Review before printing. Project backup still keeps unfinished work.");
+  }
+  return !result.issues.length || confirm(result.issues.map(i => i.text).join("\n") + "\nExport a review PDF anyway? No artwork is changed or removed.");
+}
 $("pdf").onclick = () =>
   run(async () => {
-    if (!project.pages.length) throw Error("Add pages first.");
-    if (
-      project.pages.some((p) => p.asset && ppi(p) < 300) &&
-      !confirm(
-        "Some images are below the 300 PPI target. Export a review PDF anyway? Upscaling is not performed.",
-      )
-    )
-      return;
+    if (!(await approveBookExport())) return;
     await persist();
     say("Building your book PDF. Keep this page open.");
     const r = await api("/api/creative/pdf", await payload());
@@ -1147,6 +1187,7 @@ $("cover-picture").onchange = () =>
   });
 $("cover").onclick = () =>
   run(async () => {
+    if (!(await approveBookExport())) return;
     if (!project.backText.trim())
       throw Error("Add a back-cover description first.");
     await persist();
