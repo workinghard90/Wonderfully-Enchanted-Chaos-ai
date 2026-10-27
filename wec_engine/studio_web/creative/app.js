@@ -233,6 +233,7 @@ function fillProfiles() {
 function render() {
   urls.forEach((u) => URL.revokeObjectURL(u));
   urls = [];
+  $("video-workflow").hidden = project?.kind !== "video";
   $("editor").hidden = !project;
   $("empty").hidden = !!project;
   if (!project) return;
@@ -476,6 +477,32 @@ function ppi(page) {
 }
 function readiness() {
   if (!project) return;
+  if (project.kind === "video") {
+    const hasScript = Boolean(project.narration.trim());
+    const arranged = hasScript && project.pages.length > 0 && !videoSceneIssue();
+    const missing = project.pages.findIndex(p => !p.asset);
+    const illustrated = arranged && missing < 0;
+    const steps = [
+      [hasScript, "Write or draft your narration"],
+      [arranged, "Split and review the current scenes"],
+      [illustrated, `Add scene pictures (${project.pages.filter(p => p.asset).length}/${project.pages.length})`],
+      [false, "Review, render and download your movie"],
+    ];
+    $("workflow-steps").replaceChildren(...steps.map(([done, text]) => {
+      const li = document.createElement("li"); li.textContent = `${done ? "Done: " : "Next: "}${text}`; return li;
+    }));
+    const next = !hasScript ? "Write narration" : !arranged ? "Review and split narration" : !illustrated ? `Add picture for scene ${missing + 1}` : "Review and render video";
+    $("workflow-next").textContent = next;
+    $("workflow-status").textContent = illustrated
+      ? "Scene inputs are complete. Review the pictures, then render. Server availability and actual narration duration are checked during rendering."
+      : "Continue from your saved work. Existing pictures are kept until you choose to replace them.";
+    $("workflow-next").onclick = () => {
+      const target = !hasScript ? $("narration") : !arranged ? $("split") : !illustrated ? $("pages").children[missing] : $("video");
+      target.scrollIntoView({block:"center", behavior:"smooth"});
+      if (target.tagName === "LI") { target.tabIndex = -1; }
+      target.focus({preventScroll:true});
+    };
+  }
   const n = project.pages.length,
     complete = project.pages.filter((p) => p.asset).length,
     low = project.pages.filter((p) => p.asset && ppi(p) < 300).length;
@@ -711,7 +738,7 @@ $("split").onclick = () =>
     if (
       project.pages.length &&
       !confirm(
-        "Replace the existing video scenes and their pictures? Download a backup first.",
+        "Rebuild scenes from this narration? Pictures and prompts are kept only for uniquely matching unchanged scenes. Changed or repeated scenes need review and new picture attachments. Download a backup first.",
       )
     )
       return;
@@ -722,15 +749,20 @@ $("split").onclick = () =>
         duration: project.duration,
       })
     ).json();
-    project.pages = value.scenes.map((s) => ({
-      ...emptyPage(),
-      text: s.narration,
-      prompt: s.narration,
-    }));
+    const normalize = text => text.trim().replace(/\s+/g, " ");
+    const oldPages = project.pages;
+    project.pages = value.scenes.map(s => {
+      const key = normalize(s.narration);
+      const matches = oldPages.filter(p => normalize(p.text) === key);
+      const unique = value.scenes.filter(other => normalize(other.narration) === key).length === 1;
+      if (matches.length === 1 && unique)
+        return {...matches[0], text:s.narration};
+      return {...emptyPage(), text:s.narration, prompt:s.narration};
+    });
     dirty = true;
     await persist();
     render();
-    say("Narration arranged. Review the scene text before attaching pictures.");
+    say(`Narration arranged. Kept ${project.pages.filter(p => p.asset).length} unchanged scene picture(s). Review the scene text before attaching pictures.`);
   });
 $("pictures").onchange = () =>
   run(async () => {
