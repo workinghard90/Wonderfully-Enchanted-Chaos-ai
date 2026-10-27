@@ -53,7 +53,7 @@ function fresh(kind) {
   };
 }
 function emptyPage() {
-  return { id: crypto.randomUUID(), text: "", prompt: "", asset: null };
+  return { id: crypto.randomUUID(), text: "", prompt: "", asset: null, review: "unreviewed" };
 }
 function limit() {
   return project.kind === "video" ? 7 : 80;
@@ -308,6 +308,18 @@ function render() {
       info.className = "muted";
       info.textContent = `${page.asset.width} × ${page.asset.height} · ${page.asset.source} · ${ppi(page)} PPI at planned size`;
       visual.append(info);
+      const reviewLabel = document.createElement("label"); reviewLabel.textContent = "Artwork review";
+      const review = document.createElement("select");
+      review.setAttribute("aria-label", "Artwork review");
+      for (const [value, text] of [["unreviewed", "Not reviewed"], ["approved", "Approved"], ["needs_changes", "Needs changes"]])
+        review.add(new Option(text, value));
+      review.value = ["approved", "needs_changes"].includes(page.review) ? page.review : "unreviewed";
+      review.onchange = () => run(async () => {
+        page.review = review.value; dirty = true; await persist(); render();
+        say("Artwork review saved. This records your review, not publishing approval.");
+      });
+      reviewLabel.append(review); visual.append(reviewLabel);
+
       visual.append(button("Use as approved reference", async () => {
         if (!confirm("Use this picture as the approved character reference for this project? Save the character profile to reuse it elsewhere.")) return;
         checkAssets(page.asset, project.reference);
@@ -341,6 +353,7 @@ function render() {
         const asset = await inspect(f, "Uploaded original");
         checkAssets(asset, page);
         page.asset = asset;
+        page.review = "unreviewed";
         dirty = true;
         await persist();
         render();
@@ -355,6 +368,7 @@ function render() {
       const asset = await inspect(new File([chosen.blob], chosen.name, { type: chosen.blob.type }), "Reused saved original");
       checkAssets(asset, page);
       page.asset = asset;
+      page.review = "unreviewed";
       dirty = true;
       await persist();
       render();
@@ -511,7 +525,7 @@ function readiness() {
     low = project.pages.filter((p) => p.asset && ppi(p) < 300).length;
   const count = project.kind === "coloring" ? 2 + n * 2 : 2 + n + (n % 2);
   $("readiness").textContent =
-    `${complete}/${n} pictures ready${project.kind === "video" ? "" : ` · ${count} PDF pages`}${low ? ` · ${low} image(s) below the 300 PPI print target` : ""}. ${project.kind === "storybook" ? "Every picture needs its own story text." : ""}`;
+    `${complete}/${n} pictures ready · ${project.pages.filter(p => p.asset && p.review === "approved").length}/${complete} pictures approved${project.kind === "video" ? "" : ` · ${count} PDF pages`}${low ? ` · ${low} image(s) below the 300 PPI print target` : ""}. ${project.kind === "storybook" ? "Every picture needs its own story text." : ""}`;
   if (project.kind === "video" && videoSceneIssue())
     $("readiness").textContent += " " + videoSceneIssue();
 }
@@ -653,6 +667,7 @@ async function generate(page, useReference = false) {
   );
   checkAssets(asset, page);
   page.asset = asset;
+  page.review = "unreviewed";
   dirty = true;
   try {
     await persist();
@@ -785,6 +800,7 @@ $("pictures").onchange = () =>
           project.pages.push(page);
         }
         page.asset = asset;
+        page.review = "unreviewed";
         dirty = true;
         added++;
       }
@@ -926,6 +942,7 @@ async function checkBook() {
     if (project.kind === "storybook" && !page.text.trim())
       issues.push({error:true, index:i, text:`Page ${i + 1}: missing story text.`});
     if (!page.asset) continue;
+    if (page.review !== "approved") issues.push({index:i, text:`Page ${i + 1}: artwork ${page.review === "needs_changes" ? "needs changes" : "has not been reviewed"}.`});
     if (ppi(page) < 300) issues.push({index:i, text:`Page ${i + 1}: below the 300 PPI interior target (${ppi(page)} PPI).`});
     const digest = await crypto.subtle.digest("SHA-256", await page.asset.blob.arrayBuffer());
     const hash = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, "0")).join("");
@@ -979,7 +996,8 @@ $("video").onclick = () =>
     if (videoSceneIssue()) throw Error(videoSceneIssue());
     if (!project.pages.length || project.pages.some(page => !page.asset))
       throw Error("Attach a picture to every scene before rendering.");
-    if (!confirm("Build a narrated movie from this project and its pictures? This uses one local render attempt, saves a server copy, and does not generate new images.")) return;
+    const awaitingReview = project.pages.filter(p => p.review !== "approved").length;
+    if (!confirm(`${awaitingReview} picture(s) are not approved. Review them before publishing. ` + "Build a narrated movie from this project and its pictures? This uses one local render attempt, saves a server copy, and does not generate new images.")) return;
     const state = await renders.refresh();
     if (!state.ready) throw Error(state.message || "Video rendering is unavailable.");
     if (state.jobs.some(job => ["queued", "running"].includes(job.status)))
@@ -1081,7 +1099,9 @@ async function restore(file) {
       if (total > MAX_BYTES || pixels > MAX_PIXELS)
         throw Error("Project exceeds its image budget");
       page.asset = asset;
+      page.review = "unreviewed";
     }
+    if (page.asset && ["approved", "needs_changes"].includes(p.review)) page.review = p.review;
     candidate.pages.push(page);
   }
   if (v.cover) {

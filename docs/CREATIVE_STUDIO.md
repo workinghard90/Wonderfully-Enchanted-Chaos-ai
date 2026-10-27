@@ -341,3 +341,22 @@ Different encodings/crops of the same drawing are not detected; this is not
 near-duplicate matching. PPI checks describe the interior box, not cover fit.
 Text overflow remains enforced by the PDF backend. These checks are not a KDP
 certification: visually review the exported interior and cover before publishing.
+
+## Track artwork review
+
+Under each attached page or scene picture, **Artwork review** offers **Not
+reviewed**, **Approved**, and **Needs changes**. Changing the selection saves it
+with the project. The summary counts approved pictures. This is a manual note
+about the current picture, not an AI quality score or publishing authorization.
+
+Project JSON backups preserve these markers. Older backups default to Not
+reviewed; unknown marker values are ignored. Uploading, generating or reusing a
+replacement resets the destination to Not reviewed, even for identical bytes.
+New format variants also start unreviewed. Re-splitting video scenes preserves
+markers only for uniquely matching unchanged scenes whose pictures are retained.
+Changing text, prompts or character settings does not review the picture for you.
+
+Book checks warn about pictures not approved, and the video confirmation counts
+outstanding reviews. Review exports/renders remain available after confirmation;
+there is no automatic publishing. These markers cover page/scene pictures, not
+separate covers or character reference profiles.
