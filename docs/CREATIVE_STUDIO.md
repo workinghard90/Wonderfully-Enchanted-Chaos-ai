@@ -303,3 +303,22 @@ update the destination. Backups include the copied original. This is a first
 step toward a shared asset library, not cloud sync or deduplicated storage.
 Colored pictures remain colored originals; choosing one for a coloring project
 does not convert it into line art. Review suitability and print quality before export.
+
+## Guided video preparation and scene recovery
+
+Video projects now show **Finish your video** near the top of the editor.
+It tracks narration, whether scenes match the current script, and missing
+pictures. Its next-step button takes you to the relevant script, split control,
+first missing scene, or render control. Navigation does not generate images or
+start rendering. Reopening a saved project reconstructs this progress.
+
+Splitting again preserves a scene's original picture, prompt and ID only when
+its narration uniquely matches one old scene and one new scene (ignoring
+whitespace differences). Changed, merged, split or repeated scenes do not
+silently inherit artwork. Review the confirmation and download a backup before
+rebuilding. Cancelled or failed planning requests leave the current scenes intact.
+
+This panel describes input readiness, not completed render status. Follow actual
+jobs and downloads in **Video renders**. Server limits, narration timing and
+provider availability are still checked by the existing APIs. No automatic
+batch generation, retries, publishing or additional paid dependency is added.

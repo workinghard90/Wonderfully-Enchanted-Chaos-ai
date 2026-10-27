@@ -337,6 +337,26 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "2 picture(s) added and saved" })
         .waitFor();
+      assert.equal(await page.locator('#video-workflow').isVisible(), true);
+      assert.equal(await page.locator('#workflow-next').innerText(), 'Review and render video');
+      const beforeResplit = JSON.parse((await download(page, '#backup')).toString());
+      await page.locator('#split').click(); await ready(page);
+      const afterResplit = JSON.parse((await download(page, '#backup')).toString());
+      assert.deepEqual(afterResplit.pages, beforeResplit.pages);
+      await page.locator('#narration').fill('A cloud found a little star. The star danced in the sky.');
+      assert.equal(await page.locator('#workflow-next').innerText(), 'Review and split narration');
+      await page.locator('#split').click(); await ready(page);
+      const revisedScenes = JSON.parse((await download(page, '#backup')).toString());
+      assert.equal(revisedScenes.pages[0].asset.image_base64, png.toString('base64'));
+      assert.equal(revisedScenes.pages[1].asset, null);
+      assert.equal(await page.locator('#workflow-next').innerText(), 'Add picture for scene 2');
+      await page.locator('#workflow-next').click();
+      assert.equal(await page.locator('.page').nth(1).evaluate(el => el === document.activeElement), true);
+      await page.locator('#narration').fill(beforeResplit.narration);
+      await page.locator('#split').click(); await ready(page);
+      await page.locator('.page').nth(1).locator('input[type=file]').setInputFiles(fixture);
+      await ready(page);
+      await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
       // Later narration/count edits must never hand off older scenes or erase art.
       let handoffs = 0;
       page.on("request", (request) => {
