@@ -122,10 +122,19 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "2 picture(s) added and saved" })
         .waitFor();
+      await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
+      await page.locator('.page').nth(1).getByLabel('Artwork review', {exact:true}).selectOption('needs_changes'); await ready(page);
       const backup = JSON.parse(
         (await download(page, "#backup")).toString("utf8"),
       );
       assert.equal(backup.reference.image_base64, png.toString('base64'));
+      assert.equal(backup.pages[0].review, 'approved');
+      assert.equal(backup.pages[1].review, 'needs_changes');
+      await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
+      await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
+      assert.equal(await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).inputValue(), 'unreviewed');
+      await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
+
       assert.equal(backup.pages.length, 2);
       await page.getByText('Compare with approved reference', {exact:true}).first().click();
       await page.locator('.character').first().screenshot({path:path.join(directory, `reference-${viewport.width}.png`)});
@@ -177,6 +186,8 @@ const assert = require("node:assert/strict");
         .waitFor();
       assert.equal(await page.locator("#library .library-item").count(), 2);
       const restoredReference = JSON.parse((await download(page, '#backup')).toString());
+      assert.equal(restoredReference.pages[0].review, 'approved');
+      assert.equal(restoredReference.pages[1].review, 'needs_changes');
       assert.equal(restoredReference.reference.image_base64, png.toString('base64'));
       const invalidReference = {...backup, reference:{name:'bad.png', image_base64:'not-an-image'}};
       await page.locator('#restore').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(invalidReference))});
@@ -256,6 +267,7 @@ const assert = require("node:assert/strict");
       const copied = JSON.parse((await download(page, '#backup')).toString());
       assert.equal(copied.pages[0].asset.image_base64, png.toString('base64'));
       assert.equal(copied.pages[0].asset.source, 'Reused saved original');
+      assert.equal(copied.pages[0].review, 'unreviewed');
       const sourceAsset = await page.evaluate(async id => {
         const store = await import('/studio/store.js');
         return (await store.get(id)).pages[0].asset.source;
@@ -359,6 +371,7 @@ const assert = require("node:assert/strict");
         .waitFor();
       assert.equal(await page.locator('#video-workflow').isVisible(), true);
       assert.equal(await page.locator('#workflow-next').innerText(), 'Review and render video');
+      await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
       const beforeResplit = JSON.parse((await download(page, '#backup')).toString());
       await page.locator('#split').click(); await ready(page);
       const afterResplit = JSON.parse((await download(page, '#backup')).toString());
@@ -369,6 +382,8 @@ const assert = require("node:assert/strict");
       const revisedScenes = JSON.parse((await download(page, '#backup')).toString());
       assert.equal(revisedScenes.pages[0].asset.image_base64, png.toString('base64'));
       assert.equal(revisedScenes.pages[1].asset, null);
+      assert.equal(revisedScenes.pages[0].review, 'approved');
+      assert.equal(revisedScenes.pages[1].review, 'unreviewed');
       assert.equal(await page.locator('#workflow-next').innerText(), 'Add picture for scene 2');
       await page.locator('#workflow-next').click();
       assert.equal(await page.locator('.page').nth(1).evaluate(el => el === document.activeElement), true);
