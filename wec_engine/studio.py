@@ -22,6 +22,7 @@ from .studio_store import (
 from .orchestrator import run_production
 from .providers.cloudflare_images import CloudflareImages, GenerationError, validate_prompt, prepare_reference
 from .studio_video import VideoJobs, VideoJobError
+from .studio_image_requests import ImageRequests, ReceiptError
 from . import creative
 from .studio_store import reserve_creative_generation, reserve_text_generation
 from .providers.cloudflare_text import CloudflareText, MODEL as TEXT_MODEL, draft_settings
@@ -45,6 +46,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
     media_lock = threading.Lock()
     image_provider = CloudflareImages()
     text_provider = CloudflareText()
+    image_requests = ImageRequests(db_path)
     videos = video_jobs or VideoJobs(data_dir/'video-jobs')
     class Handler(BaseHTTPRequestHandler):
         video_jobs = videos
@@ -118,6 +120,79 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 self._send(401, {'error':'Authentication required'})
                 return False
             return True
+        def _image_receipt(self, receipt):
+            if receipt['state'] == 'ready':
+                self._send(200, receipt['image'], receipt['mime'])
+            else:
+                self._send(receipt['status'], {'error': receipt['message'], 'request_state': receipt['state']})
+
+        def _creative_image(self):
+            request_id = None
+            started = locked = completed = False
+            try:
+                if not token or len(token) < 32:
+                    raise GenerationError('Creative image generation requires a studio token of at least 32 characters.', 503)
+                body = json.loads(self._read_body(14 * 1024 * 1024))
+                prompt = validate_prompt(body.get('prompt') if isinstance(body, dict) else None)
+                if set(body) - {'prompt', 'mode', 'reference_image_base64', 'request_id'}:
+                    raise ValueError('Unsupported image generation options')
+                if 'request_id' in body:
+                    request_id, fingerprint = image_requests.identity(body)
+                    receipt = image_requests.get(request_id, fingerprint)
+                    if receipt:
+                        self._image_receipt(receipt)
+                        return
+                if not media_lock.acquire(blocking=False):
+                    raise GenerationError('Another image, export or backup operation is running.', 429)
+                locked = True
+                if not image_provider.ready():
+                    raise GenerationError(image_provider.setup_message(), 503)
+                mode = body.get('mode', 'text')
+                if mode not in ('text', 'reference'):
+                    raise ValueError('Choose text or reference generation')
+                reference = None
+                if mode == 'reference':
+                    reference = prepare_reference(body.get('reference_image_base64'))
+                elif 'reference_image_base64' in body:
+                    raise ValueError('Choose reference mode to send a reference image')
+                if request_id:
+                    image_requests.start(request_id, fingerprint)
+                    started = True
+                reserve_creative_generation(db_path)
+                raw = image_provider.generate(prompt, reference=reference) if reference is not None else image_provider.generate(prompt)
+                import io
+                from PIL import Image
+                with Image.open(io.BytesIO(raw)) as image:
+                    mime = Image.MIME[image.format]
+                if request_id:
+                    image_requests.complete(request_id, raw, mime)
+                completed = True
+                self._send(200, raw, mime)
+            except (BrokenPipeError, ConnectionResetError):
+                # Preserve completed receipts; unfinished provider calls are never retried.
+                if started and not completed:
+                    image_requests.fail(request_id, 'The connection ended before this picture was saved. No automatic retry was made.', 502)
+            except Exception as exc:
+                if completed:
+                    # A response-write failure must not tell the browser to discard recovery.
+                    raise
+                if isinstance(exc, (GenerationError, ReceiptError)):
+                    status, message = exc.status, str(exc)
+                elif isinstance(exc, GenerationLimitError):
+                    status, message = 429, str(exc)
+                elif isinstance(exc, StorageLimitError):
+                    status, message = 413, str(exc)
+                elif isinstance(exc, (ValueError, TypeError, KeyError)):
+                    status, message = 400, str(exc)
+                else:
+                    status, message = 500, 'The picture could not be saved. Check its recovery status before starting another attempt.'
+                if started:
+                    image_requests.fail(request_id, message, status)
+                self._send(status, {'error': message, 'request_state': 'failed' if started else 'not_started'})
+            finally:
+                if locked:
+                    media_lock.release()
+
         def _route(self):
             path = urlparse(self.path).path
             # Preserve old project bookmarks while making the shared studio the home page.
@@ -156,14 +231,23 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             if path == '/api/health' and self.command == 'GET':
                 self._send(200, {'ok':True}); return
             if not self._authorized(): return
+            match = re.fullmatch(r'/api/creative/image-requests/([a-f0-9]{32})', path)
+            if match and self.command == 'GET':
+                receipt = image_requests.get(match.group(1))
+                if receipt:
+                    self._image_receipt(receipt)
+                else:
+                    self._send(404, {'error': 'No saved result was found. Temporary server storage may have reset or the receipt expired. No new generation was started.', 'request_state': 'missing'})
+                return
+            if path == '/api/creative/image' and self.command == 'POST':
+                self._creative_image(); return
             if path == '/api/creative/text' and self.command == 'GET':
                 self._send(200, {'ready': bool(text_provider.ready() and token and len(token) >= 32), 'model': TEXT_MODEL, 'daily_limit': 5}); return
-            if path in ('/api/creative/plan', '/api/creative/image', '/api/creative/pdf', '/api/creative/cover', '/api/creative/video', '/api/creative/draft') and self.command == 'POST':
+            if path in ('/api/creative/plan', '/api/creative/pdf', '/api/creative/cover', '/api/creative/video', '/api/creative/draft') and self.command == 'POST':
                 if not media_lock.acquire(blocking=False):
                     self._send(429, {'error': 'Another image, export or backup operation is running.'}); return
                 try:
-                    limit = (14 * 1024 * 1024 if path.endswith('/image') else
-                             128 * 1024 if path.endswith(('/plan', '/draft')) else creative.MAX_CREATIVE_BODY)
+                    limit = 128 * 1024 if path.endswith(('/plan', '/draft')) else creative.MAX_CREATIVE_BODY
                     body = json.loads(self._read_body(limit))
                     if path.endswith('/plan'):
                         self._send(200, creative.plan(body))
@@ -179,29 +263,6 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                         settings = draft_settings(body)
                         reserve_text_generation(db_path)
                         self._send(200, text_provider.generate(settings))
-                    else:
-                        if not token or len(token) < 32:
-                            raise GenerationError('Creative image generation requires a studio token of at least 32 characters.', 503)
-                        prompt = validate_prompt(body.get('prompt') if isinstance(body, dict) else None)
-                        if not image_provider.ready():
-                            raise GenerationError(image_provider.setup_message(), 503)
-                        if set(body) - {'prompt', 'mode', 'reference_image_base64'}:
-                            raise ValueError('Unsupported image generation options')
-                        mode = body.get('mode', 'text')
-                        if mode not in ('text', 'reference'):
-                            raise ValueError('Choose text or reference generation')
-                        reference = None
-                        if mode == 'reference':
-                            reference = prepare_reference(body.get('reference_image_base64'))
-                        elif 'reference_image_base64' in body:
-                            raise ValueError('Choose reference mode to send a reference image')
-                        reserve_creative_generation(db_path)
-                        raw = image_provider.generate(prompt, reference=reference) if reference is not None else image_provider.generate(prompt)
-                        import io
-                        from PIL import Image
-                        with Image.open(io.BytesIO(raw)) as image:
-                            mime = Image.MIME[image.format]
-                        self._send(200, raw, mime)
                 except GenerationError as exc:
                     self._send(exc.status, {'error': str(exc)})
                 except GenerationLimitError as exc:

@@ -229,6 +229,7 @@ const assert = require("node:assert/strict");
       const legacyPage = await context.newPage();
       await legacyPage.goto(base + '/studio/');
       await legacyPage.locator('#status').filter({hasText:'Choose a format'}).waitFor();
+      await ready(legacyPage); // File-input events do not wait for the initial AI check to unlock the UI.
       const legacy = structuredClone(backup);
       delete legacy.backup_version;
       for (const p of legacy.pages) if (p.asset) delete p.asset.sha256;
@@ -579,7 +580,7 @@ const assert = require("node:assert/strict");
       sent.push(r.request().postDataJSON());
       return r.fulfill({
         status: 502,
-        json: { error: "Fixture provider failure" },
+        json: { error: "Fixture provider failure", request_state: "failed" },
       });
     });
     const p = await c.newPage();

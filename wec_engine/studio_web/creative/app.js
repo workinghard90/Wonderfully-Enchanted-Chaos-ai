@@ -189,9 +189,9 @@ async function api(path, body, retry = true) {
   if (r.status === 401) throw Error("Studio authentication is required or the access token is incorrect.");
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
-    throw Error(
-      e.error || "Request failed. Your saved project is still on this device.",
-    );
+    const error = Error(e.error || "Request failed. Your saved project is still on this device.");
+    error.requestState = e.request_state;
+    throw error;
   }
   return r;
 }
@@ -426,6 +426,20 @@ function render() {
       !canGenerate(true));
     refGen.dataset.referenceGenerate = "true";
     words.append(refGen);
+    if (page.pendingGeneration) {
+      const note = document.createElement("p");
+      note.textContent = "A generation receipt is saved for this page. Check its result before generating again. Recovery keeps the latest five pictures for up to 24 hours while server storage survives.";
+      note.setAttribute("role", "status"); words.append(note);
+      words.append(button("Check generated picture", () => recoverPicture(page)));
+      words.append(button("Dismiss generation receipt", async () => {
+        if (!confirm("Dismiss this recovery link? This does not cancel a provider request or refund an attempt. Check the result first; starting a new generation may spend another attempt.")) return;
+        const candidate = snapshot();
+        delete candidate.pages.find(p => p.id === page.id).pendingGeneration;
+        await commitGeneration(candidate);
+        say("Generation receipt dismissed. Existing picture kept.");
+      }));
+    }
+
     const refDetail = document.createElement("details");
     const refSummary = document.createElement("summary"); refSummary.textContent = "Reference generation prompt";
     const refPreview = document.createElement("p"); refPreview.textContent = promptFor(page, true);
@@ -637,7 +651,44 @@ function download(blob, suffix) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+async function commitGeneration(candidate) {
+  project = await storage.save(candidate);
+  dirty = false;
+  $("save-status").textContent = "Saved " + new Date(project.savedAt).toLocaleTimeString();
+  render();
+  lock(busy);
+  await library();
+  lock(busy);
+}
+async function receivePicture(pageId, response, mode) {
+  if (response.status === 202) {
+    const state = await response.json();
+    say(state.error || "Still generating. Check generated picture shortly.");
+    return;
+  }
+  const asset = await inspect(new File([await response.blob()], "generated.png", {
+    type: response.headers.get("Content-Type"),
+  }), mode === "reference" ? "Cloudflare FLUX.2 klein 4B · reference-guided" : "Cloudflare generated");
+  const current = project.pages.find(p => p.id === pageId);
+  if (!current) throw Error("The destination page is unavailable. Keep the generation receipt to recover the picture.");
+  checkAssets(asset, current);
+  const candidate = snapshot(), page = candidate.pages.find(p => p.id === pageId);
+  page.asset = asset; page.review = "unreviewed";
+  delete page.pendingGeneration;
+  await commitGeneration(candidate);
+  say("Picture received and saved. Review character consistency and actual resolution before using it.");
+}
+async function recoverPicture(page) {
+  const receipt = page.pendingGeneration;
+  if (!receipt) return;
+  const response = await api(`/api/creative/image-requests/${receipt.id}`);
+  if (response.status !== 202 && page.asset &&
+      !confirm("Use the saved generated picture in place of this page's current picture? Download a backup first to keep both. Review it against any prompt or reference edits.")) return;
+  await receivePicture(page.id, response, receipt.mode);
+}
 async function generate(page, useReference = false) {
+  if (page.pendingGeneration)
+    throw Error("Check generated picture before starting another attempt. You can dismiss its receipt after reviewing the result.");
   if (!canGenerate(useReference))
     throw Error("Image generation is unavailable or the daily limit is reached. Check AI connection status and your approved reference.");
   if (useReference && (!project.reference || !generation?.reference_ready))
@@ -664,36 +715,33 @@ async function generate(page, useReference = false) {
     )
   )
     return;
-  say("Generating one picture. Keep this page open; do not click again.");
-  const body = { prompt, mode: useReference ? "reference" : "text" };
+  readFields();
+  const receipt = { id: crypto.randomUUID().replaceAll("-", ""), mode: useReference ? "reference" : "text" };
+  const candidate = snapshot();
+  candidate.pages.find(p => p.id === page.id).pendingGeneration = receipt;
+  // Save the receipt first. A device-save failure must never submit a billable call.
+  await commitGeneration(candidate);
+  say("Generating one picture. If the connection drops, reopen this project and use Check generated picture. No automatic retries.");
+  const body = { prompt, mode: receipt.mode, request_id: receipt.id };
   if (useReference) body.reference_image_base64 = await encoded(project.reference.blob);
-  let r;
-  try { r = await api("/api/creative/image", body); }
-  finally {
+  try {
+    const response = await api("/api/creative/image", body);
+    await receivePicture(page.id, response, receipt.mode);
+  } catch (error) {
+    if (["failed", "not_started"].includes(error.requestState)) {
+      const candidate = snapshot();
+      delete candidate.pages.find(p => p.id === page.id).pendingGeneration;
+      await commitGeneration(candidate);
+    }
+    throw error;
+  } finally {
     try {
       generation = await (await api("/api/generation", undefined, false)).json();
       showGenerationStatus();
     } catch { /* Never retry a generation when status refresh fails. */ }
   }
-  const asset = await inspect(
-    new File([await r.blob()], "generated.png", {
-      type: r.headers.get("Content-Type"),
-    }),
-    useReference ? "Cloudflare FLUX.2 klein 4B · reference-guided" : "Cloudflare generated",
-  );
-  checkAssets(asset, page);
-  page.asset = asset;
-  page.review = "unreviewed";
-  dirty = true;
-  try {
-    await persist();
-  } finally {
-    render();
-  }
-  say(
-    "Picture received. Review character consistency and actual resolution before using it.",
-  );
 }
+
 for (const id of [
   "title",
   "author",
@@ -1109,6 +1157,9 @@ async function restore(file) {
       page.review = "unreviewed";
     }
     if (page.asset && ["approved", "needs_changes"].includes(p.review)) page.review = p.review;
+    if (p.pendingGeneration && /^[a-f0-9]{32}$/.test(p.pendingGeneration.id) &&
+        ["text", "reference"].includes(p.pendingGeneration.mode))
+      page.pendingGeneration = {id: p.pendingGeneration.id, mode: p.pendingGeneration.mode};
     candidate.pages.push(page);
   }
   if (v.cover) {

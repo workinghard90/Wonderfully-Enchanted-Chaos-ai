@@ -75,3 +75,9 @@ Start with SQLite metadata and a storage abstraction usable with the existing si
 The updated main baseline passed 127 Python tests after installing declared dependencies. The first reliability change passed all 131 Python tests, including four new tests and existing real FFmpeg synthetic-media tests. Provider requests are mocked; no paid inference was performed. PNG preservation, PDF structure/page geometry and audio/MP4 behavior are covered by the existing suites. SVG output is not implemented and cannot be reported as verified.
 
 Browser results are recorded in the accompanying PR. Local browser installation initially failed because downloaded archives were invalid; this is an environment issue, not a passed browser check. No live Piper/model quality benchmark or new container build is claimed. Nothing in this audit certifies KDP acceptance or creative quality.
+
+## Image response recovery increment
+
+After the artwork review and verified-backup increments, image generation now has bounded SQLite receipts and browser recovery. The browser saves a request ID before submission; the server commits original output bytes before responding. Duplicate IDs with identical inputs do not reserve another attempt while their receipt is retained; conflicting inputs are rejected. Recovery is available independently of provider readiness/quota and requires no AI request. Device save failures preserve the old picture and receipt.
+
+This closes a response-loss gap, not the full P1 persisted-job roadmap. Work still runs synchronously behind the shared media lock, and free-host ephemeral storage limits recovery. Next infrastructure priorities are a shared job lifecycle with explicit admission/recovery, durable storage appropriate to the hosting budget, and input/output provenance. Do not add automatic paid retries or promise resumption across ephemeral instance replacement.
