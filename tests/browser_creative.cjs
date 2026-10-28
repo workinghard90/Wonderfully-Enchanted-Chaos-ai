@@ -128,6 +128,10 @@ const assert = require("node:assert/strict");
         (await download(page, "#backup")).toString("utf8"),
       );
       assert.equal(backup.reference.image_base64, png.toString('base64'));
+      assert.equal(backup.backup_version, 2);
+      const expectedHash = require('node:crypto').createHash('sha256').update(png).digest('hex');
+      assert.equal(backup.reference.sha256, expectedHash);
+      assert.equal(backup.pages[0].asset.sha256, expectedHash);
       assert.equal(backup.pages[0].review, 'approved');
       assert.equal(backup.pages[1].review, 'needs_changes');
       await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
@@ -194,6 +198,58 @@ const assert = require("node:assert/strict");
       await ready(page);
       assert.match(await page.locator('#status').innerText(), /Invalid reference image/);
       assert.equal(await page.locator('#library .library-item').count(), 2);
+      // Valid images with wrong/missing checksums cannot replace the open project.
+      for (const target of ['page', 'reference', 'cover', 'missing', 'future']) {
+        const broken = structuredClone(backup);
+        const asset = {...broken.pages[0].asset, sha256:'0'.repeat(64)};
+        if (target === 'page') broken.pages[0].asset = asset;
+        else if (target === 'missing') delete broken.pages[0].asset.sha256;
+        else if (target === 'future') broken.backup_version = 99;
+        else broken[target] = asset;
+        await page.locator('#restore').setInputFiles({name:'damaged.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(broken))});
+        await ready(page);
+        assert.match(await page.locator('#status').innerText(), target === 'future' ? /Unsupported backup version/ : /checksum does not match/);
+        assert.equal(await page.locator('#library .library-item').count(), 2);
+        assert.equal(JSON.parse((await download(page, '#backup')).toString()).id, restoredReference.id);
+      }
+      // Fail the device write after restore validation to test editor preservation.
+      await page.evaluate(() => {
+        window.originalTransaction = IDBDatabase.prototype.transaction;
+        IDBDatabase.prototype.transaction = function(stores, mode, ...rest) {
+          if (mode === 'readwrite') throw new DOMException('Device storage full', 'QuotaExceededError');
+          return window.originalTransaction.call(this, stores, mode, ...rest);
+        };
+      });
+      await page.locator('#restore').setInputFiles({name:'quota.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});
+      await ready(page);
+      assert.match(await page.locator('#status').innerText(), /Device storage full/);
+      assert.equal(JSON.parse((await download(page, '#backup')).toString()).id, restoredReference.id);
+      await page.evaluate(() => { IDBDatabase.prototype.transaction = window.originalTransaction; });
+      assert.equal(await page.locator('#library .library-item').count(), 2);
+      const legacyPage = await context.newPage();
+      await legacyPage.goto(base + '/studio/');
+      await legacyPage.locator('#status').filter({hasText:'Choose a format'}).waitFor();
+      const legacy = structuredClone(backup);
+      delete legacy.backup_version;
+      for (const p of legacy.pages) if (p.asset) delete p.asset.sha256;
+      delete legacy.reference.sha256;
+      await legacyPage.locator('#restore').setInputFiles({name:'legacy.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(legacy))});
+      await legacyPage.locator('#status').filter({hasText:'Older backup: no picture checksums'}).waitFor();
+      await ready(legacyPage);
+      const legacyRestored = JSON.parse((await download(legacyPage, '#backup')).toString());
+      assert.equal(legacyRestored.pages[0].asset.image_base64, png.toString('base64'));
+      // Remove this additional fixture so later library ordering stays unchanged.
+      await legacyPage.evaluate(async id => {
+        const {database} = await import('/studio/store.js');
+        const db = await database();
+        await new Promise((resolve,reject) => {
+          const tx = db.transaction(['projects','summaries'],'readwrite');
+          tx.objectStore('projects').delete(id); tx.objectStore('summaries').delete(id);
+          tx.oncomplete = resolve; tx.onerror = reject;
+        });
+        db.close();
+      }, legacyRestored.id);
+      await legacyPage.close();
       // Cross-tab conflict: don't overwrite a newer saved project.
       const other = await context.newPage();
       other.on("dialog", (d) => d.accept());

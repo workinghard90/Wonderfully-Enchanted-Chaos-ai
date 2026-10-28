@@ -593,6 +593,22 @@ async function encoded(blob) {
     r.readAsDataURL(blob);
   });
 }
+async function imageHash(bytes) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, "0")).join("");
+}
+async function backupAsset(asset) {
+  const value = { ...asset, image_base64: await encoded(asset.blob),
+    sha256: await imageHash(await asset.blob.arrayBuffer()) };
+  delete value.blob;
+  return value;
+}
+async function verifyBackupImage(asset, raw, version, label) {
+  if (version !== 2) return;
+  if (typeof asset.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(asset.sha256) ||
+      await imageHash(raw) !== asset.sha256)
+    throw Error(`${label}: picture checksum does not match. The backup may be damaged or edited. Existing projects were kept.`);
+}
 async function payload() {
   readFields();
   const value = snapshot();
@@ -865,22 +881,11 @@ $("backup").onclick = () =>
     readFields();
     const value = snapshot();
     delete value.revision;
-    if (value.reference) {
-      value.reference = { ...value.reference, image_base64: await encoded(value.reference.blob) };
-      delete value.reference.blob;
-    }
-    if (value.cover) {
-      value.cover = {
-        ...value.cover,
-        image_base64: await encoded(value.cover.blob),
-      };
-      delete value.cover.blob;
-    }
+    value.backup_version = 2;
+    if (value.reference) value.reference = await backupAsset(value.reference);
+    if (value.cover) value.cover = await backupAsset(value.cover);
     for (const p of value.pages) {
-      if (p.asset) {
-        p.asset = { ...p.asset, image_base64: await encoded(p.asset.blob) };
-        delete p.asset.blob;
-      }
+      if (p.asset) p.asset = await backupAsset(p.asset);
     }
     download(
       new Blob([JSON.stringify(value)], { type: "application/json" }),
@@ -944,8 +949,7 @@ async function checkBook() {
     if (!page.asset) continue;
     if (page.review !== "approved") issues.push({index:i, text:`Page ${i + 1}: artwork ${page.review === "needs_changes" ? "needs changes" : "has not been reviewed"}.`});
     if (ppi(page) < 300) issues.push({index:i, text:`Page ${i + 1}: below the 300 PPI interior target (${ppi(page)} PPI).`});
-    const digest = await crypto.subtle.digest("SHA-256", await page.asset.blob.arrayBuffer());
-    const hash = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, "0")).join("");
+    const hash = await imageHash(await page.asset.blob.arrayBuffer());
     if (!hashes.has(hash)) hashes.set(hash, []);
     hashes.get(hash).push(i);
   }
@@ -1032,6 +1036,8 @@ async function restore(file) {
     v.pages.length > (v.kind === "video" ? 7 : 80)
   )
     throw Error("Choose a WEC Creative Studio project JSON.");
+  if (v.backup_version !== undefined && v.backup_version !== 2)
+    throw Error("Unsupported backup version. Open this backup with a compatible WEC version.");
   for (const [k, max] of Object.entries({
     title: 150,
     author: 100,
@@ -1090,6 +1096,7 @@ async function restore(file) {
       )
         throw Error("Invalid backup image");
       const raw = Uint8Array.from(atob(a.image_base64), (c) => c.charCodeAt(0));
+      await verifyBackupImage(a, raw, v.backup_version, `Page ${candidate.pages.length + 1}`);
       const asset = await inspect(
         new File([raw], typeof a.name === "string" ? a.name : "restored.png"),
         "Restored original",
@@ -1112,6 +1119,7 @@ async function restore(file) {
     )
       throw Error("Invalid cover image");
     const raw = Uint8Array.from(atob(a.image_base64), (c) => c.charCodeAt(0));
+    await verifyBackupImage(a, raw, v.backup_version, "Cover");
     candidate.cover = await inspect(
       new File([raw], typeof a.name === "string" ? a.name : "cover.png"),
       "Restored cover",
@@ -1126,12 +1134,13 @@ async function restore(file) {
     if (typeof a.image_base64 !== "string" || a.image_base64.length > 14 * 1024 * 1024 ||
         !/^[A-Za-z0-9+/]*={0,2}$/.test(a.image_base64)) throw Error("Invalid reference image");
     const raw = Uint8Array.from(atob(a.image_base64), c => c.charCodeAt(0));
+    await verifyBackupImage(a, raw, v.backup_version, "Reference");
     candidate.reference = await inspect(new File([raw], typeof a.name === "string" ? a.name : "reference.png"), "Restored approved reference");
     total += candidate.reference.blob.size;
     pixels += candidate.reference.width * candidate.reference.height;
     if (total > MAX_BYTES || pixels > MAX_PIXELS) throw Error("Project exceeds its image budget");
   }
-  return candidate;
+  return { candidate, verified: v.backup_version === 2 };
 }
 $("restore").onchange = () =>
   run(async () => {
@@ -1139,12 +1148,16 @@ $("restore").onchange = () =>
     $("restore").value = "";
     if (!f) return;
     if (dirty) throw Error("Save or download your edits before restoring.");
-    const candidate = await restore(f);
-    project = candidate;
-    dirty = true;
-    await persist();
+    const { candidate, verified } = await restore(f);
+    // Commit before replacing the editor so a failed write preserves current work.
+    const saved = await storage.save(candidate);
+    project = saved;
+    dirty = false;
+    $("save-status").textContent = "Saved " + new Date(project.savedAt).toLocaleTimeString();
+    await library();
     render();
-    say("Backup restored as a new project. Existing projects were kept.");
+    say("Backup restored as a new project. Existing projects were kept." +
+      (verified ? " Picture checksums verified." : " Older backup: no picture checksums available."));
   });
 $("import-zip").onchange = () =>
   run(async () => {
