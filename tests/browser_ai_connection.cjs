@@ -63,12 +63,16 @@ const assert = require('node:assert/strict');
       const box = await p.locator('#status').boundingBox();
       assert.ok(box.y >= 0 && box.y < 1000, 'Error stays visible on mobile');
       assert.equal(await p.locator('#save').isDisabled(), false);
+      await p.locator('[data-generate]').click(); await ready(p);
+      assert.equal(calls,1, 'An unresolved receipt blocks another billable request');
+      await p.getByRole('button', {name:'Dismiss generation receipt',exact:true}).click(); await ready(p);
       // A stalled server must release UI controls without replaying a paid request.
       await p.unroute('**/api/creative/image');
       await p.clock.install();
       await p.route('**/api/creative/image', () => {calls++;});
       const sent = p.waitForRequest('**/api/creative/image');
       await p.locator('[data-generate]').click(); await sent;
+      assert.equal(await p.locator('.page textarea').first().isDisabled(),true, 'Rebuilt fields stay locked during generation');
       await p.clock.fastForward(90001); await ready(p);
       assert.equal(calls,2);
       assert.match(await p.locator('#status').innerText(), /90 seconds/);

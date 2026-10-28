@@ -236,6 +236,68 @@ class CreativeHTTPTests(unittest.TestCase):
                 self.assertEqual(self.request('/api/creative/image', body)[0], 429)
             self.assertEqual(post.call_count, 2)
 
+    def test_image_receipt_replays_original_without_another_attempt(self):
+        from wec_engine.providers.cloudflare_images import CloudflareImages
+        raw = base64.b64decode(picture())
+        body = {'prompt':'A friendly cloud', 'request_id':'a'*32}
+        with patch.object(CloudflareImages, 'ready', return_value=True), patch.object(CloudflareImages, 'generate', return_value=raw) as generate:
+            self.assertEqual(self.request('/api/creative/image', body)[:2], (200, raw))
+            self.assertEqual(self.request('/api/creative/image', body)[:2], (200, raw))
+            self.assertEqual(self.request('/api/creative/image', {**body, 'prompt':'Changed'})[0], 409)
+            self.assertEqual(self.request('/api/creative/image-requests/'+'a'*32)[:2], (200, raw))
+            self.assertEqual(self.request('/api/creative/image-requests/'+'a'*32, token=False)[0], 401)
+            self.assertEqual(generate.call_count, 1)
+            self.assertEqual(store.generation_usage(self.db), 1)
+        # Recovery stays available even if provider configuration is later disabled.
+        self.assertEqual(self.request('/api/creative/image', body)[:2], (200, raw))
+        self.assertEqual(self.request('/api/creative/image-requests/'+'b'*32)[0], 404)
+
+    def test_inflight_receipt_and_other_media_cannot_duplicate_call(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from wec_engine.providers.cloudflare_images import CloudflareImages
+        raw = base64.b64decode(picture()); entered = threading.Event(); release = threading.Event()
+        def slow(*args, **kwargs):
+            entered.set(); release.wait(5); return raw
+        body = {'prompt':'A cloud', 'request_id':'c'*32}
+        with patch.object(CloudflareImages, 'ready', return_value=True), patch.object(CloudflareImages, 'generate', side_effect=slow) as generate:
+            with ThreadPoolExecutor() as pool:
+                first = pool.submit(self.request, '/api/creative/image', body)
+                try:
+                    self.assertTrue(entered.wait(3))
+                    self.assertEqual(self.request('/api/creative/image', body)[0], 202)
+                    self.assertEqual(self.request('/api/creative/image-requests/'+'c'*32)[0], 202)
+                    self.assertEqual(self.request('/api/creative/image', {**body,'request_id':'d'*32})[0], 429)
+                finally: release.set()
+                self.assertEqual(first.result()[0], 200)
+            self.assertEqual(generate.call_count, 1)
+            self.assertEqual(store.generation_usage(self.db), 1)
+
+    def test_failed_receipt_is_not_retried_and_does_not_expose_internal_errors(self):
+        from wec_engine.providers.cloudflare_images import CloudflareImages
+        body = {'prompt':'A cloud', 'request_id':'e'*32}
+        with patch.object(CloudflareImages, 'ready', return_value=True), patch.object(CloudflareImages, 'generate', side_effect=RuntimeError('private internal diagnostic')) as generate:
+            status, data, _ = self.request('/api/creative/image', body)
+            self.assertEqual(status, 500); self.assertNotIn(b'private internal', data)
+            self.assertEqual(self.request('/api/creative/image', body)[0], 500)
+            self.assertEqual(self.request('/api/creative/image-requests/'+'e'*32)[0], 500)
+            self.assertEqual(generate.call_count, 1)
+            self.assertEqual(store.generation_usage(self.db), 1)
+
+    def test_result_is_saved_before_response_disconnect(self):
+        from wec_engine.providers.cloudflare_images import CloudflareImages
+        raw = base64.b64decode(picture()); original = self.server.RequestHandlerClass._send
+        def disconnect(handler, status, body, mime='application/json; charset=utf-8'):
+            if mime.startswith('image/'):
+                raise BrokenPipeError('client left')
+            return original(handler, status, body, mime)
+        with patch.object(CloudflareImages, 'ready', return_value=True), patch.object(CloudflareImages, 'generate', return_value=raw) as generate:
+            with patch.object(self.server.RequestHandlerClass, '_send', disconnect):
+                from http.client import RemoteDisconnected
+                with self.assertRaises(RemoteDisconnected):
+                    self.request('/api/creative/image', {'prompt':'A cloud','request_id':'f'*32})
+            self.assertEqual(self.request('/api/creative/image-requests/'+'f'*32)[:2], (200, raw))
+            self.assertEqual(generate.call_count, 1)
+
     def test_disabled_generation_never_calls_upstream(self):
         with patch('wec_engine.providers.cloudflare_images.requests.post') as call:
             status,_,_=self.request('/api/creative/image',{'prompt':'A friendly cloud'})
