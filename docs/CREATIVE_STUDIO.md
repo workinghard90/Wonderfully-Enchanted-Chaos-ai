@@ -360,3 +360,9 @@ Book checks warn about pictures not approved, and the video confirmation counts
 outstanding reviews. Review exports/renders remain available after confirmation;
 there is no automatic publishing. These markers cover page/scene pictures, not
 separate covers or character reference profiles.
+
+### Verified picture backups
+
+New project JSON downloads include `backup_version: 2` and a SHA-256 checksum for every original page, cover and reference image. Restore checks every checksum before saving a new project. Missing or mismatched checksums reject the whole restore. A failed device save leaves the previously open project intact. Older backups without `backup_version` remain supported and explicitly report that checksums were unavailable; unknown backup versions are rejected.
+
+Checksums detect accidental picture changes; they are not signatures, do not authenticate a backup, and do not verify story text or approval metadata. Keep a separate copy in Files or another off-device location: browser saves are still local, and opening a download does not prove it was saved off-device.
