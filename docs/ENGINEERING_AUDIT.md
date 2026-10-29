@@ -87,3 +87,7 @@ This closes a response-loss gap, not the full P1 persisted-job roadmap. Work sti
 Projects now support one explicitly saved recovery checkpoint, with separate-copy restoration and optimistic concurrency for both project revisions and checkpoint identities. The version-2 IndexedDB migration adds a store without rewriting existing project or profile data. Tests cover original-byte preservation, independent recovery copies, partial-write rollback, stale operations, cancellation, and blocked upgrades.
 
 This addresses accidental local edits and replacements. It does not provide automatic version history, deduplicated assets or off-device durability. Those remain part of the shared asset/versioned-project roadmap. Downloaded backups remain necessary; opening a checkpoint copy before downloading its backup exports that older version explicitly.
+
+## Portable recovery package increment
+
+The project and its optional checkpoint can now be exported together after an atomic read of saved state. Restore validates the payload and every image in both versions before committing a new project, summary, and checkpoint in one transaction. Tests cover clean-browser recovery and final-write rollback. Original project JSON backups remain supported. This provides a manual recovery file when the user saves it elsewhere; it does not make the live server durable or include server-rendered movies. `DURABLE_STORAGE.md` records the storage boundary, online snapshot design, and remaining infrastructure decision.

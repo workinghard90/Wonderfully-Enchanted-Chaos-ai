@@ -99,6 +99,39 @@ export function profile(value) {
   });
 }
 
+// Read the current saved project and its checkpoint in one consistent transaction.
+export function recoverySnapshot(id, revision) {
+  return transaction(["projects", "checkpoints"], "readonly", (tx, done, fail) => {
+    const request = tx.objectStore("projects").get(id);
+    request.onsuccess = () => {
+      const project = request.result;
+      if (!project || project.revision !== revision) {
+        fail("This project changed in another tab. Reopen it before downloading its recovery package."); return;
+      }
+      const checkpoint = tx.objectStore("checkpoints").get(id);
+      checkpoint.onsuccess = () => done({project, checkpoint: checkpoint.result || null});
+    };
+  });
+}
+
+// Validated imports get new identities; all writes commit before the editor switches.
+export function restoreRecovery(project, checkpoint) {
+  return transaction(["projects", "summaries", "checkpoints"], "readwrite", (tx, done, fail) => {
+    try {
+      const saved = {...project, revision: 1, savedAt: Date.now()};
+      tx.objectStore("projects").add(saved);
+      tx.objectStore("summaries").add({id: saved.id, title: saved.title, kind: saved.kind,
+        count: saved.pages.length, savedAt: saved.savedAt});
+      if (checkpoint) tx.objectStore("checkpoints").add({id: saved.id,
+        checkpointId: crypto.randomUUID(), createdAt: checkpoint.createdAt,
+        project: {...checkpoint.project, id: saved.id, revision: 1}});
+      done(saved);
+    } catch {
+      fail("Recovery package could not be saved. Existing projects were kept; device storage may be full.");
+    }
+  });
+}
+
 // One explicit snapshot per source project. These are device-local copies, not cloud backups.
 export function checkpointInfo(id) {
   return transaction(["checkpoints"], "readonly", (tx, done) => {
