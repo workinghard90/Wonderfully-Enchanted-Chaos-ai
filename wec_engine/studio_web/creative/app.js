@@ -970,17 +970,33 @@ $("profile").onchange = () =>
     render();
     await persist();
   });
+async function encodeBackup(source) {
+  const value = structuredClone(source);
+  delete value.revision;
+  value.backup_version = 2;
+  if (value.reference) value.reference = await backupAsset(value.reference);
+  if (value.cover) value.cover = await backupAsset(value.cover);
+  for (const p of value.pages) if (p.asset) p.asset = await backupAsset(p.asset);
+  return value;
+}
+$("recovery-package").onclick = () => run(async () => {
+  readFields();
+  await persist();
+  const state = await storage.recoverySnapshot(project.id, project.revision);
+  const content = {project: await encodeBackup(state.project), checkpoint: state.checkpoint
+    ? {createdAt: state.checkpoint.createdAt, project: await encodeBackup(state.checkpoint.project)} : null};
+  const payload = JSON.stringify(content);
+  const value = {app: "wec-recovery-package", package_version: 1, payload,
+    sha256: await imageHash(new TextEncoder().encode(payload))};
+  const blob = new Blob([JSON.stringify(value)], {type: "application/json"});
+  if (blob.size > 90 * 1024 * 1024) throw Error("Recovery package is too large. Download each version as a project backup instead.");
+  download(blob, "-recovery.json");
+  say("Recovery package download opened: saved project" + (state.checkpoint ? " and checkpoint" : " (no checkpoint saved)") + ". Save it outside this browser, such as Files or your cloud drive. Rendered movies and other projects are not included.");
+});
 $("backup").onclick = () =>
   run(async () => {
     readFields();
-    const value = snapshot();
-    delete value.revision;
-    value.backup_version = 2;
-    if (value.reference) value.reference = await backupAsset(value.reference);
-    if (value.cover) value.cover = await backupAsset(value.cover);
-    for (const p of value.pages) {
-      if (p.asset) p.asset = await backupAsset(p.asset);
-    }
+    const value = await encodeBackup(snapshot());
     download(
       new Blob([JSON.stringify(value)], { type: "application/json" }),
       "-project.json",
@@ -1245,15 +1261,37 @@ $("restore").onchange = () =>
     $("restore").value = "";
     if (!f) return;
     if (dirty) throw Error("Save or download your edits before restoring.");
-    const { candidate, verified } = await restore(f);
+    let candidate, verified, checkpoint = null, packaged = false;
+    if (f.size > 90 * 1024 * 1024) throw Error("Backup exceeds the 90 MiB recovery package limit.");
+    const envelope = JSON.parse(await f.text());
+    if (envelope?.app === "wec-recovery-package") {
+      packaged = true;
+      if (envelope.package_version !== 1 || typeof envelope.payload !== "string")
+        throw Error("Unsupported recovery package version or content.");
+      if (await imageHash(new TextEncoder().encode(envelope.payload)) !== envelope.sha256)
+        throw Error("Recovery package checksum does not match. Existing projects were kept.");
+      const content = JSON.parse(envelope.payload);
+      const parseProject = async value => {
+        if (value?.backup_version !== 2) throw Error("Recovery package requires verified project backups.");
+        return restore(new Blob([JSON.stringify(value)], {type: "application/json"}));
+      };
+      ({candidate, verified} = await parseProject(content.project));
+      if (content.checkpoint !== null) {
+        const cp = content.checkpoint;
+        if (!cp || !Number.isSafeInteger(cp.createdAt) || cp.createdAt < 0 ||
+            cp.project?.kind !== content.project.kind || cp.project?.id !== content.project.id)
+          throw Error("Invalid recovery checkpoint relationship.");
+        checkpoint = {createdAt: cp.createdAt, project: (await parseProject(cp.project)).candidate};
+      }
+    } else ({candidate, verified} = await restore(f));
     // Commit before replacing the editor so a failed write preserves current work.
-    const saved = await storage.save(candidate);
+    const saved = packaged ? await storage.restoreRecovery(candidate, checkpoint) : await storage.save(candidate);
     project = saved;
     dirty = false;
     $("save-status").textContent = "Saved " + new Date(project.savedAt).toLocaleTimeString();
     await library();
     render();
-    say("Backup restored as a new project. Existing projects were kept." +
+    say((packaged ? "Recovery package restored as a new project" + (checkpoint ? " with its checkpoint" : "") + ". Existing projects were kept." : "Backup restored as a new project. Existing projects were kept.") +
       (verified ? " Picture checksums verified." : " Older backup: no picture checksums available."));
   });
 $("import-zip").onchange = () =>

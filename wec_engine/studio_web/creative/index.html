@@ -72,7 +72,7 @@
           <p class="eyebrow">YOUR COLLECTION</p>
           <h2>Project library</h2>
           <label class="file-button"
-            >Open project backup<input
+            >Open project backup or recovery package<input
               id="restore"
               type="file"
               accept="application/json,.json"
@@ -241,12 +241,13 @@
           </div>
           <details id="checkpoint-panel">
             <summary>Recovery checkpoint</summary>
-            <p class="muted">Keep one known-good version before major edits. Opening it creates a separate project. Checkpoints use extra storage on this device. To keep a checkpoint elsewhere, open its copy and download a project backup.</p>
+            <p class="muted">Keep one known-good version before major edits. Opening it creates a separate project. Checkpoints use extra storage on this device. Download a recovery package to keep both the saved project and its checkpoint elsewhere.</p>
             <p id="checkpoint-status" role="status"></p>
             <div class="toolbar">
               <button id="checkpoint-save" class="secondary">Save checkpoint</button>
               <button id="checkpoint-open" class="secondary">Open checkpoint copy</button>
               <button id="checkpoint-remove" class="secondary">Remove checkpoint</button>
+              <button id="recovery-package" class="secondary">Download recovery package</button>
             </div>
           </details>
           <details>
