@@ -91,3 +91,9 @@ This addresses accidental local edits and replacements. It does not provide auto
 ## Portable recovery package increment
 
 The project and its optional checkpoint can now be exported together after an atomic read of saved state. Restore validates the payload and every image in both versions before committing a new project, summary, and checkpoint in one transaction. Tests cover clean-browser recovery and final-write rollback. Original project JSON backups remain supported. This provides a manual recovery file when the user saves it elsewhere; it does not make the live server durable or include server-rendered movies. `DURABLE_STORAGE.md` records the storage boundary, online snapshot design, and remaining infrastructure decision.
+
+## Approved artwork video increment
+
+A dedicated promotional-video path preserves approved source pictures in order while planning a separate script into matching scenes. It saves the new draft before switching the editor, records per-picture source identity/revision/checksums and reference fingerprints, and requires review of the new scene pairings. Explicit source checks and pre-render warnings detect source changes without propagation or generation. The new browser test covers the path through an actual fixture-rendered MP4 at mobile/desktop widths, including failed-save isolation and backup/reload continuity. Audio in this automated fixture is synthetic; production voice quality still needs an approved real-output review.
+
+This advances the connected journey but does not complete durable online storage, immutable export-to-project lineage, continuous dependency tracking, account isolation, or external-user acceptance. Those gates remain open.
