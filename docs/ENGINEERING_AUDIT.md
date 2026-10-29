@@ -97,3 +97,14 @@ The project and its optional checkpoint can now be exported together after an at
 A dedicated promotional-video path preserves approved source pictures in order while planning a separate script into matching scenes. It saves the new draft before switching the editor, records per-picture source identity/revision/checksums and reference fingerprints, and requires review of the new scene pairings. Explicit source checks and pre-render warnings detect source changes without propagation or generation. The new browser test covers the path through an actual fixture-rendered MP4 at mobile/desktop widths, including failed-save isolation and backup/reload continuity. Audio in this automated fixture is synthetic; production voice quality still needs an approved real-output review.
 
 This advances the connected journey but does not complete durable online storage, immutable export-to-project lineage, continuous dependency tracking, account isolation, or external-user acceptance. Those gates remain open.
+
+### Owner online storage follow-up
+
+Optional authenticated immutable recovery-package snapshots now share the existing
+server and data directory. The unified studio can explicitly save, list, read back,
+download, open as a new local copy and remove snapshots. Atomic filesystem commits,
+checksums, bounded capacity, restart recovery and separate-browser restoration have
+automated coverage. Existing browser editing and exports are preserved. Production
+durability remains pending the existing Render service's paid disk attachment and
+post-deploy restart drill; see `docs/DURABLE_STORAGE.md`. No automatic sync, offsite
+backup service or public multiuser isolation is claimed.

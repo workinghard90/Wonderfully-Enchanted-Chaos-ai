@@ -172,7 +172,7 @@ async function api(path, body, retry = true) {
   try {
     r = await fetch(path, {
       method: body ? "POST" : "GET", headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: body instanceof Blob ? body : body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     });
   } catch (error) {
@@ -748,12 +748,12 @@ async function payload() {
   value.back_text = value.backText;
   return value;
 }
-function download(blob, suffix) {
+function download(blob, suffix, title = project?.title || "wec-project") {
   const url = URL.createObjectURL(blob),
     a = document.createElement("a");
   a.href = url;
   a.download =
-    (project.title.replace(/[^a-z0-9]+/gi, "-").slice(0, 70) || "wec-project") +
+    (title.replace(/[^a-z0-9]+/gi, "-").slice(0, 70) || "wec-project") +
     suffix;
   document.body.append(a);
   a.click();
@@ -1042,7 +1042,7 @@ async function encodeBackup(source) {
   for (const p of value.pages) if (p.asset) p.asset = await backupAsset(p.asset);
   return value;
 }
-$("recovery-package").onclick = () => run(async () => {
+async function recoveryPackage() {
   readFields();
   await persist();
   const state = await storage.recoverySnapshot(project.id, project.revision);
@@ -1053,8 +1053,11 @@ $("recovery-package").onclick = () => run(async () => {
     sha256: await imageHash(new TextEncoder().encode(payload))};
   const blob = new Blob([JSON.stringify(value)], {type: "application/json"});
   if (blob.size > 90 * 1024 * 1024) throw Error("Recovery package is too large. Download each version as a project backup instead.");
-  download(blob, "-recovery.json");
-  say("Recovery package download opened: saved project" + (state.checkpoint ? " and checkpoint" : " (no checkpoint saved)") + ". Save it outside this browser, such as Files or your cloud drive. Rendered movies and other projects are not included.");
+  return blob;
+}
+$("recovery-package").onclick = () => run(async () => {
+  download(await recoveryPackage(), "-recovery.json");
+  say("Recovery package download opened. Save it outside this browser, such as Files or your cloud drive. It includes the project and any saved checkpoint; rendered movies and other projects are not included.");
 });
 $("backup").onclick = () =>
   run(async () => {
@@ -1335,45 +1338,101 @@ async function restore(file) {
   }
   return { candidate, verified: v.backup_version === 2 };
 }
-$("restore").onchange = () =>
-  run(async () => {
-    const f = $("restore").files[0];
-    $("restore").value = "";
-    if (!f) return;
-    if (dirty) throw Error("Save or download your edits before restoring.");
-    let candidate, verified, checkpoint = null, packaged = false;
-    if (f.size > 90 * 1024 * 1024) throw Error("Backup exceeds the 90 MiB recovery package limit.");
-    const envelope = JSON.parse(await f.text());
-    if (envelope?.app === "wec-recovery-package") {
-      packaged = true;
-      if (envelope.package_version !== 1 || typeof envelope.payload !== "string")
-        throw Error("Unsupported recovery package version or content.");
-      if (await imageHash(new TextEncoder().encode(envelope.payload)) !== envelope.sha256)
-        throw Error("Recovery package checksum does not match. Existing projects were kept.");
-      const content = JSON.parse(envelope.payload);
-      const parseProject = async value => {
-        if (value?.backup_version !== 2) throw Error("Recovery package requires verified project backups.");
-        return restore(new Blob([JSON.stringify(value)], {type: "application/json"}));
-      };
-      ({candidate, verified} = await parseProject(content.project));
-      if (content.checkpoint !== null) {
-        const cp = content.checkpoint;
-        if (!cp || !Number.isSafeInteger(cp.createdAt) || cp.createdAt < 0 ||
-            cp.project?.kind !== content.project.kind || cp.project?.id !== content.project.id)
-          throw Error("Invalid recovery checkpoint relationship.");
-        checkpoint = {createdAt: cp.createdAt, project: (await parseProject(cp.project)).candidate};
-      }
-    } else ({candidate, verified} = await restore(f));
-    // Commit before replacing the editor so a failed write preserves current work.
-    const saved = packaged ? await storage.restoreRecovery(candidate, checkpoint) : await storage.save(candidate);
-    project = saved;
-    dirty = false;
-    $("save-status").textContent = "Saved " + new Date(project.savedAt).toLocaleTimeString();
-    await library();
-    render();
-    say((packaged ? "Recovery package restored as a new project" + (checkpoint ? " with its checkpoint" : "") + ". Existing projects were kept." : "Backup restored as a new project. Existing projects were kept.") +
-      (verified ? " Picture checksums verified." : " Older backup: no picture checksums available."));
-  });
+$("restore").onchange = () => run(async () => {
+  const f = $("restore").files[0];
+  $("restore").value = "";
+  if (f) await openRecovery(f);
+});
+async function openRecovery(f) {
+  if (dirty) throw Error("Save or download your edits before restoring.");
+  let candidate, verified, checkpoint = null, packaged = false;
+  if (f.size > 90 * 1024 * 1024) throw Error("Backup exceeds the 90 MiB recovery package limit.");
+  const envelope = JSON.parse(await f.text());
+  if (envelope?.app === "wec-recovery-package") {
+    packaged = true;
+    if (envelope.package_version !== 1 || typeof envelope.payload !== "string")
+      throw Error("Unsupported recovery package version or content.");
+    if (await imageHash(new TextEncoder().encode(envelope.payload)) !== envelope.sha256)
+      throw Error("Recovery package checksum does not match. Existing projects were kept.");
+    const content = JSON.parse(envelope.payload);
+    const parseProject = async value => {
+      if (value?.backup_version !== 2) throw Error("Recovery package requires verified project backups.");
+      return restore(new Blob([JSON.stringify(value)], {type: "application/json"}));
+    };
+    ({candidate, verified} = await parseProject(content.project));
+    if (content.checkpoint !== null) {
+      const cp = content.checkpoint;
+      if (!cp || !Number.isSafeInteger(cp.createdAt) || cp.createdAt < 0 ||
+          cp.project?.kind !== content.project.kind || cp.project?.id !== content.project.id)
+        throw Error("Invalid recovery checkpoint relationship.");
+      checkpoint = {createdAt: cp.createdAt, project: (await parseProject(cp.project)).candidate};
+    }
+  } else ({candidate, verified} = await restore(f));
+  // Commit before replacing the editor so a failed write preserves current work.
+  const saved = packaged ? await storage.restoreRecovery(candidate, checkpoint) : await storage.save(candidate);
+  project = saved;
+  dirty = false;
+  $("save-status").textContent = "Saved " + new Date(project.savedAt).toLocaleTimeString();
+  await library();
+  render();
+  say((packaged ? "Recovery package restored as a new project" + (checkpoint ? " with its checkpoint" : "") + ". Existing projects were kept." : "Backup restored as a new project. Existing projects were kept.") +
+    (verified ? " Picture checksums verified." : " Older backup: no picture checksums available."));
+
+}
+
+async function onlinePackage(item) {
+  const blob = await (await api(`/api/creative/snapshots/${item.id}`)).blob();
+  if (await imageHash(await blob.arrayBuffer()) !== item.id)
+    throw Error("Online snapshot checksum failed. Your local projects were kept.");
+  return blob;
+}
+async function onlineLibrary() {
+  const state = await (await api("/api/creative/snapshots")).json();
+  const list = $("online-library");
+  list.replaceChildren();
+  $("online-status").textContent = state.enabled
+    ? `${state.snapshots.length}/${state.max_snapshots} snapshots · ${(state.used_bytes / 1048576).toFixed(1)} MiB of ${(state.max_bytes / 1048576).toFixed(0)} MiB used. Earlier snapshots stay until you remove them.`
+    : state.reason;
+  if (!state.enabled) return false;
+  for (const item of state.snapshots) {
+    const row = document.createElement("div");
+    row.className = "library-item";
+    const title = document.createElement("strong");
+    title.textContent = item.title || "Untitled project";
+    const detail = document.createElement("p");
+    detail.textContent = `${labels[item.kind]} · ${new Date(item.created_at).toLocaleString()} · ${(item.bytes / 1048576).toFixed(1)} MiB${item.checkpoint ? " · includes checkpoint" : ""}`;
+    row.append(title, detail,
+      button("Open local copy", async () => {
+        if (dirty) throw Error("Save or download your edits before opening an online snapshot.");
+        await openRecovery(await onlinePackage(item));
+      }),
+      button("Download snapshot", async () => {
+        download(await onlinePackage(item), "-recovery.json", item.title);
+        say("Snapshot download opened. Keep this file in Files or an independent cloud drive for recovery if the server is lost.");
+      }),
+      button("Remove online snapshot", async () => {
+        if (!confirm(`Remove this online snapshot of “${item.title}”? Download a backup first. This cannot be undone. Other snapshots and local projects will stay.`)) return;
+        await api(`/api/creative/snapshots/${item.id}/remove`, {confirm: item.id});
+        await onlineLibrary();
+        say("Online snapshot removed. Other snapshots and local projects were kept.");
+      }));
+    list.append(row);
+  }
+  return true;
+}
+$("online-refresh").onclick = () => run(onlineLibrary);
+$("online-save").onclick = () => run(async () => {
+  if (!project) throw Error("Open a project first.");
+  if (!await onlineLibrary()) throw Error($("online-status").textContent);
+  const blob = await recoveryPackage();
+  const item = await (await api("/api/creative/snapshots", blob)).json();
+  // Read back and verify actual committed bytes before reporting success.
+  await onlinePackage(item);
+  await onlineLibrary();
+  $("online-status").textContent = "Saved online and read-back checksum verified. " + $("online-status").textContent;
+  say("Online snapshot saved and verified. Your local project stays editable. Future edits need another Save online snapshot; download an independent backup too.");
+});
+
 $("import-zip").onchange = () =>
   run(async () => {
     const f = $("import-zip").files[0];

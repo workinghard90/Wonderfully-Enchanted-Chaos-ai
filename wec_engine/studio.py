@@ -21,9 +21,10 @@ from .studio_store import (
 )
 from .orchestrator import run_production
 from .providers.cloudflare_images import CloudflareImages, GenerationError, validate_prompt, prepare_reference
-from .studio_video import VideoJobs, VideoJobError
+from .studio_video import VideoJobs, VideoJobError, TERMINAL
 from .studio_image_requests import ImageRequests, ReceiptError
 from . import creative
+from .online_store import OnlineStore, SnapshotError, MAX_PACKAGE
 from .studio_store import reserve_creative_generation, reserve_text_generation
 from .providers.cloudflare_text import CloudflareText, MODEL as TEXT_MODEL, draft_settings
 
@@ -48,6 +49,18 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
     text_provider = CloudflareText()
     image_requests = ImageRequests(db_path)
     videos = video_jobs or VideoJobs(data_dir/'video-jobs')
+    online_reason = 'Online storage is not enabled. Local saves and downloaded recovery packages still work.'
+    online = None
+    if os.environ.get('WEC_ENABLE_ONLINE_STORAGE') == '1':
+        if not token or len(token) < 32:
+            online_reason = 'Online storage requires authenticated owner access.'
+        elif os.environ.get('RENDER') and not os.path.ismount(data_dir):
+            online_reason = 'Online storage requires a persistent disk mounted at WEC_DATA_DIR.'
+        else:
+            try:
+                online = OnlineStore(data_dir/'creative-snapshots')
+            except OSError:
+                online_reason = 'Online storage is unavailable. Check the disk mount and write permissions.'
     class Handler(BaseHTTPRequestHandler):
         video_jobs = videos
         def setup(self):
@@ -120,6 +133,52 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 self._send(401, {'error':'Authentication required'})
                 return False
             return True
+        def _online(self, path):
+            if path == '/api/creative/snapshots' and self.command == 'GET' and online is None:
+                self._send(200, {'enabled': False, 'reason': online_reason}); return
+            if online is None:
+                self._send(503, {'error': online_reason}); return
+            if not media_lock.acquire(blocking=False):
+                self._send(429, {'error': 'Another image, export or storage operation is running. Try again when it finishes.'}); return
+            try:
+                if path == '/api/creative/snapshots':
+                    if self.command == 'GET':
+                        self._send(200, online.list())
+                    elif self.command == 'POST':
+                        if any(job['status'] not in TERMINAL for job in videos.status()['jobs']):
+                            raise SnapshotError('Wait for the current video render to finish before uploading an online snapshot.', 429)
+                        self._send(201, online.save(self._read_body(MAX_PACKAGE)))
+                    return
+                match = re.fullmatch(r'/api/creative/snapshots/([a-f0-9]{64})(/remove)?', path)
+                if not match:
+                    self._send(404, {'error': 'Snapshot not found'}); return
+                key, remove = match.groups()
+                if remove and self.command == 'POST':
+                    body = json.loads(self._read_body(1024))
+                    if body != {'confirm': key}:
+                        raise SnapshotError('Confirm the exact snapshot to remove.')
+                    online.remove(key)
+                    self._send(200, {'removed': key})
+                elif not remove and self.command == 'GET':
+                    with online.open(key) as source:
+                        self._headers(200, 'application/json', os.fstat(source.fileno()).st_size,
+                                      {'Content-Disposition': f'attachment; filename="wec-{key[:12]}-recovery.json"'})
+                        for chunk in iter(lambda: source.read(65536), b''):
+                            self.wfile.write(chunk)
+                else:
+                    self._send(405, {'error': 'Method not allowed'})
+            except SnapshotError as error:
+                self._send(error.status, {'error': str(error)})
+            except StorageLimitError as error:
+                self._send(413, {'error': str(error)})
+            except (ValueError, TypeError, RecursionError):
+                self._send(400, {'error': 'Invalid snapshot request. Existing snapshots were kept.'})
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                pass  # A committed snapshot remains discoverable after a lost response.
+            except OSError:
+                self._send(503, {'error': 'Storage is unavailable. Refresh the online library before retrying; keep your local project.'})
+            finally:
+                media_lock.release()
         def _image_receipt(self, receipt):
             if receipt['state'] == 'ready':
                 self._send(200, receipt['image'], receipt['mime'])
@@ -212,7 +271,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             if self.command == 'GET' and path in creative_assets:
                 name, mime = creative_assets[path]
                 self._send(200, (ROOT / 'creative' / name).read_bytes(), mime); return
-            # Fixed asset allowlist: user artwork is handled in the browser only.
+            # Fixed public asset allowlist; saved artwork requires authenticated APIs.
             coloring_assets = {
                 '/coloring': ('index.html', 'text/html; charset=utf-8'),
                 '/coloring/': ('index.html', 'text/html; charset=utf-8'),
@@ -231,6 +290,8 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             if path == '/api/health' and self.command == 'GET':
                 self._send(200, {'ok':True}); return
             if not self._authorized(): return
+            if path == '/api/creative/snapshots' or path.startswith('/api/creative/snapshots/'):
+                self._online(path); return
             match = re.fullmatch(r'/api/creative/image-requests/([a-f0-9]{32})', path)
             if match and self.command == 'GET':
                 receipt = image_requests.get(match.group(1))
@@ -291,7 +352,8 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                         raise ValueError('Choose the ambience setting only.')
                     with media_lock:
                         snapshot = export_backup(db_path, video_start.group(1))
-                    self._send(202, videos.start(snapshot, video_start.group(1), ambience=body.get('ambience', True)))
+                        job = videos.start(snapshot, video_start.group(1), ambience=body.get('ambience', True))
+                    self._send(202, job)
                 except VideoJobError as exc:
                     self._send(exc.status, {'error': str(exc)})
                 except LookupError as exc:

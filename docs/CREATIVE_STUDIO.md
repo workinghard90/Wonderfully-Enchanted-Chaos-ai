@@ -402,3 +402,14 @@ The local planning endpoint splits narration into one scene per picture; it make
 Each copied page records the source project/page, saved revision, original image checksum, and a fingerprint of the source character/style/reference. **Check reused artwork sources** detects changed source pictures, withdrawn approval, changed reference settings, unavailable sources, or locally replaced copies. Rendering checks these links and requires confirmation for warnings. No warning overwrites pictures, regenerates assets, or changes the source. Checks are explicit and repeated before render, not a continuously synchronized dependency graph.
 
 Source records survive project JSON and recovery-package restoration. If the source is absent on another device, the imported picture remains usable with an unavailable-source warning. These links are provenance hints, not authenticated approval records. The finished server movie is not yet linked back to an immutable browser project version and must still be downloaded separately; durable online storage and export lineage remain separate milestones.
+
+## Online snapshots (owner setup required)
+
+Under **Project library → Online project snapshots**, load the online collection or
+save the currently open project with its artwork and checkpoint. Each explicit save
+is a separate version; edits still save locally until you save online again. Open a
+snapshot on another device to create a local copy, or download its portable recovery
+package for an independent backup. Removing a snapshot never removes local projects.
+Online storage requires the persistent-disk setup in [DURABLE_STORAGE.md](DURABLE_STORAGE.md).
+It is disabled on an unconfigured server. Finished videos, PDFs and standalone
+character profiles must be backed up separately.
