@@ -230,6 +230,51 @@ function fillProfiles() {
   select.replaceChildren(new Option("Choose a character", ""));
   for (const p of profiles) select.add(new Option(p.name, p.id));
 }
+let checkpointRead = 0;
+async function refreshCheckpointInfo() {
+  const sequence = ++checkpointRead, id = project?.id;
+  $("checkpoint-status").textContent = "";
+  if (!id || !$("checkpoint-panel").open) return;
+  try {
+    const info = await storage.checkpointInfo(id);
+    if (sequence === checkpointRead && project?.id === id)
+      $("checkpoint-status").textContent = info
+        ? "Checkpoint saved " + new Date(info.createdAt).toLocaleString()
+        : "No checkpoint saved for this project yet.";
+  } catch (error) {
+    if (sequence === checkpointRead && project?.id === id)
+      $("checkpoint-status").textContent = error.message;
+  }
+}
+$("checkpoint-panel").ontoggle = refreshCheckpointInfo;
+$("checkpoint-save").onclick = () => run(async () => {
+  readFields();
+  await persist();
+  const previous = await storage.checkpointInfo(project.id);
+  if (previous && !confirm("Replace the checkpoint saved " + new Date(previous.createdAt).toLocaleString() + " with the current project? Download a backup or open its copy first to keep the older version.")) return;
+  await storage.saveCheckpoint(project, previous?.checkpointId || null);
+  await refreshCheckpointInfo();
+  say("Checkpoint saved on this device. You can keep editing and open the checkpoint as a separate project later.");
+});
+$("checkpoint-open").onclick = () => run(async () => {
+  if (dirty) throw Error("Save or download your current edits before opening a checkpoint copy.");
+  const info = await storage.checkpointInfo(project.id);
+  if (!info) throw Error("No checkpoint saved for this project yet.");
+  const saved = await storage.openCheckpointCopy(project.id, info.checkpointId);
+  project = saved; dirty = false;
+  $("save-status").textContent = "Saved " + new Date(project.savedAt).toLocaleTimeString();
+  render();
+  await library();
+  say("Opened a separate checkpoint copy. The original project and its checkpoint were kept.");
+});
+$("checkpoint-remove").onclick = () => run(async () => {
+  const info = await storage.checkpointInfo(project.id);
+  if (!info) throw Error("No checkpoint saved for this project yet.");
+  if (!confirm("Remove this project's saved checkpoint? Current projects and downloaded backups stay in place.")) return;
+  await storage.removeCheckpoint(project.id, info.checkpointId);
+  await refreshCheckpointInfo();
+  say("Checkpoint removed. Current projects were kept.");
+});
 function render() {
   urls.forEach((u) => URL.revokeObjectURL(u));
   urls = [];
@@ -237,6 +282,7 @@ function render() {
   $("book-review").hidden = !project || project.kind === "video";
   $("editor").hidden = !project;
   $("empty").hidden = !!project;
+  refreshCheckpointInfo();
   if (!project) return;
   for (const [id, key] of [
     ["title", "title"],

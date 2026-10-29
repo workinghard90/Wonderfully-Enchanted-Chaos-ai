@@ -239,6 +239,16 @@
                 multiple
             /></label>
           </div>
+          <details id="checkpoint-panel">
+            <summary>Recovery checkpoint</summary>
+            <p class="muted">Keep one known-good version before major edits. Opening it creates a separate project. Checkpoints use extra storage on this device. To keep a checkpoint elsewhere, open its copy and download a project backup.</p>
+            <p id="checkpoint-status" role="status"></p>
+            <div class="toolbar">
+              <button id="checkpoint-save" class="secondary">Save checkpoint</button>
+              <button id="checkpoint-open" class="secondary">Open checkpoint copy</button>
+              <button id="checkpoint-remove" class="secondary">Remove checkpoint</button>
+            </div>
+          </details>
           <details>
             <summary>Use this idea in another format</summary>
             <label for="variant-kind">New format</label
