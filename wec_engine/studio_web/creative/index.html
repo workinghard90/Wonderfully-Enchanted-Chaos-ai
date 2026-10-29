@@ -252,6 +252,10 @@
           </details>
           <details>
             <summary>Use this idea in another format</summary>
+            <label for="promo-script">Promotional video script</label>
+            <textarea id="promo-script" maxlength="1000" placeholder="Write a short script to accompany your approved pictures."></textarea>
+            <p class="muted">Use 1–7 approved pictures in their current page order. Other pictures are skipped. The script is split into one scene per approved picture, up to 100 words total and 25 words per scene. Review the scene matches before rendering. No new images are generated.</p>
+            <button id="promo-video" class="secondary">Create video from approved artwork</button>
             <label for="variant-kind">New format</label
             ><select id="variant-kind">
               <option value="video">Faceless video</option>
@@ -268,6 +272,8 @@
             </p>
           </details>
           <p id="page-help" class="muted"></p>
+          <button id="check-sources" class="secondary">Check reused artwork sources</button>
+          <p id="source-status" role="status" class="muted"></p>
           <ol id="pages"></ol>
           <section class="delivery">
             <h3>Make something you can keep.</h3>

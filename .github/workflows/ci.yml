@@ -66,6 +66,7 @@ jobs:
       - run: node tests/browser_ai_connection.cjs
       - run: node tests/browser_image_recovery.cjs
       - run: node tests/browser_checkpoints.cjs
+      - run: node tests/browser_promo.cjs
   container:
     runs-on: ubuntu-latest
     steps:

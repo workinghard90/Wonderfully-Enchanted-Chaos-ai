@@ -284,6 +284,9 @@ function render() {
   $("empty").hidden = !!project;
   refreshCheckpointInfo();
   if (!project) return;
+  $("promo-script").value = project.promoScript || "";
+  $("source-status").textContent = project.pages.some(p => p.sourceArtwork)
+    ? "This project contains reused artwork. Check its sources before final review." : "";
   for (const [id, key] of [
     ["title", "title"],
     ["author", "author"],
@@ -354,6 +357,11 @@ function render() {
       info.className = "muted";
       info.textContent = `${page.asset.width} × ${page.asset.height} · ${page.asset.source} · ${ppi(page)} PPI at planned size`;
       visual.append(info);
+      if (page.sourceArtwork) {
+        const provenance = document.createElement("p"); provenance.className = "muted";
+        provenance.textContent = `Copied from ${page.sourceArtwork.projectTitle}, page ${page.sourceArtwork.pageNumber}, saved revision ${page.sourceArtwork.revision}. The source is not changed by edits here.`;
+        visual.append(provenance);
+      }
       const reviewLabel = document.createElement("label"); reviewLabel.textContent = "Artwork review";
       const review = document.createElement("select");
       review.setAttribute("aria-label", "Artwork review");
@@ -657,6 +665,61 @@ async function imageHash(bytes) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, "0")).join("");
 }
+async function referenceFingerprint(value) {
+  return imageHash(new TextEncoder().encode(JSON.stringify({character: value.character,
+    style: value.style, reference: value.reference ? await imageHash(await value.reference.blob.arrayBuffer()) : null})));
+}
+async function checkSources() {
+  const messages = [], cache = new Map();
+  for (const [index, page] of project.pages.entries()) {
+    const origin = page.sourceArtwork;
+    if (!origin) continue;
+    if (!cache.has(origin.projectId)) cache.set(origin.projectId, await storage.get(origin.projectId));
+    const source = cache.get(origin.projectId), sourcePage = source?.pages.find(p => p.id === origin.pageId);
+    let issue = "";
+    if (!page.asset || await imageHash(await page.asset.blob.arrayBuffer()) !== origin.sha256)
+      issue = "picture changed in this draft since it was copied";
+    else if (!sourcePage?.asset) issue = "source is unavailable on this device; the copied picture is still kept";
+    else if (await imageHash(await sourcePage.asset.blob.arrayBuffer()) !== origin.sha256)
+      issue = "source picture has changed; this draft keeps the earlier copy";
+    else if (sourcePage.review !== "approved") issue = "source artwork is no longer approved";
+    else if (await referenceFingerprint(source) !== origin.referenceFingerprint)
+      issue = "source character, style or reference has changed; review this earlier copy";
+    if (issue) messages.push(`Scene/page ${index + 1}: ${issue}.`);
+  }
+  $("source-status").textContent = messages.length ? messages.join(" ")
+    : project.pages.some(p => p.sourceArtwork) ? "Reused pictures and source references still match the recorded versions." : "No recorded source links in this project.";
+  return messages;
+}
+$("check-sources").onclick = () => run(checkSources);
+$("promo-script").oninput = () => { project.promoScript = $("promo-script").value; changed(); };
+$("promo-video").onclick = () => run(async () => {
+  readFields();
+  const selected = project.pages.map((page, index) => ({page,index})).filter(({page}) => page.asset && page.review === "approved");
+  if (!selected.length || selected.length > 7) throw Error("Approve 1–7 pictures for this video. No pictures are silently truncated.");
+  const script = (project.promoScript || "").trim();
+  if (!script) throw Error("Write a promotional video script first. It is saved with this project.");
+  if (!confirm(`Create a separate video draft using approved pages ${selected.map(p => p.index + 1).join(", ")} in that order? Review each scene and picture before rendering. No images or narration audio are generated now.`)) return;
+  await persist();
+  const source = snapshot();
+  const planned = await (await api("/api/creative/plan", {story: script, scenes: selected.length, duration: 35})).json();
+  if (planned.scenes.length !== selected.length) throw Error("Scene count does not match approved pictures. Adjust the script and try again.");
+  const fingerprint = await referenceFingerprint(source);
+  const candidate = {...fresh("video"), title: (source.title + " - promotional video").slice(0,150),
+    author: source.author, characterName: source.characterName, character: source.character,
+    style: source.style, reference: source.reference, narration: script, sceneCount: selected.length};
+  candidate.pages = await Promise.all(planned.scenes.map(async (scene,i) => {
+    const {page,index} = selected[i];
+    return {...emptyPage(), text: scene.narration, prompt: page.prompt, asset: structuredClone(page.asset),
+      review: "unreviewed", sourceArtwork: {projectId: source.id, projectTitle: source.title,
+        pageId: page.id, pageNumber: index + 1, revision: source.revision,
+        sha256: await imageHash(await page.asset.blob.arrayBuffer()), referenceFingerprint: fingerprint}};
+  }));
+  const saved = await storage.save(candidate);
+  project = saved; dirty = false; render(); await library();
+  $("save-status").textContent = "Saved " + new Date(saved.savedAt).toLocaleTimeString();
+  say("Promotional video draft saved with your approved original pictures. Review their match to each scene, then render below. Your source project is unchanged.");
+});
 async function backupAsset(asset) {
   const value = { ...asset, image_base64: await encoded(asset.blob),
     sha256: await imageHash(await asset.blob.arrayBuffer()) };
@@ -1111,6 +1174,8 @@ $("video").onclick = () =>
     if (!project.pages.length || project.pages.some(page => !page.asset))
       throw Error("Attach a picture to every scene before rendering.");
     const awaitingReview = project.pages.filter(p => p.review !== "approved").length;
+    const sourceWarnings = await checkSources();
+    if (sourceWarnings.length && !confirm(sourceWarnings.join("\n") + "\nContinue with the pictures currently saved in this draft? No sources will be replaced.")) return;
     if (!confirm(`${awaitingReview} picture(s) are not approved. Review them before publishing. ` + "Build a narrated movie from this project and its pictures? This uses one local render attempt, saves a server copy, and does not generate new images.")) return;
     const state = await renders.refresh();
     if (!state.ready) throw Error(state.message || "Video rendering is unavailable.");
@@ -1185,6 +1250,10 @@ async function restore(file) {
     sceneCount: v.sceneCount,
     pages: [],
   };
+  if (v.promoScript !== undefined) {
+    if (typeof v.promoScript !== "string" || v.promoScript.length > 1000) throw Error("Invalid promotional script");
+    candidate.promoScript = v.promoScript;
+  }
   let total = 0,
     pixels = 0;
   for (const p of v.pages) {
@@ -1219,6 +1288,17 @@ async function restore(file) {
       page.review = "unreviewed";
     }
     if (page.asset && ["approved", "needs_changes"].includes(p.review)) page.review = p.review;
+    if (p.sourceArtwork !== undefined) {
+      const o = p.sourceArtwork;
+      if (!o || ![o.projectId, o.pageId].every(s => typeof s === "string" && s.length > 0 && s.length <= 100) ||
+          typeof o.projectTitle !== "string" || o.projectTitle.length > 150 ||
+          !Number.isSafeInteger(o.pageNumber) || o.pageNumber < 1 || o.pageNumber > 80 ||
+          !Number.isSafeInteger(o.revision) || o.revision < 1 ||
+          ![o.sha256, o.referenceFingerprint].every(s => typeof s === "string" && /^[a-f0-9]{64}$/.test(s)))
+        throw Error("Invalid artwork source record");
+      page.sourceArtwork = {projectId:o.projectId, projectTitle:o.projectTitle, pageId:o.pageId,
+        pageNumber:o.pageNumber, revision:o.revision, sha256:o.sha256, referenceFingerprint:o.referenceFingerprint};
+    }
     if (p.pendingGeneration && /^[a-f0-9]{32}$/.test(p.pendingGeneration.id) &&
         ["text", "reference"].includes(p.pendingGeneration.mode))
       page.pendingGeneration = {id: p.pendingGeneration.id, mode: p.pendingGeneration.mode};
