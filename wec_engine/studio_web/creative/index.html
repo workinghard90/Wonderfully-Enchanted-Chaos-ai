@@ -84,6 +84,14 @@
               accept="application/zip,.zip"
           /></label>
           <div id="library"></div>
+          <details id="online-panel">
+            <summary>Online project snapshots</summary>
+            <p>Save a project with its artwork and checkpoint for another device or recovery. This is an explicit snapshot, not automatic sync. Finished movies and standalone character profiles are not included.</p>
+            <button id="online-refresh" class="secondary">Load online snapshots</button>
+            <button id="online-save" class="secondary">Save online snapshot</button>
+            <p id="online-status" role="status">Load to check storage availability. Local saves remain on this device.</p>
+            <div id="online-library"></div>
+          </details>
           <h3>Existing video projects</h3>
           <button id="server-refresh" class="secondary">
             Load server stories
