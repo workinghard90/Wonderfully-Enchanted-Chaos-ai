@@ -2,18 +2,29 @@
 const NAME = "wec-creative-studio-v1";
 export async function database() {
   return new Promise((resolve, reject) => {
-    const r = indexedDB.open(NAME, 1);
+    let settled = false;
+    const r = indexedDB.open(NAME, 2);
     r.onupgradeneeded = () => {
-      for (const n of ["projects", "summaries", "profiles"])
-        r.result.createObjectStore(n, { keyPath: "id" });
+      for (const n of ["projects", "summaries", "profiles", "checkpoints"])
+        if (!r.result.objectStoreNames.contains(n))
+          r.result.createObjectStore(n, { keyPath: "id" });
     };
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () =>
-      reject(
-        Error(
-          "Device storage is unavailable. Download a backup before leaving.",
-        ),
-      );
+    r.onblocked = () => {
+      settled = true;
+      reject(Error("Close other WEC tabs, then reload to finish the device storage update. Existing projects are kept."));
+    };
+    r.onsuccess = () => {
+      const db = r.result;
+      db.onversionchange = () => db.close();
+      if (settled) db.close();
+      else { settled = true; resolve(db); }
+    };
+    r.onerror = () => {
+      settled = true;
+      reject(Error(r.error?.name === "VersionError"
+        ? "Refresh this WEC tab to use the updated device storage."
+        : "Device storage is unavailable. Download a backup before leaving."));
+    };
   });
 }
 async function transaction(stores, mode, action) {
@@ -21,20 +32,23 @@ async function transaction(stores, mode, action) {
   try {
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(stores, mode);
-      let result;
+      let result, failure;
       tx.oncomplete = () => resolve(result);
       tx.onerror = () =>
         reject(
-          Error("Device save failed. Download a backup; storage may be full."),
+          failure || Error("Device save failed. Download a backup; storage may be full."),
         );
       tx.onabort = () =>
         reject(
-          Error(
+          failure || Error(
             "This project changed in another tab. Download your edits as a backup, then reopen the saved project.",
           ),
         );
       action(tx, (value) => {
         result = value;
+      }, (message) => {
+        failure = Error(message);
+        tx.abort();
       });
     });
   } finally {
@@ -82,5 +96,71 @@ export function profile(value) {
   return transaction(["profiles"], "readwrite", (tx, done) => {
     tx.objectStore("profiles").put(value);
     done(value);
+  });
+}
+
+// One explicit snapshot per source project. These are device-local copies, not cloud backups.
+export function checkpointInfo(id) {
+  return transaction(["checkpoints"], "readonly", (tx, done) => {
+    tx.objectStore("checkpoints").get(id).onsuccess = e => {
+      const value = e.target.result;
+      done(value ? {id: value.id, checkpointId: value.checkpointId, createdAt: value.createdAt} : null);
+    };
+  });
+}
+export function saveCheckpoint(project, previousId = null) {
+  return transaction(["projects", "checkpoints"], "readwrite", (tx, done, fail) => {
+    tx.objectStore("projects").get(project.id).onsuccess = e => {
+      const saved = e.target.result;
+      if (!saved || saved.revision !== project.revision) {
+        fail("This project changed in another tab. Reopen the saved project before making a checkpoint."); return;
+      }
+      const checkpoints = tx.objectStore("checkpoints");
+      checkpoints.get(project.id).onsuccess = e => {
+        if ((e.target.result?.checkpointId || null) !== previousId) {
+          fail("The checkpoint changed in another tab. Review it before replacing it."); return;
+        }
+        try {
+          const value = {id: saved.id, checkpointId: crypto.randomUUID(), createdAt: Date.now(), project: saved};
+          checkpoints.put(value);
+          done({id: value.id, checkpointId: value.checkpointId, createdAt: value.createdAt});
+        } catch {
+          fail("Checkpoint save failed. The previous checkpoint was kept; device storage may be full.");
+        }
+      };
+    };
+  });
+}
+export function openCheckpointCopy(id, checkpointId) {
+  return transaction(["projects", "summaries", "checkpoints"], "readwrite", (tx, done, fail) => {
+    tx.objectStore("checkpoints").get(id).onsuccess = e => {
+      const checkpoint = e.target.result;
+      if (!checkpoint || checkpoint.checkpointId !== checkpointId) {
+        fail("The checkpoint changed or was removed. Check it again before opening a copy."); return;
+      }
+      try {
+        const value = {...checkpoint.project, id: crypto.randomUUID(), revision: 1, savedAt: Date.now(),
+          title: (checkpoint.project.title.slice(0, 130) + " — checkpoint").slice(0, 150),
+          restoredFrom: {projectId: id, checkpointId, createdAt: checkpoint.createdAt}};
+        tx.objectStore("projects").add(value);
+        tx.objectStore("summaries").add({id: value.id, title: value.title, kind: value.kind,
+          count: value.pages.length, savedAt: value.savedAt});
+        done(value);
+      } catch {
+        fail("Checkpoint copy could not be saved. Your current project and checkpoint were kept; device storage may be full.");
+      }
+    };
+  });
+}
+export function removeCheckpoint(id, checkpointId) {
+  return transaction(["checkpoints"], "readwrite", (tx, done, fail) => {
+    const checkpoints = tx.objectStore("checkpoints");
+    checkpoints.get(id).onsuccess = e => {
+      if (!e.target.result || e.target.result.checkpointId !== checkpointId) {
+        fail("The checkpoint changed or was removed. Check it again before removing it."); return;
+      }
+      checkpoints.delete(id);
+      done(true);
+    };
   });
 }

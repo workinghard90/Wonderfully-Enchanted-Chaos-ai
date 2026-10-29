@@ -81,3 +81,9 @@ Browser results are recorded in the accompanying PR. Local browser installation 
 After the artwork review and verified-backup increments, image generation now has bounded SQLite receipts and browser recovery. The browser saves a request ID before submission; the server commits original output bytes before responding. Duplicate IDs with identical inputs do not reserve another attempt while their receipt is retained; conflicting inputs are rejected. Recovery is available independently of provider readiness/quota and requires no AI request. Device save failures preserve the old picture and receipt.
 
 This closes a response-loss gap, not the full P1 persisted-job roadmap. Work still runs synchronously behind the shared media lock, and free-host ephemeral storage limits recovery. Next infrastructure priorities are a shared job lifecycle with explicit admission/recovery, durable storage appropriate to the hosting budget, and input/output provenance. Do not add automatic paid retries or promise resumption across ephemeral instance replacement.
+
+## Device project checkpoint increment
+
+Projects now support one explicitly saved recovery checkpoint, with separate-copy restoration and optimistic concurrency for both project revisions and checkpoint identities. The version-2 IndexedDB migration adds a store without rewriting existing project or profile data. Tests cover original-byte preservation, independent recovery copies, partial-write rollback, stale operations, cancellation, and blocked upgrades.
+
+This addresses accidental local edits and replacements. It does not provide automatic version history, deduplicated assets or off-device durability. Those remain part of the shared asset/versioned-project roadmap. Downloaded backups remain necessary; opening a checkpoint copy before downloading its backup exports that older version explicitly.
