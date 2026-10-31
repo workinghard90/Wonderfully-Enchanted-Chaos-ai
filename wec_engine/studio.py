@@ -363,12 +363,28 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 except (ValueError, TypeError) as exc:
                     self._send(400, {'error': str(exc)})
                 return
-            video_job = re.fullmatch(r'/api/video-jobs/([a-f0-9]{32})(/file|/cancel|/remove|/retry|/review)?', path)
+            video_job = re.fullmatch(r'/api/video-jobs/([a-f0-9]{32})(/file|/cancel|/remove|/retry|/review|/package)?', path)
             if video_job:
                 try:
                     jid, action = video_job.groups()
                     if self.command == 'GET' and action == '/file':
                         self._movie(jid); return
+                    if self.command == 'GET' and action == '/package':
+                        if not media_lock.acquire(blocking=False):
+                            self._send(429, {'error': 'Another media or storage operation is running. Try again when it finishes.'}); return
+                        try:
+                            with videos.production_package(jid) as source:
+                                self._headers(200, 'application/zip', os.fstat(source.fileno()).st_size,
+                                              {'Content-Disposition': f'attachment; filename="wec-video-{jid[:8]}-package.zip"'})
+                                for chunk in iter(lambda: source.read(65536), b''):
+                                    self.wfile.write(chunk)
+                        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                            pass
+                        except OSError:
+                            self._send(503, {'error': 'The package could not be prepared. Your saved movie and project are unchanged.'})
+                        finally:
+                            media_lock.release()
+                        return
                     if self.command == 'GET' and not action:
                         self._send(200, videos.get(jid)); return
                     if self.command == 'POST' and action == '/review':
