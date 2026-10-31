@@ -67,6 +67,7 @@ jobs:
       - run: node tests/browser_image_recovery.cjs
       - run: node tests/browser_checkpoints.cjs
       - run: node tests/browser_promo.cjs
+      - run: node tests/browser_video_retry.cjs
       - run: node tests/browser_online_storage.cjs
   container:
     runs-on: ubuntu-latest

@@ -58,7 +58,7 @@ class StudioVideoTests(unittest.TestCase):
         jid = 'a'*32
         for route in ('/api/video', f'/api/video-jobs/{jid}', f'/api/video-jobs/{jid}/file'):
             self.assertEqual(requests.get(self.base+route, timeout=5).status_code, 401)
-        for route in (f'/api/projects/{self.project["id"]}/video', f'/api/video-jobs/{jid}/cancel', f'/api/video-jobs/{jid}/remove'):
+        for route in (f'/api/projects/{self.project["id"]}/video', f'/api/video-jobs/{jid}/cancel', f'/api/video-jobs/{jid}/remove', f'/api/video-jobs/{jid}/retry'):
             self.assertEqual(requests.post(self.base+route, json={}, timeout=5).status_code, 401)
         status = self.session.get(self.base+'/api/video', timeout=5)
         self.assertNotIn('test-studio-video-secret', status.text)
@@ -146,6 +146,62 @@ class StudioVideoTests(unittest.TestCase):
         self.assertEqual(recovered.get(jid)['status'], 'interrupted')
         self.assertEqual(recovered.status()['attempts_today'], 0)
         recovered.close()
+
+    def test_restart_retry_preserves_inputs_and_lost_response_is_idempotent(self):
+        jid = self.start().json()['id']
+        self.assertEqual(self.finish(jid)['status'], 'ready')
+        folder = self.jobs.root/jid
+        original = (folder/'backup.json').read_bytes()
+        (folder/'request.json').write_text(json.dumps({'ambience': False}))
+        value = self.jobs._record(jid); value['status'] = 'running'; self.jobs._save(value)
+        self.jobs._recover()
+        self.assertEqual(self.jobs.get(jid)['status'], 'interrupted')
+        save_project(self.db, {'title': 'Later edits', 'story': 'Changed narration.', 'duration': 2, 'scenes': 1, 'reset_images': True}, self.project['id'])
+        url = self.base+f'/api/video-jobs/{jid}/retry'
+        response = self.session.post(url, json={}, timeout=5)
+        self.assertEqual(response.status_code, 202, response.text)
+        child = response.json()['id']; self.assertNotEqual(child, jid)
+        self.assertEqual(response.json()['retry_of'], jid)
+        self.assertEqual((self.jobs.root/child/'backup.json').read_bytes(), original)
+        self.assertFalse(json.loads((self.jobs.root/child/'request.json').read_text())['ambience'])
+        self.assertEqual(self.finish(child)['status'], 'ready')
+        self.assertEqual(self.session.get(self.base+f'/api/video-jobs/{child}/file', timeout=5).status_code, 200)
+        self.assertEqual(self.session.post(url, json={}, timeout=5).json()['id'], child)
+        reopened = VideoJobs(self.jobs.root, enabled=False)
+        try:
+            self.assertEqual(reopened.retry(jid)['id'], child)
+            self.assertEqual(reopened.status()['attempts_today'], 2)
+        finally:
+            reopened.close()
+        self.assertEqual(self.jobs.get(jid)['status'], 'interrupted')
+        self.assertEqual(get_project(self.db, self.project['id'])['title'], 'Later edits')
+
+    def test_retry_refuses_damaged_inputs_and_completed_jobs_without_spending(self):
+        jid = self.start().json()['id']; self.finish(jid)
+        with self.assertRaises(VideoJobError):
+            self.jobs.retry(jid)
+        value = self.jobs._record(jid); value['status'] = 'failed'; self.jobs._save(value)
+        folder = self.jobs.root/jid
+        original = (folder/'backup.json').read_bytes()
+        (folder/'backup.json').write_bytes(original+b' ')
+        response = self.session.post(self.base+f'/api/video-jobs/{jid}/retry', json={}, timeout=5)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('damaged', response.json()['error'])
+        self.assertNotIn(str(self.root), response.text)
+        (folder/'backup.json').write_bytes(original)
+        (folder/'request.json').unlink()
+        with self.assertRaises(VideoJobError):
+            self.jobs.retry(jid)
+        self.assertEqual(self.jobs.status()['attempts_today'], 1)
+
+    def test_failed_retry_still_obeys_daily_quota(self):
+        save_project(self.db, {'title': 'FAIL movie', 'story': self.project['story'], 'duration': 2, 'scenes': 2}, self.project['id'])
+        jid = self.start().json()['id']; self.finish(jid)
+        child = self.jobs.retry(jid)['id']; self.finish(child)
+        with self.assertRaises(VideoJobError) as blocked:
+            self.jobs.retry(child)
+        self.assertEqual(blocked.exception.status, 429)
+        self.assertEqual(len(self.jobs.status()['jobs']), 2)
 
 
 class VideoLeaseTests(unittest.TestCase):
