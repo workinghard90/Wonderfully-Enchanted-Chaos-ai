@@ -164,7 +164,8 @@ function snapshot() {
   return structuredClone(project);
 }
 async function api(path, body, retry = true) {
-  const headers = { "X-WEC-Token": sessionStorage.getItem("wec_token") || "" };
+  const accessToken = (sessionStorage.getItem("wec_token") || "").trim();
+  const headers = { "X-WEC-Token": accessToken };
   if (body) headers["Content-Type"] = "application/json";
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90000);
@@ -180,13 +181,21 @@ async function api(path, body, retry = true) {
       ? "The server did not respond within 90 seconds. No automatic retry was made. Check your connection and saved results before retrying."
       : "Cannot reach the studio server. Check your connection or wait for the server to wake, then use Connect / check AI.");
   } finally { clearTimeout(timer); }
-  if (r.status === 401 && retry) {
-    const value = prompt("Studio access token (kept in this browser tab):");
-    if (value === null) throw Error("Authentication cancelled");
-    sessionStorage.setItem("wec_token", value);
-    return api(path, body, false);
+  if (r.status === 401) {
+    // Discard only the rejected value, not a newer sign-in from another request.
+    if ((sessionStorage.getItem("wec_token") || "").trim() === accessToken)
+      sessionStorage.removeItem("wec_token");
+    if (retry) {
+      const value = prompt("Sign in to WEC with your existing studio access token (kept in this tab):");
+      if (value === null) throw Error("Sign-in cancelled.");
+      if (!value.trim()) throw Error("Sign-in was not completed. Enter your existing studio access token to connect.");
+      sessionStorage.setItem("wec_token", value.trim());
+      return api(path, body, false);
+    }
+    throw Error(accessToken
+      ? "This tab's saved sign-in was not accepted. Reconnect with your current studio access token."
+      : "This tab is not signed in to the studio server. Connect to use AI, video renders and online snapshots.");
   }
-  if (r.status === 401) throw Error("Studio authentication is required or the access token is incorrect.");
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
     const error = Error(e.error || "Request failed. Your saved project is still on this device.");
