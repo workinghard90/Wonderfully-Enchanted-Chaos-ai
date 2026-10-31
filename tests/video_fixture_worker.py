@@ -7,7 +7,8 @@ import time
 
 root = Path(sys.argv[1])
 project = json.loads((root/'backup.json').read_text())['projects'][0]
-if project['title'].startswith('FAIL'):
+retry_fixture = project['title'].startswith('RETRY') and not json.loads((root/'status.json').read_text()).get('retry_of')
+if project['title'].startswith('FAIL') or retry_fixture:
     print('synthetic-private-worker-error-must-not-leak', flush=True)
     raise SystemExit(1)
 if project['title'].startswith('SLOW'):

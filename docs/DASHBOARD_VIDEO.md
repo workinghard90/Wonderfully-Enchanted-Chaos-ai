@@ -30,6 +30,20 @@ stops the worker and its child processes. **Remove server copy** asks for
 confirmation and removes only that job's files; saved projects/pictures remain.
 Download a movie before removing its server copy.
 
+In the unified studio's **Video renders** section, failed, cancelled and
+interrupted attempts offer **Retry saved render**. After confirmation, this
+starts a fresh attempt using that job's saved pictures, narration and ambience;
+later edits to the project are excluded. The saved input checksum is checked
+before reserving an attempt. Missing or damaged inputs require a new render
+from a saved project. A retry starts from the beginning, counts toward the same
+two attempts per UTC day, and needs one of the three retained-job slots.
+
+The original attempt stays in the list. A repeated request for the same parent
+returns its existing retained retry, including after a server restart or a lost
+response, rather than creating another job. If that retry also fails, retry the
+new failed attempt. Removing a server copy also removes its saved render inputs.
+There is no automatic restart or reuse of partially encoded clips.
+
 ## Enable on the existing service
 
 The updated Dockerfile includes FFmpeg, fonts, Piper 1.8.0 and the

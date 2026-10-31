@@ -48,6 +48,26 @@ export function videoPanel({ api, run, busy }) {
         progress.setAttribute('aria-label', 'Video render progress'); item.append(progress);
         action('Cancel render', async () => { await api(`/api/video-jobs/${job.id}/cancel`, {}); await refresh(); });
       } else {
+        if (['failed', 'cancelled', 'interrupted'].includes(job.status)) {
+          const retry = state.jobs.find(other => other.retry_of === job.id);
+          if (retry) {
+            const note = document.createElement('p');
+            note.textContent = 'A retry is already in this list. Use that attempt to continue.';
+            item.append(note);
+          } else {
+            action('Retry saved render', async () => {
+              if (!confirm('Start a new render using the exact pictures, narration and ambience saved for this attempt? Later project edits are not included. This uses one render attempt today and starts from the beginning.')) return;
+              try {
+                await api(`/api/video-jobs/${job.id}/retry`, {});
+              } catch (error) {
+                // The server might have accepted the retry before the connection failed.
+                try { await refresh(false); } catch (_) { /* Keep the original error. */ }
+                throw error;
+              }
+              await refresh();
+            });
+          }
+        }
         if (job.status === 'ready') {
           action('Play video', () => load(job));
           action('Download MP4', async () => {

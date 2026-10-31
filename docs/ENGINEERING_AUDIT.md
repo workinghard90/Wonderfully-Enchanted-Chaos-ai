@@ -4,6 +4,21 @@ Audit baseline: `d5b35ae8bdcad619bbcefa2844c3113d92935594`, including merged PR 
 
 ## Current capabilities
 
+Latest owner-storage acceptance (2026-10-31): the existing Render Docker service
+was redeployed as `dep-dbj01367bikc73e1mcd0` on commit `eb86d9d4`.
+A 2,065-byte synthetic project snapshot with a PNG and checkpoint remained
+listed and downloadable on the new instance with the identical SHA-256
+`0d8de0e342787232d7a50f5491d3b2090ea1c5081cd21d6b84a1238ad7d5b750`.
+The `/var/data` mount, decoded image and both saved versions passed checks.
+This verifies server persistence across this redeploy; it does not establish
+automatic offsite backup or multiuser isolation.
+
+The next incremental video change adds explicit retries from saved render
+inputs in the unified studio, preserving pictures/narration/ambience and
+retaining daily limits. Duplicate retry requests return the retained child.
+It restarts the full render rather than resuming partial clips; rollout still
+requires merge and deployment.
+
 | System | Implemented | Remaining gaps |
 | --- | --- | --- |
 | Faceless video | Optional Cloudflare script drafting; deterministic scene splitting; uploads and one-image generation; handoff to saved server projects; Piper narration; measured utterance captions; procedural ambience/chimes; 1080×1920 H.264/AAC MP4; progress/cancel/download | No complete automatic idea-to-video job; caption timing is not word alignment; no production-tested model animation; only 35 seconds/7 scenes/100 words in the web renderer; two daily attempts and three retained jobs |

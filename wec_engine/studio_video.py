@@ -18,6 +18,7 @@ import uuid
 
 from .studio_video_worker import write_json
 from .video_limits import plan_video, MAX_SECONDS, MAX_SCENES, MAX_STORY_WORDS
+from .studio_store import MAX_BACKUP_BYTES
 
 DAILY_LIMIT = 2
 MAX_JOBS = 3
@@ -25,7 +26,7 @@ MAX_MOVIE_BYTES = 20_000_000
 JOB_TIMEOUT = 1200
 TERMINAL = {'ready', 'failed', 'cancelled', 'interrupted'}
 PUBLIC_FIELDS = {'id', 'project_id', 'title', 'status', 'progress', 'message', 'created_at',
-                 'finished_at', 'duration', 'bytes'}
+                 'finished_at', 'duration', 'bytes', 'retry_of'}
 
 
 class VideoJobError(Exception):
@@ -157,7 +158,38 @@ class VideoJobs:
                     'attempts_today': self._usage(), 'daily_limit': DAILY_LIMIT,
                     'max_saved_videos': MAX_JOBS, 'jobs': jobs}
 
-    def start(self, snapshot, project_id, *, ambience=True):
+    def retry(self, jid):
+        """Explicit fresh attempt from saved inputs, never from an edited project.
+
+        A parent has at most one retained retry, so a lost HTTP response can be
+        retried without spending another attempt. Retry a failed child itself
+        when another attempt is wanted.
+        """
+        with self.lock:
+            original = self._record(jid)
+            if original['status'] not in {'failed', 'cancelled', 'interrupted'}:
+                raise VideoJobError('Only a stopped, unfinished render can be retried.', 409)
+            for job in self.status()['jobs']:
+                if job.get('retry_of') == jid:
+                    return job
+            if jid in self.owned_jobs or jid in self.processes:
+                raise VideoJobError('Wait for the previous render to stop before retrying.', 409)
+            folder = self._folder(jid)
+            try:
+                with (folder/'backup.json').open('rb') as source:
+                    raw = source.read(MAX_BACKUP_BYTES + 1)
+                if len(raw) > MAX_BACKUP_BYTES or hashlib.sha256(raw).hexdigest() != original.get('snapshot_sha256'):
+                    raise ValueError('Snapshot checksum mismatch')
+                snapshot = json.loads(raw)
+                options = json.loads((folder/'request.json').read_text(encoding='utf-8'))
+                ambience = options['ambience']
+                if type(ambience) is not bool:
+                    raise ValueError('Invalid ambience')
+            except (OSError, ValueError, KeyError, TypeError):
+                raise VideoJobError('Saved render inputs are unavailable or damaged. Start a new render from your saved project.', 409) from None
+            return self.start(snapshot, original['project_id'], ambience=ambience, _retry_of=jid)
+
+    def start(self, snapshot, project_id, *, ambience=True, _retry_of=None):
         with self.lock:
             if self.closed or not self.ready():
                 raise VideoJobError('Video rendering needs owner setup.', 503)
@@ -191,6 +223,8 @@ class VideoJobs:
                 value = {'id': jid, 'project_id': project_id, 'title': project['title'], 'status': 'queued',
                          'progress': 0, 'message': 'Your saved scenes are queued for rendering.',
                          'created_at': now(), 'owner_pid': os.getpid(), 'snapshot_sha256': hashlib.sha256(raw).hexdigest()}
+                if _retry_of is not None:
+                    value['retry_of'] = _retry_of
                 self._save(value)
                 self.owned_jobs.add(jid)
                 thread = threading.Thread(target=self._run, args=(jid,), daemon=True)
