@@ -38,11 +38,24 @@ const assert=require('node:assert/strict');
    await play.click();await p.waitForFunction(()=>document.querySelector('#render-movie').readyState>=1);
    const download=p.waitForEvent('download');await p.getByRole('button',{name:'Download MP4',exact:true}).click();
    assert.ok(fs.statSync(await(await download).path()).size>1000);
+   assert.match(await p.locator('.render-job').filter({hasText:'Your movie is ready'}).innerText(),/Final review: Not reviewed/);
+   accept=false;
+   await p.getByRole('button',{name:'Approve video',exact:true}).click();
+   assert.equal((await(await fetch(base+'/api/video',{headers})).json()).jobs.find(j=>j.retry_of===original.id).review,'unreviewed');
+   accept=true;
+   await p.getByRole('button',{name:'Approve video',exact:true}).click();
+   await p.getByText('Final review: Approved. Applies to this saved movie only.').waitFor();
+   await p.reload();await p.locator('#refresh-renders').click();
+   await p.getByText('Final review: Approved. Applies to this saved movie only.').waitFor();
+   await p.getByRole('button',{name:'Needs changes',exact:true}).click();
+   await p.getByText('Final review: Needs changes. Applies to this saved movie only.').waitFor();
+   await p.getByRole('button',{name:'Clear review',exact:true}).click();
+   await p.getByText('Final review: Not reviewed. Applies to this saved movie only.').waitFor();
    const state=await(await fetch(base+'/api/video',{headers})).json();assert.equal(state.attempts_today,2);assert.equal(state.jobs.length,2);
    const child=state.jobs.find(j=>j.retry_of===original.id);assert.equal(child.title,'RETRY saved original');assert.equal(child.status,'ready');
    assert.equal(retries,1);assert.equal(aiCalls,0);assert.deepEqual(errors,[]);
    assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-   console.log(`PASS retry ${width}: consent, original inputs, lost response recovery, reload, MP4 playback/download, quota, no AI`);
+   console.log(`PASS retry ${width}: consent, saved inputs, lost response, reload, MP4 playback/download, final review, quota, no AI`);
   } finally {await context.close();server.kill('SIGTERM');}
  }} finally {await browser.close();}
 })().catch(e=>{console.error(e.stack||e);process.exit(1);});

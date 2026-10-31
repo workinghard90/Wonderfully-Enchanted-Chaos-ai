@@ -58,7 +58,7 @@ class StudioVideoTests(unittest.TestCase):
         jid = 'a'*32
         for route in ('/api/video', f'/api/video-jobs/{jid}', f'/api/video-jobs/{jid}/file'):
             self.assertEqual(requests.get(self.base+route, timeout=5).status_code, 401)
-        for route in (f'/api/projects/{self.project["id"]}/video', f'/api/video-jobs/{jid}/cancel', f'/api/video-jobs/{jid}/remove', f'/api/video-jobs/{jid}/retry'):
+        for route in (f'/api/projects/{self.project["id"]}/video', f'/api/video-jobs/{jid}/cancel', f'/api/video-jobs/{jid}/remove', f'/api/video-jobs/{jid}/retry', f'/api/video-jobs/{jid}/review'):
             self.assertEqual(requests.post(self.base+route, json={}, timeout=5).status_code, 401)
         status = self.session.get(self.base+'/api/video', timeout=5)
         self.assertNotIn('test-studio-video-secret', status.text)
@@ -202,6 +202,51 @@ class StudioVideoTests(unittest.TestCase):
             self.jobs.retry(child)
         self.assertEqual(blocked.exception.status, 429)
         self.assertEqual(len(self.jobs.status()['jobs']), 2)
+
+    def test_finished_movie_review_survives_reopen_and_preserves_file_and_project(self):
+        jid = self.start().json()['id']; self.finish(jid)
+        original = self.jobs.movie(jid).read_bytes()
+        url = self.base+f'/api/video-jobs/{jid}/review'
+        self.assertEqual(self.jobs.get(jid)['review'], 'unreviewed')
+        for decision in ('approved', 'needs_changes', 'unreviewed'):
+            response = self.session.post(url, json={'review': decision}, timeout=5)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['review'], decision)
+            self.assertIn('reviewed_at', response.json())
+            reopened = VideoJobs(self.jobs.root, enabled=False)
+            try:
+                self.assertEqual(reopened.get(jid)['review'], decision)
+            finally:
+                reopened.close()
+        self.assertEqual(self.jobs.movie(jid).read_bytes(), original)
+        self.assertEqual(get_project(self.db, self.project['id'])['image_count'], 2)
+        self.assertEqual(self.jobs.status()['attempts_today'], 1)
+        # A later render is a separate file and starts without an approval.
+        self.jobs.review(jid, 'approved')
+        next_job = self.start().json()['id']; self.finish(next_job)
+        self.assertEqual(self.jobs.get(next_job)['review'], 'unreviewed')
+        self.assertEqual(self.jobs.get(jid)['review'], 'approved')
+
+    def test_review_rejects_invalid_decisions_unfinished_jobs_and_missing_movies(self):
+        jid = self.start().json()['id']; self.finish(jid)
+        url = self.base+f'/api/video-jobs/{jid}/review'
+        for body in ({}, {'review': 'publish'}, {'review': []}, {'review': 'approved', 'publish': True}):
+            self.assertEqual(self.session.post(url, json=body, timeout=5).status_code, 400)
+        value = self.jobs._record(jid); value['status'] = 'interrupted'; self.jobs._save(value)
+        self.assertEqual(self.session.post(url, json={'review': 'approved'}, timeout=5).status_code, 409)
+        value['status'] = 'ready'; self.jobs._save(value)
+        self.jobs.movie(jid).unlink()
+        self.assertEqual(self.session.post(url, json={'review': 'approved'}, timeout=5).status_code, 404)
+        self.assertEqual(self.jobs.get(jid)['review'], 'unreviewed')
+
+    def test_failed_review_write_keeps_previous_decision(self):
+        jid = self.start().json()['id']; self.finish(jid)
+        self.jobs.review(jid, 'needs_changes')
+        with patch('wec_engine.studio_video.write_json', side_effect=OSError('private disk path')):
+            response = self.session.post(self.base+f'/api/video-jobs/{jid}/review', json={'review': 'approved'}, timeout=5)
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn('private disk path', response.text)
+        self.assertEqual(self.jobs.get(jid)['review'], 'needs_changes')
 
 
 class VideoLeaseTests(unittest.TestCase):

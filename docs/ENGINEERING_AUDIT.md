@@ -4,6 +4,14 @@ Audit baseline: `d5b35ae8bdcad619bbcefa2844c3113d92935594`, including merged PR 
 
 ## Current capabilities
 
+The finished-video review increment records an explicit owner decision
+(unreviewed, approved or needs changes) on each ready server render, separately
+from technical readiness. Decisions persist with the job and apply only to that
+movie; new renders and retries remain unreviewed. The API rejects unfinished or
+missing movies and invalid decisions. Downloads remain available for review.
+This increment requires merge/deployment; it does not implement publishing or
+certify narration/art quality automatically.
+
 Latest owner-storage acceptance (2026-10-31): the existing Render Docker service
 was redeployed as `dep-dbj01367bikc73e1mcd0` on commit `eb86d9d4`.
 A 2,065-byte synthetic project snapshot with a PNG and checkpoint remained
