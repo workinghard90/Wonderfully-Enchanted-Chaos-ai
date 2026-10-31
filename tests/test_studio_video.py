@@ -8,6 +8,8 @@ import tempfile
 import threading
 import time
 import unittest
+import zipfile
+import hashlib
 from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 
@@ -15,7 +17,7 @@ from PIL import Image
 import requests
 
 from wec_engine.studio import create_handler
-from wec_engine.studio_store import init_db, save_project, save_scene_image, export_backup, get_project
+from wec_engine.studio_store import init_db, save_project, save_scene_image, export_backup, get_project, restore_backup
 from wec_engine.studio_video import VideoJobs, VideoJobError
 
 
@@ -56,7 +58,7 @@ class StudioVideoTests(unittest.TestCase):
 
     def test_authentication_covers_every_video_route(self):
         jid = 'a'*32
-        for route in ('/api/video', f'/api/video-jobs/{jid}', f'/api/video-jobs/{jid}/file'):
+        for route in ('/api/video', f'/api/video-jobs/{jid}', f'/api/video-jobs/{jid}/file', f'/api/video-jobs/{jid}/package'):
             self.assertEqual(requests.get(self.base+route, timeout=5).status_code, 401)
         for route in (f'/api/projects/{self.project["id"]}/video', f'/api/video-jobs/{jid}/cancel', f'/api/video-jobs/{jid}/remove', f'/api/video-jobs/{jid}/retry', f'/api/video-jobs/{jid}/review'):
             self.assertEqual(requests.post(self.base+route, json={}, timeout=5).status_code, 401)
@@ -247,6 +249,56 @@ class StudioVideoTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn('private disk path', response.text)
         self.assertEqual(self.jobs.get(jid)['review'], 'needs_changes')
+
+    def test_video_package_round_trip_keeps_movie_inputs_and_review_together(self):
+        jid = self.start().json()['id']; self.finish(jid)
+        self.jobs.review(jid, 'approved')
+        movie = self.jobs.movie(jid).read_bytes()
+        source = (self.jobs.root/jid/'backup.json').read_bytes()
+        # Later edits must not leak into the package for the finished movie.
+        save_project(self.db, {'title': 'Edited project', 'story': self.project['story'], 'duration': 2, 'scenes': 2}, self.project['id'])
+        response = self.session.get(self.base+f'/api/video-jobs/{jid}/package', timeout=5)
+        self.assertEqual(response.status_code, 200, response.text[:100] if not response.ok else '')
+        self.assertEqual(response.headers['Content-Type'], 'application/zip')
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            self.assertEqual(set(archive.namelist()), {'movie.mp4', 'render-inputs.json', 'manifest.json', 'README.txt'})
+            self.assertIsNone(archive.testzip())
+            self.assertEqual(archive.read('movie.mp4'), movie)
+            self.assertEqual(archive.read('render-inputs.json'), source)
+            manifest = json.loads(archive.read('manifest.json'))
+            self.assertEqual(manifest['job']['review'], 'approved')
+            self.assertEqual(manifest['job']['title'], 'A test movie')
+            self.assertNotIn('owner_pid', manifest['job'])
+            self.assertNotIn('Other private project', str(manifest))
+            self.assertNotIn(str(self.root), str(manifest))
+            for name, info in manifest['files'].items():
+                self.assertEqual(info['sha256'], hashlib.sha256(archive.read(name)).hexdigest())
+                self.assertEqual(info['bytes'], len(archive.read(name)))
+            restored_db = init_db(self.root/'clean.sqlite3')
+            restored = restore_backup(restored_db, json.loads(archive.read('render-inputs.json')))
+            project = get_project(restored_db, restored['projects'][0]['id'])
+            self.assertEqual(project['image_count'], 2)
+            self.assertEqual(project['story'], self.project['story'])
+        self.assertEqual(self.jobs.movie(jid).read_bytes(), movie)
+        self.assertEqual(self.jobs.status()['attempts_today'], 1)
+
+    def test_package_failure_keeps_movie_and_review(self):
+        jid = self.start().json()['id']; self.finish(jid)
+        self.jobs.review(jid, 'needs_changes')
+        url = self.base+f'/api/video-jobs/{jid}/package'
+        with patch('wec_engine.studio_video.shutil.disk_usage', return_value=shutil._ntuple_diskusage(100, 99, 1)):
+            self.assertEqual(self.session.get(url, timeout=5).status_code, 507)
+        folder = self.jobs.root/jid
+        original = (folder/'backup.json').read_bytes()
+        (folder/'backup.json').write_bytes(original+b' ')
+        self.assertEqual(self.session.get(url, timeout=5).status_code, 409)
+        (folder/'backup.json').write_bytes(original)
+        value = self.jobs._record(jid); value['status'] = 'interrupted'; self.jobs._save(value)
+        self.assertEqual(self.session.get(url, timeout=5).status_code, 409)
+        value['status'] = 'ready'; self.jobs._save(value)
+        self.assertTrue(self.jobs.movie(jid).is_file())
+        self.assertEqual(self.jobs.get(jid)['review'], 'needs_changes')
+        self.assertEqual(self.jobs.status()['attempts_today'], 1)
 
 
 class VideoLeaseTests(unittest.TestCase):

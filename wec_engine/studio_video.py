@@ -12,9 +12,11 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
+import zipfile
 
 from .studio_video_worker import write_json
 from .video_limits import plan_video, MAX_SECONDS, MAX_SCENES, MAX_STORY_WORDS
@@ -23,6 +25,7 @@ from .studio_store import MAX_BACKUP_BYTES
 DAILY_LIMIT = 2
 MAX_JOBS = 3
 MAX_MOVIE_BYTES = 20_000_000
+MAX_VIDEO_PACKAGE_BYTES = MAX_BACKUP_BYTES + MAX_MOVIE_BYTES + 65536
 JOB_TIMEOUT = 1200
 TERMINAL = {'ready', 'failed', 'cancelled', 'interrupted'}
 PUBLIC_FIELDS = {'id', 'project_id', 'title', 'status', 'progress', 'message', 'created_at',
@@ -352,6 +355,59 @@ class VideoJobs:
             if not path.is_file():
                 raise VideoJobError('The server copy is unavailable. Render again from your project.', 404)
             return path
+
+    @contextmanager
+    def production_package(self, jid):
+        # Stream fixed archive entries to disk, never buffer the full movie/ZIP.
+        # Release the job lock before serving a slow client; the ZIP is independent.
+        with tempfile.TemporaryFile(dir=self.root) as output:
+            with self.lock:
+                movie = self.movie(jid)
+                record = self._record(jid)
+                folder = self._folder(jid)
+                if shutil.disk_usage(self.root).free < MAX_VIDEO_PACKAGE_BYTES + 256*1024*1024:
+                    raise VideoJobError('Not enough temporary disk space for a video package. Download the MP4 separately.', 507)
+                try:
+                    options = json.loads((folder/'request.json').read_text(encoding='utf-8'))
+                    if type(options.get('ambience')) is not bool:
+                        raise ValueError('Invalid options')
+                    files = {}
+                    with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_STORED) as archive:
+                        for name, source_path, limit in [
+                            ('movie.mp4', movie, MAX_MOVIE_BYTES),
+                            ('render-inputs.json', folder/'backup.json', MAX_BACKUP_BYTES),
+                        ]:
+                            digest = hashlib.sha256(); size = 0
+                            with source_path.open('rb') as source, archive.open(name, 'w') as target:
+                                for chunk in iter(lambda: source.read(65536), b''):
+                                    size += len(chunk)
+                                    if size > limit:
+                                        raise ValueError('Oversized input')
+                                    digest.update(chunk); target.write(chunk)
+                            if not size:
+                                raise ValueError('Empty input')
+                            files[name] = {'bytes': size, 'sha256': digest.hexdigest()}
+                        if files['render-inputs.json']['sha256'] != record.get('snapshot_sha256'):
+                            raise ValueError('Changed render inputs')
+                        manifest = {'app': 'wec-video-package', 'package_version': 1,
+                                    'exported_at': now(), 'job': self.get(jid),
+                                    'render_options': {'ambience': options['ambience']}, 'files': files}
+                        archive.writestr('manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2))
+                        archive.writestr('README.txt',
+                            'WEC video package\n\nmovie.mp4: finished movie.\n'
+                            'render-inputs.json: saved server story and optimized scene images used for this render.\n'
+                            'manifest.json: review decision at export, render options and SHA-256 checksums.\n\n'
+                            'Restore render-inputs.json in WEC Video Studio to create a separate editable server story.\n'
+                            'This does not restore the movie to the render queue or import its review decision.\n'
+                            'Keep your Creative Studio recovery package separately for original-resolution artwork,\n'
+                            'character references, checkpoints and source-artwork links.\n'
+                            'Checksums detect changed bytes; they are not a signature or publishing approval.\n')
+                    if output.tell() > MAX_VIDEO_PACKAGE_BYTES:
+                        raise ValueError('Oversized package')
+                except (ValueError, TypeError, AttributeError, KeyError, FileNotFoundError):
+                    raise VideoJobError('Saved render inputs are unavailable or damaged. Keep your MP4 and project backup separately.', 409) from None
+            output.seek(0)
+            yield output
 
     def close(self):
         with self.lock:

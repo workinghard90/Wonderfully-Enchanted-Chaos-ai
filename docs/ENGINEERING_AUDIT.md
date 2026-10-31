@@ -4,6 +4,13 @@ Audit baseline: `d5b35ae8bdcad619bbcefa2844c3113d92935594`, including merged PR 
 
 ## Current capabilities
 
+The video-package increment adds an authenticated ZIP download containing a
+ready MP4, its exact saved server render-input backup, a review/options/checksum
+manifest and recovery instructions. A clean-store test restores the packaged
+story/pictures; corrupt input and low-disk refusals preserve the saved movie and
+review. It packages optimized render inputs rather than original Creative
+assets/references/checkpoints. Rollout requires merge/deployment.
+
 The finished-video review increment records an explicit owner decision
 (unreviewed, approved or needs changes) on each ready server render, separately
 from technical readiness. Decisions persist with the job and apply only to that

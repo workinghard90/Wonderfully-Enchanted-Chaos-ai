@@ -78,6 +78,16 @@ export function videoPanel({ api, run, busy }) {
             const a = document.createElement('a'); a.href = movieURL; a.download = `wec-video-${job.id.slice(0, 8)}.mp4`;
             document.body.append(a); a.click(); a.remove();
           });
+          action('Download video package', async () => {
+            const response = await api(`/api/video-jobs/${job.id}/package`);
+            const blob = await response.blob();
+            if (blob.size > 40*1024*1024 + 20000000 + 65536) throw Error('This video package is too large to open here. Download the MP4 separately.');
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url;
+            a.download = `wec-video-${job.id.slice(0, 8)}-package.zip`;
+            document.body.append(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+          });
           if (job.review !== 'approved') action('Approve video', async () => {
             if (!confirm('Have you reviewed this movie’s narration, captions and pictures? Mark this saved movie approved? Nothing is published.')) return;
             await api(`/api/video-jobs/${job.id}/review`, {review: 'approved'});

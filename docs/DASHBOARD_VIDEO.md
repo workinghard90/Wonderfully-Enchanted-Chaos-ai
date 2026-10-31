@@ -59,6 +59,36 @@ Changing the editable project does not alter the already rendered movie or its
 review. Removing the server copy removes that review too. This owner decision
 does not publish a video, certify platform compliance or replace watching it.
 
+## Keep the movie and its render inputs together
+
+**Download video package** creates a ZIP for a ready movie containing:
+
+- `movie.mp4`: the exact finished movie.
+- `render-inputs.json`: the saved server story and optimized scene pictures used
+  for that render, compatible with the Video Studio backup restore.
+- `manifest.json`: the movie's review state at export, timestamps, ambience
+  choice, and SHA-256/byte counts for the movie and input file.
+- `README.txt`: recovery instructions and the package's scope.
+
+Extract the ZIP to use its MP4 anywhere. Restore `render-inputs.json` through
+Video Studio's backup import to create a separate editable server story with
+its pictures; rendering that story again uses a new attempt. This does not
+import the movie or its review into the job list. Review decisions inside an
+already downloaded package do not change when the server decision changes.
+
+Keep a separate Creative Studio recovery package for original-resolution
+artwork, character references, checkpoints and source-artwork links. The video
+package preserves optimized render inputs, not the complete Creative project.
+Only its selected job is included; worker logs, credentials and other projects
+are excluded. Checksums detect changed bytes, not authorship or content quality.
+
+The ZIP is prepared on demand using streamed disk I/O and stored entries,
+without image inference or another render attempt. It requires at least the
+maximum package size plus 256 MiB free temporary disk space; downloads fall
+back to the separate MP4 when that space is unavailable. Existing 40 MiB input
+and 20 MB movie limits apply, with 64 KiB reserved for manifest/ZIP overhead.
+Temporary files close after serving the download. No saved movie is removed.
+
 ## Enable on the existing service
 
 The updated Dockerfile includes FFmpeg, fonts, Piper 1.8.0 and the
