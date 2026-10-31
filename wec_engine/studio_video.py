@@ -26,7 +26,7 @@ MAX_MOVIE_BYTES = 20_000_000
 JOB_TIMEOUT = 1200
 TERMINAL = {'ready', 'failed', 'cancelled', 'interrupted'}
 PUBLIC_FIELDS = {'id', 'project_id', 'title', 'status', 'progress', 'message', 'created_at',
-                 'finished_at', 'duration', 'bytes', 'retry_of'}
+                 'finished_at', 'duration', 'bytes', 'retry_of', 'review', 'reviewed_at'}
 
 
 class VideoJobError(Exception):
@@ -76,6 +76,7 @@ class VideoJobs:
     def get(self, jid):
         with self.lock:
             value = self._record(jid)
+            value.setdefault('review', 'unreviewed')
             return {key: value[key] for key in PUBLIC_FIELDS if key in value}
 
     def _save(self, value):
@@ -330,6 +331,18 @@ class VideoJobs:
                 raise VideoJobError('Wait for the render to stop before removing it.', 409)
             shutil.rmtree(self._folder(jid))
             return {'removed': True}
+
+    def review(self, jid, decision):
+        with self.lock:
+            if not isinstance(decision, str) or decision not in {'approved', 'needs_changes', 'unreviewed'}:
+                raise VideoJobError('Choose approved, needs_changes or unreviewed.')
+            value = self._record(jid)
+            if value['status'] != 'ready':
+                raise VideoJobError('Only a finished movie can be reviewed.', 409)
+            self.movie(jid)  # A missing server file must not receive an approval.
+            value.update(review=decision, reviewed_at=now())
+            self._save(value)
+            return self.get(jid)
 
     def movie(self, jid):
         with self.lock:

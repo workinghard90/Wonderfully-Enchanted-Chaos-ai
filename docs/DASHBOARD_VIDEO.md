@@ -44,6 +44,21 @@ response, rather than creating another job. If that retry also fails, retry the
 new failed attempt. Removing a server copy also removes its saved render inputs.
 There is no automatic restart or reuse of partially encoded clips.
 
+## Review a finished movie
+
+The unified studio distinguishes a technically **ready** movie from one you
+have reviewed. Play or download the finished MP4 and check its narration,
+caption timing and pictures. Choose **Approve video** and confirm your review,
+or choose **Needs changes**. **Clear review** returns it to Not reviewed.
+Downloading is available in every review state so you can inspect it elsewhere.
+
+The decision and timestamp are stored with that particular server render and
+survive reopening the service when its data directory persists. Existing jobs
+default to Not reviewed; a new render or retry starts without an approval.
+Changing the editable project does not alter the already rendered movie or its
+review. Removing the server copy removes that review too. This owner decision
+does not publish a video, certify platform compliance or replace watching it.
+
 ## Enable on the existing service
 
 The updated Dockerfile includes FFmpeg, fonts, Piper 1.8.0 and the

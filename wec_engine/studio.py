@@ -363,7 +363,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 except (ValueError, TypeError) as exc:
                     self._send(400, {'error': str(exc)})
                 return
-            video_job = re.fullmatch(r'/api/video-jobs/([a-f0-9]{32})(/file|/cancel|/remove|/retry)?', path)
+            video_job = re.fullmatch(r'/api/video-jobs/([a-f0-9]{32})(/file|/cancel|/remove|/retry|/review)?', path)
             if video_job:
                 try:
                     jid, action = video_job.groups()
@@ -371,6 +371,19 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                         self._movie(jid); return
                     if self.command == 'GET' and not action:
                         self._send(200, videos.get(jid)); return
+                    if self.command == 'POST' and action == '/review':
+                        try:
+                            body = json.loads(self._read_body(1024))
+                            if not isinstance(body, dict) or set(body) != {'review'}:
+                                raise ValueError('Choose a review decision only.')
+                            self._send(200, videos.review(jid, body['review']))
+                        except StorageLimitError as exc:
+                            self._send(413, {'error': str(exc)})
+                        except (ValueError, TypeError) as exc:
+                            self._send(400, {'error': str(exc)})
+                        except OSError:
+                            self._send(503, {'error': 'The review could not be saved. Refresh renders before trying again.'})
+                        return
                     if self.command == 'POST' and action == '/retry':
                         if not media_lock.acquire(blocking=False):
                             self._send(429, {'error': 'Another media or storage operation is running. Try again when it finishes.'}); return

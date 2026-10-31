@@ -69,11 +69,27 @@ export function videoPanel({ api, run, busy }) {
           }
         }
         if (job.status === 'ready') {
+          const review = document.createElement('p');
+          review.textContent = 'Final review: ' + ({approved: 'Approved', needs_changes: 'Needs changes'}[job.review] || 'Not reviewed') + '. Applies to this saved movie only.';
+          item.append(review);
           action('Play video', () => load(job));
           action('Download MP4', async () => {
             await load(job);
             const a = document.createElement('a'); a.href = movieURL; a.download = `wec-video-${job.id.slice(0, 8)}.mp4`;
             document.body.append(a); a.click(); a.remove();
+          });
+          if (job.review !== 'approved') action('Approve video', async () => {
+            if (!confirm('Have you reviewed this movie’s narration, captions and pictures? Mark this saved movie approved? Nothing is published.')) return;
+            await api(`/api/video-jobs/${job.id}/review`, {review: 'approved'});
+            await refresh();
+          });
+          if (job.review !== 'needs_changes') action('Needs changes', async () => {
+            await api(`/api/video-jobs/${job.id}/review`, {review: 'needs_changes'});
+            await refresh();
+          });
+          if (job.review && job.review !== 'unreviewed') action('Clear review', async () => {
+            await api(`/api/video-jobs/${job.id}/review`, {review: 'unreviewed'});
+            await refresh();
           });
         }
         action('Remove server copy', async () => {
