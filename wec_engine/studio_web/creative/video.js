@@ -115,6 +115,27 @@ export function videoPanel({ api, run, busy }) {
     if (state.jobs.some(job => ['queued', 'running'].includes(job.status))) schedule();
     return state;
   }
+  async function showStorage() {
+    const response = await api('/api/storage/capacity');
+    const report = await response.json();
+    const mib = bytes => (bytes / 1048576).toFixed(1) + ' MiB';
+    const videos = report.videos, snapshots = report.snapshots, disk = report.storage;
+    const parts = [
+      'Disk free: ' + mib(disk.free_bytes) + ' / ' + mib(disk.total_bytes),
+      'Saved renders: ' + videos.saved + '/' + videos.max_saved,
+      'Render attempts today: ' + videos.attempts_today + '/' + videos.daily_limit,
+      snapshots.enabled
+        ? 'Online snapshots: ' + snapshots.saved + '/' + snapshots.max_saved
+          + ' · ' + mib(snapshots.used_bytes) + '/' + mib(snapshots.max_bytes) + ' quota'
+        : 'Online snapshots unavailable',
+    ];
+    if (disk.mount_confirmed === false) parts.push('Warning: Render persistent mount not confirmed');
+    if (report.warnings.length)
+      parts.push('Attention: ' + report.warnings.map(w => w.message).join(' '));
+    else parts.push('No capacity limits reached. Server downloads and independent backups remain recommended.');
+    $('server-storage-status').textContent = parts.join(' · ');
+  }
+  $('check-storage').onclick = () => run(showStorage);
   function schedule() {
     timer = setTimeout(async () => {
       if (busy()) { schedule(); return; }

@@ -344,6 +344,8 @@
         <p>Render progress and finished movies from all your server projects appear here.
           Each movie uses the saved version from when rendering started. Later edits do not change it.</p>
         <button id="refresh-renders" class="secondary">Refresh renders</button>
+        <button id="check-storage" class="secondary">Check server storage &amp; limits</button>
+        <p id="server-storage-status" role="status" aria-live="polite">Check which limit is reached before deleting anything. Build cache is separate from saved movies and snapshots.</p>
         <p id="render-availability" role="status">Refresh to load saved movies or reconnect to a running render.</p>
         <div id="render-jobs"></div>
         <div id="render-player" hidden>

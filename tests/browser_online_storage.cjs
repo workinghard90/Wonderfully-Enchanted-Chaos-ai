@@ -20,6 +20,10 @@ const assert=require('node:assert/strict');
    await context.addInitScript(t=>sessionStorage.setItem('wec_token',t),token);
    const p=await context.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
    await p.goto(base);await p.locator('#status').filter({hasText:'Choose a format'}).waitFor();
+   // Capacity is read-only; distinguish video slots and disk bytes before cleanup.
+   await p.locator('#check-storage').click();await ready(p);
+   await p.locator('#server-storage-status').filter({hasText:'Saved renders: 0/3'}).waitFor();
+   assert.match(await p.locator('#server-storage-status').innerText(),/Online snapshots: 0\/50/);
    const id=await p.evaluate(async ({png,width})=>{
     const s=await import('/studio/store.js');
     const blob=new Blob([Uint8Array.from(atob(png),c=>c.charCodeAt(0))],{type:'image/png'});
@@ -32,6 +36,8 @@ const assert=require('node:assert/strict');
    await p.locator('#online-panel summary').click();
    await p.locator('#online-save').click();await ready(p);
    await p.locator('#status').filter({hasText:'Online snapshot saved and verified'}).waitFor();
+   await p.locator('#check-storage').click();await ready(p);
+   await p.locator('#server-storage-status').filter({hasText:'Online snapshots: 1/50'}).waitFor();
    const row=p.locator('#online-library .library-item').filter({hasText:'Online '+width});
    assert.equal(await row.count(),1);
    const wait=p.waitForEvent('download');await row.getByRole('button',{name:'Download snapshot',exact:true}).click();

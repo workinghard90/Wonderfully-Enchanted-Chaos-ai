@@ -25,6 +25,7 @@ from .studio_video import VideoJobs, VideoJobError, TERMINAL
 from .studio_image_requests import ImageRequests, ReceiptError
 from . import creative
 from .online_store import OnlineStore, SnapshotError, MAX_PACKAGE
+from .storage_status import capacity_report
 from .studio_store import reserve_creative_generation, reserve_text_generation
 from .providers.cloudflare_text import CloudflareText, MODEL as TEXT_MODEL, draft_settings
 
@@ -290,6 +291,16 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             if path == '/api/health' and self.command == 'GET':
                 self._send(200, {'ok':True}); return
             if not self._authorized(): return
+            if path == '/api/storage/capacity':
+                if self.command != 'GET':
+                    self._send(405, {'error': 'Method not allowed'}); return
+                if not token or len(token) < 32:
+                    self._send(503, {'error': 'Capacity reporting requires authenticated owner access.'}); return
+                try:
+                    self._send(200, capacity_report(data_dir, online, videos))
+                except (OSError, ValueError, KeyError, TypeError):
+                    self._send(503, {'error': 'Capacity status is unavailable. Existing projects and videos were kept.'})
+                return
             if path == '/api/creative/snapshots' or path.startswith('/api/creative/snapshots/'):
                 self._online(path); return
             match = re.fullmatch(r'/api/creative/image-requests/([a-f0-9]{32})', path)
