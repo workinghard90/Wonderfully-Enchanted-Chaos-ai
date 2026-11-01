@@ -5,13 +5,13 @@ AI calls, deleting data, starting video jobs or silently deploying code.
 
 ## Verified deployment baseline (October 31, 2026)
 
-- Existing WEC Render service: \`wec-studio-free-test\` (\`srv-dbc2cb5g1s2s73bjbh40\`).
+- Existing WEC Render service: `wec-studio-free-test` (`srv-dbc2cb5g1s2s73bjbh40`).
 - Existing Docker service is on a Starter instance with one **5 GB** disk mounted
-  at \`/var/data\`. This is account configuration, not evidence that every app
+  at `/var/data`. This is account configuration, not evidence that every app
   feature works.
 - **Auto-deploy is off**. Merging a PR will not deploy it.
-- Last Render deployment inspected: \`dep-dbj67d7lk1mc738c6obg\`, live on
-  merge commit \`20f11979d36ee658cd0bac16bab2ba96a3a72830\` (PR #34).
+- Last Render deployment inspected: `dep-dbj67d7lk1mc738c6obg`, live on
+  merge commit `20f11979d36ee658cd0bac16bab2ba96a3a72830` (PR #34).
 - PR #35 (video package download) was merged later, so this live deployment
   has **not** been verified to contain PR #35.
 - The engineering audit records a successful synthetic online-snapshot
@@ -24,36 +24,36 @@ These are a dated observation, **not a promise about future deploy state**.
 
 Run from the exact repository checkout (or commit) you intend to deploy:
 
-\`\`\`bash
+```bash
 python -m unittest discover -s tests -p test_release_gate.py -v
 python tools/release_gate.py \
   --url https://wec-studio-free-test.onrender.com \
   --public-only
-\`\`\`
+```
 
 Public-only gate checks:
-1. \`/api/health\` returns the expected health JSON.
-2. Six actual \`/studio/\` HTML, JS and CSS assets have **exact byte hashes**
+1. `/api/health` returns the expected health JSON.
+2. Six actual `/studio/` HTML, JS and CSS assets have **exact byte hashes**
    matching the selected checkout; this detects a stale UI deployment.
-3. Unauthenticated \`/api/projects\` requests return HTTP **401**, not data.
+3. Unauthenticated `/api/projects` requests return HTTP **401**, not data.
 
 Run the fuller **owner read-only** gate by supplying your existing token as a
 local environment variable (not via URL, committed file, or chat):
 
-\`\`\`bash
+```bash
 # Bash example
 export WEC_STUDIO_TOKEN='YOUR_EXISTING_STUDIO_TOKEN'
 python tools/release_gate.py --url https://wec-studio-free-test.onrender.com
 unset WEC_STUDIO_TOKEN
-\`\`\`
+```
 
 In PowerShell:
 
-\`\`\`powershell
+```powershell
 $env:WEC_STUDIO_TOKEN = 'YOUR_EXISTING_STUDIO_TOKEN'
 python tools/release_gate.py --url https://wec-studio-free-test.onrender.com
 Remove-Item Env:WEC_STUDIO_TOKEN
-\`\`\`
+```
 
 The owner gate additionally verifies **read-only** video readiness and online
 snapshot availability with GET requests. It never prints the token or project
@@ -72,12 +72,12 @@ A failed byte comparison on the pre-deploy baseline is **expected** and useful.
 2. Check Render's deploy history and confirm which commit is *live*. **Do not
    create a new service, disk, worker or database.**
 3. When the owner approves production rollout, manually deploy the intended
-   \`main\` commit to the **existing** WEC service. Auto-deploy is off.
+   `main` commit to the **existing** WEC service. Auto-deploy is off.
 4. Run the owner release gate against that exact source checkout and save the
    resulting JSON report for the owner.
 5. In the authenticated UI, **manually** test a previously retained render:
    MP4 playback; review decision; download a video ZIP; inspect the expected
-   MP4, \`render-inputs.json\` and \`manifest.json\` inside that ZIP.
+   MP4, `render-inputs.json` and `manifest.json` inside that ZIP.
 6. With an expendable synthetic Creative project, explicitly upload an online
    snapshot, download it, and restore into a **new** local project. Never
    overwrite existing real work for a test.
