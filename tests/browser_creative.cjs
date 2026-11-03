@@ -321,10 +321,10 @@ const assert = require("node:assert/strict");
       await reuseButton().click();
       await picker.getByLabel('Saved source project').selectOption(backup.id);
       await picker.getByRole('button', {name:/Use page 1/}).click();
-      await page.locator('#status').filter({hasText:'Saved artwork copied'}).waitFor();
+      await page.locator('#status').filter({hasText:'Approved artwork copied'}).waitFor();
       const copied = JSON.parse((await download(page, '#backup')).toString());
       assert.equal(copied.pages[0].asset.image_base64, png.toString('base64'));
-      assert.equal(copied.pages[0].asset.source, 'Reused saved original');
+      assert.equal(copied.pages[0].asset.source, 'Reused approved original');
       assert.equal(copied.pages[0].review, 'unreviewed');
       assert.equal(copied.pages[0].sourceArtwork.projectId,backup.id);
       assert.equal(copied.pages[0].sourceArtwork.pageId,backup.pages[0].id);
@@ -365,7 +365,7 @@ const assert = require("node:assert/strict");
       });
       await reuseButton().click();
       await picker.getByLabel('Saved source project').selectOption(extraSources.emptyId);
-      await picker.getByRole('status').filter({hasText:'no saved page pictures'}).waitFor();
+      await picker.getByRole('status').filter({hasText:'no approved page pictures'}).waitFor();
       assert.equal(await picker.getByRole('button', {name:/Use page/}).count(), 0);
       await picker.getByLabel('Saved source project').selectOption(extraSources.badId);
       await picker.getByRole('button', {name:/Use page 1/}).click(); await ready(page);
@@ -375,6 +375,11 @@ const assert = require("node:assert/strict");
       await picker.waitFor({state:'visible'});
       await page.keyboard.press('Escape'); await ready(page);
       assert.equal(await picker.count(), 0);
+      // An independent replacement must remove the earlier source link:
+      // this page now contains an uploaded original, not a borrowed copy.
+      await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
+      await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
+      assert.equal(JSON.parse((await download(page,'#backup')).toString()).pages[0].sourceArtwork,undefined);
       const colorPdf = await download(page, "#pdf");
       assert.equal(
         (colorPdf.toString("latin1").match(/\/Type \/Page\b/g) || []).length,
