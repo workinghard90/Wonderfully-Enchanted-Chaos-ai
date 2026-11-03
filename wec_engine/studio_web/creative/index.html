@@ -352,6 +352,14 @@
           <h3 id="render-player-title"></h3>
           <video id="render-movie" controls playsinline preload="metadata"></video>
         </div>
+        <div class="panel">
+          <h3>Verify a downloaded video package</h3>
+          <p class="muted">Select a WEC video production ZIP that you've already saved. This check happens on this device: nothing is uploaded, deleted or rendered. It verifies the movie and render inputs against the package manifest, but is not a signature or creative approval.</p>
+          <label class="file-button">Select video package ZIP
+            <input id="verify-video-package" type="file" accept="application/zip,.zip" />
+          </label>
+          <p id="video-package-status" role="status" aria-live="polite">Select a saved ZIP to check its integrity before removing any server copies.</p>
+        </div>
         <p class="muted">Download finished MP4s to keep them. Browser project backups include your pictures and text, not rendered movies. No automatic publishing.</p>
         <p class="muted">Video packages keep the movie, saved render story, optimized pictures and review decision together. Keep a Creative Studio recovery package too for original artwork, references and checkpoints.</p>
       </section>
