@@ -72,7 +72,7 @@ class ReleaseGateTests(unittest.TestCase):
             with patch.object(release_gate, "build_opener", return_value=opener):
                 result = release_gate.run_gate("https://wec.test", directory, token="private-secret")
             self.assertTrue(result["passed"], result["checks"])
-            self.assertEqual(len(result["checks"]), 10)
+            self.assertEqual(len(result["checks"]), 11)
             self.assertTrue(all(request.get_method() == "GET" for request in opener.requests))
             self.assertTrue(all(not request.full_url.endswith("private-secret") for request in opener.requests))
             protected = [req for req in opener.requests if "/api/video" in req.full_url or
