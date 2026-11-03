@@ -356,6 +356,25 @@ const assert = require("node:assert/strict");
       },backup.id);
       await page.locator('#check-sources').click();await ready(page);
       assert.match(await page.locator('#source-status').innerText(),/still match/);
+      // Do not copy a stale approved thumbnail if another tab modifies its source
+      // after the picker has loaded the original revision.
+      await reuseButton().click();
+      await picker.getByLabel('Saved source project').selectOption(backup.id);
+      await picker.getByRole('button', {name:/Use page 1/}).waitFor();
+      await page.evaluate(async id=>{
+        const store=await import('/studio/store.js'), source=await store.get(id);
+        source.pages[0].review='needs_changes';
+        await store.save(source);
+      },backup.id);
+      await picker.getByRole('button',{name:/Use page 1/}).click();
+      await picker.getByRole('status').filter({hasText:'source changed or lost approval'}).waitFor();
+      assert.equal(await picker.count(),1);
+      await page.keyboard.press('Escape');await ready(page);
+      await page.evaluate(async id=>{
+        const store=await import('/studio/store.js'), source=await store.get(id);
+        source.pages[0].review='approved';
+        await store.save(source);
+      },backup.id);
       const extraSources = await page.evaluate(async () => {
         const store = await import('/studio/store.js');
         const emptyId = crypto.randomUUID(), badId = crypto.randomUUID();
