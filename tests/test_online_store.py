@@ -6,6 +6,7 @@ from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
 import tempfile
+import time
 import threading
 import unittest
 from unittest.mock import patch
@@ -122,8 +123,20 @@ class OnlineStoreTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as caught:
             urlopen(Request(route + '/' + item['id'] + '/remove', data=b'{}', headers=headers))
         self.assertEqual(caught.exception.code, 400)
-        with urlopen(Request(route + '/' + item['id'] + '/remove', data=json.dumps({'confirm': item['id']}).encode(), headers=headers)) as response:
-            self.assertEqual(response.status, 200)
+        # A completed HTTP response can arrive before its handler releases the
+        # shared media lock. A transient 429 is a documented busy response.
+        # Retry only that response, with a firm bound, not arbitrary failures.
+        remove_request = Request(route + '/' + item['id'] + '/remove',
+                                 data=json.dumps({'confirm': item['id']}).encode(), headers=headers)
+        for attempt in range(20):
+            try:
+                with urlopen(remove_request, timeout=5) as response:
+                    self.assertEqual(response.status, 200)
+                break
+            except HTTPError as error:
+                if error.code != 429 or attempt == 19:
+                    raise
+                time.sleep(0.05)
 
     def test_disabled_and_missing_mount_fail_closed(self):
         for enabled, token, render in [(False, None, False), (True, None, False), (True, 'a'*32, True)]:
