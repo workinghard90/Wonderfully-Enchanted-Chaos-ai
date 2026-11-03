@@ -68,6 +68,31 @@ const assert=require('node:assert/strict');
    });
    await p.locator('#video-package-status').filter({hasText:'Integrity verified:'}).waitFor();
    assert.match(await p.locator('#video-package-status').innerText(),/not an authenticity signature or human approval/);
+   // The verified render inputs are recoverable as a NEW server project.
+   const restoreButton=p.locator('#restore-video-package');
+   assert.equal(await restoreButton.isDisabled(),false);
+   accept=false;
+   await restoreButton.click();
+   assert.equal((await(await fetch(base+'/api/projects',{headers})).json()).projects.length,1);
+   assert.equal(await restoreButton.isDisabled(),false);
+   accept=true;
+   await restoreButton.click();
+   await p.locator('#video-package-status').filter({hasText:'Recovery complete:'}).waitFor();
+   assert.equal(await restoreButton.isDisabled(),true); // No accidental double restore.
+   const saved=await(await fetch(base+'/api/projects',{headers})).json();
+   assert.equal(saved.projects.length,2);
+   const recovered=saved.projects.find(item=>item.id!==project.id);
+   assert.ok(recovered);
+   assert.equal(recovered.title,'RETRY saved original');
+   assert.equal(recovered.image_count,1);
+   const sourceAfter=await(await fetch(base+`/api/projects/${project.id}`,{headers})).json();
+   const recoveredAfter=await(await fetch(base+`/api/projects/${recovered.id}`,{headers})).json();
+   assert.equal(sourceAfter.title,'Edited project');
+   assert.equal(recoveredAfter.story,'A little lantern glows.');
+   assert.equal(recoveredAfter.id,recovered.id);
+   assert.equal((await(await fetch(base+'/api/video',{headers})).json()).attempts_today,2);
+   assert.equal(await p.locator('#video-package-status a').getAttribute('href'),`/?project=${recovered.id}`);
+
 
    // A modified MP4 must fail both ZIP CRC and/or SHA-256 verification.
    const modified=Buffer.from(zip);modified[120]^=0x01;
@@ -75,6 +100,7 @@ const assert=require('node:assert/strict');
      name:'modified-video-package.zip',mimeType:'application/zip',buffer:modified
    });
    await p.locator('#video-package-status').filter({hasText:'incomplete, modified, or unsupported'}).waitFor();
+   assert.equal(await p.locator('#restore-video-package').isDisabled(),true);
    // A truncated ZIP also fails closed. Failed checks never remove a video.
    await p.locator('#verify-video-package').setInputFiles({
      name:'truncated-video-package.zip',mimeType:'application/zip',buffer:zip.subarray(0,zip.length-40)
