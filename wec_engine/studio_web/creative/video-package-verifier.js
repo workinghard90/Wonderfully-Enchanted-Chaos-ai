@@ -15,7 +15,7 @@ const allowed = Object.keys(MAX_BYTES);
 const invalid = () => Error('This video package is incomplete, modified, or unsupported. Keep the server copy and try downloading a fresh package.');
 const assert = condition => { if (!condition) throw invalid(); };
 
-export async function verifyVideoPackage(file) {
+export async function verifyVideoPackage(file, { includeRecovery = false } = {}) {
   if (!file || !Number.isSafeInteger(file.size) || file.size < 256 || file.size > MAX_ARCHIVE) {
     throw Error('Choose a WEC video production ZIP no larger than 65 MiB.');
   }
@@ -91,6 +91,23 @@ export async function verifyVideoPackage(file) {
            /^[a-f0-9]{64}$/.test(info.sha256));
     assert(await sha256(data) === info.sha256);
   }
+  // Recovery content is only exposed when explicitly requested, after the
+  // structural, CRC-32 and SHA-256 checks have all passed.
+  let recoveryBackup;
+  if (includeRecovery) {
+    try { recoveryBackup = JSON.parse(decoder.decode(entries.get('render-inputs.json'))); }
+    catch { throw invalid(); }
+    assert(recoveryBackup?.schema_version === 2 &&
+           Array.isArray(recoveryBackup.projects) &&
+           recoveryBackup.projects.length === 1);
+    const source = recoveryBackup.projects[0];
+    assert(source && typeof source === 'object' &&
+           source.id === manifest.job.project_id &&
+           source.title === manifest.job.title &&
+           Array.isArray(source.scene_images));
+    // The server independently validates every story and image before its
+    // atomic copy-only restore. Never use the job ID as the new project ID.
+  }
   // This proves exact consistency with the downloaded, unsigned manifest,
   // not that the media is authentic or visually acceptable.
   return {
@@ -100,5 +117,6 @@ export async function verifyVideoPackage(file) {
     recordedReview: ['approved', 'needs_changes', 'unreviewed'].includes(manifest.job.review)
       ? manifest.job.review : 'unreviewed',
     note: 'Checks ZIP structure, per-file CRC and SHA-256 manifest hashes. It is not a signature or publication approval.',
+    ...(includeRecovery ? { recoveryBackup } : {}),
   };
 }

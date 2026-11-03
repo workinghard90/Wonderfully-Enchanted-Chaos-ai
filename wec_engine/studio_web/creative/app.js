@@ -19,7 +19,8 @@ let project = null,
   profiles = [],
   generation = null,
   textReady = false,
-  urls = [];
+  urls = [],
+  verifiedVideoPackage = null;
 const say = (s) => {
   $("status").textContent = s;
 };
@@ -136,6 +137,7 @@ function lock(value) {
     document.querySelectorAll('[data-reference-generate]').forEach(n =>
       n.disabled = !canGenerate(true));
     $("draft").disabled = !textReady;
+    $("restore-video-package").disabled = !verifiedVideoPackage;
   }
 }
 async function run(action) {
@@ -1180,7 +1182,12 @@ $("pdf").onclick = () =>
     );
   });
 const verifyPackageInput = $("verify-video-package");
+const restoreVideoPackage = $("restore-video-package");
 verifyPackageInput.onchange = () => {
+  // Invalid or different packages must never retain authority from a prior
+  // verified ZIP. A successful verification authorizes only a new copy.
+  verifiedVideoPackage = null;
+  restoreVideoPackage.disabled = true;
   const file = verifyPackageInput.files?.[0];
   verifyPackageInput.value = "";
   if (!file) return;
@@ -1188,13 +1195,18 @@ verifyPackageInput.onchange = () => {
     const status = $("video-package-status");
     status.textContent = "Checking this saved ZIP on your device…";
     try {
-      const result = await verifyVideoPackage(file);
+      const result = await verifyVideoPackage(file, {includeRecovery: true});
+      verifiedVideoPackage = {
+        jobId: result.jobId,
+        recoveryBackup: result.recoveryBackup,
+      };
       status.textContent =
         "Integrity verified: video and render inputs match the downloaded manifest. " +
         (result.movieBytes / 1048576).toFixed(1) +
         " MiB MP4 · " + (result.inputsBytes / 1048576).toFixed(1) +
         " MiB render inputs. Recorded review: " + result.recordedReview.replace("_", " ") +
-        ". This is not an authenticity signature or human approval. Keep the downloaded copy.";
+        ". This is not an authenticity signature or human approval. Keep the downloaded copy. " +
+        "You can now restore the saved story and scene pictures as a new server copy.";
       say("Video package integrity verified locally. Your original file was not modified.");
     } catch (error) {
       status.textContent = error.message || "Unable to verify this video package.";
@@ -1202,6 +1214,39 @@ verifyPackageInput.onchange = () => {
     }
   });
 };
+restoreVideoPackage.onclick = () => run(async () => {
+  const verified = verifiedVideoPackage;
+  if (!verified) throw Error("Verify a downloaded WEC video package first.");
+  if (!confirm("Restore the saved story and optimized pictures from this verified video package as a NEW server project? The existing projects and video will not be replaced. The MP4 and review approval will not be imported. No new render or AI generation is started.")) return;
+  // Do not retry an uncertain POST automatically. If the response is lost,
+  // the owner must check the existing server project list before any retry.
+  verifiedVideoPackage = null;
+  restoreVideoPackage.disabled = true;
+  const status = $("video-package-status");
+  status.textContent = "Restoring a separate server story from verified saved inputs…";
+  try {
+    const response = await api("/api/restore", verified.recoveryBackup);
+    const result = await response.json();
+    if (result.restored !== 1 || result.projects?.length !== 1 ||
+        !/^[a-f0-9]{32}$/.test(result.projects[0]?.id || "")) {
+      throw Error("Recovery response was unexpected.");
+    }
+    const link = document.createElement("a");
+    link.href = "/?project=" + encodeURIComponent(result.projects[0].id);
+    link.textContent = "Open restored story";
+    status.replaceChildren(
+      "Recovery complete: a new editable story and its scene pictures were saved. " +
+      "Existing projects, the movie, and review status were not intentionally changed. " +
+      "The MP4 is not imported. ", link
+    );
+    say("Recovered a separate server story from verified video inputs. No render started.");
+  } catch (error) {
+    status.textContent =
+      "Recovery could not be confirmed. Check your server stories before trying again; " +
+      "a lost response may mean the new copy was created. " + (error.message || "");
+    throw error;
+  }
+});
 const renders = videoPanel({ api, run, busy: () => busy });
 $("video").onclick = () =>
   run(async () => {
