@@ -374,12 +374,14 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 except (ValueError, TypeError) as exc:
                     self._send(400, {'error': str(exc)})
                 return
-            video_job = re.fullmatch(r'/api/video-jobs/([a-f0-9]{32})(/file|/cancel|/remove|/retry|/review|/package)?', path)
+            video_job = re.fullmatch(r'/api/video-jobs/([a-f0-9]{32})(/file|/cancel|/remove|/retry|/review|/package|/inspect)?', path)
             if video_job:
                 try:
                     jid, action = video_job.groups()
                     if self.command == 'GET' and action == '/file':
                         self._movie(jid); return
+                    if self.command == 'GET' and action == '/inspect':
+                        self._send(200, videos.inspect(jid)); return
                     if self.command == 'GET' and action == '/package':
                         if not media_lock.acquire(blocking=False):
                             self._send(429, {'error': 'Another media or storage operation is running. Try again when it finishes.'}); return

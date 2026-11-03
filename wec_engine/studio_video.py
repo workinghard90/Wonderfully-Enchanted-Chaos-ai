@@ -19,6 +19,7 @@ import uuid
 import zipfile
 
 from .studio_video_worker import write_json
+from .production import verify_delivery
 from .video_limits import plan_video, MAX_SECONDS, MAX_SCENES, MAX_STORY_WORDS
 from .studio_store import MAX_BACKUP_BYTES
 
@@ -355,6 +356,38 @@ class VideoJobs:
             if not path.is_file():
                 raise VideoJobError('The server copy is unavailable. Render again from your project.', 404)
             return path
+
+    def inspect(self, jid):
+        """Check a finished on-disk movie without writing, rendering or approving.
+
+        The saved completion duration is an independent recorded benchmark.
+        Do not return ffprobe output, filesystem paths, source stories or logs.
+        """
+        with self.lock:
+            movie = self.movie(jid)
+            record = self._record(jid)
+            try:
+                duration = float(record['duration'])
+                if not 0 < duration <= MAX_SECONDS + 2:
+                    raise ValueError('Invalid recorded duration')
+            except (ValueError, TypeError, KeyError):
+                raise VideoJobError('Recorded movie duration is unavailable. Keep the saved file and project.', 409) from None
+        try:
+            report = verify_delivery(movie, expected_duration=duration,
+                                     tolerance=0.15, max_bytes=MAX_MOVIE_BYTES)
+        except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError,
+                subprocess.TimeoutExpired):
+            raise VideoJobError('Technical inspection could not read this movie. The saved file and review were not changed.', 503) from None
+        return {
+            'ok': report['ok'],
+            'checks': report['checks'],
+            'duration_seconds': round(report['duration'], 3),
+            'recorded_duration_seconds': round(duration, 3),
+            'bytes': report['bytes'],
+            'note': ('Checks codec, portrait dimensions, audio stream, container and video durations, '
+                     'file size and web-playback structure. Captions are burned into the picture: '
+                     'a human must still watch and listen before approval.'),
+        }
 
     @contextmanager
     def production_package(self, jid):

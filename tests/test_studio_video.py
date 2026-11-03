@@ -205,6 +205,63 @@ class StudioVideoTests(unittest.TestCase):
         self.assertEqual(blocked.exception.status, 429)
         self.assertEqual(len(self.jobs.status()['jobs']), 2)
 
+    def test_finished_movie_inspection_is_authenticated_and_read_only(self):
+        jid = self.start().json()['id']; self.assertEqual(self.finish(jid)['status'], 'ready')
+        url = self.base + f'/api/video-jobs/{jid}/inspect'
+        movie = self.jobs.movie(jid).read_bytes()
+        self.jobs.review(jid, 'needs_changes')
+        attempts = self.jobs.status()['attempts_today']
+        self.assertEqual(requests.get(url, timeout=10).status_code, 401)
+        response = self.session.get(url, timeout=10)
+        self.assertEqual(response.status_code, 200, response.text)
+        report = response.json()
+        # Our synthetic fixture is deliberately 64x96, not the 1080x1920 export.
+        self.assertFalse(report['ok'])
+        self.assertFalse(report['checks']['vertical_1080p'])
+        self.assertTrue(report['checks']['aac_audio'])
+        self.assertIn('faststart', report['checks'])
+        self.assertIn('recorded_duration_seconds', report)
+        self.assertNotIn(str(self.root), response.text)
+        self.assertNotIn('secret', response.text)
+        self.assertNotIn('path', response.text)
+        self.assertEqual(self.jobs.movie(jid).read_bytes(), movie)
+        self.assertEqual(self.jobs.get(jid)['review'], 'needs_changes')
+        self.assertEqual(self.jobs.status()['attempts_today'], attempts)
+        self.assertEqual(get_project(self.db, self.project['id'])['image_count'], 2)
+
+        with patch('wec_engine.studio_video.verify_delivery', return_value={
+            'ok': True, 'checks': {'h264': True, 'vertical_1080p': True},
+            'duration': 1.0, 'bytes': len(movie), 'path': 'PRIVATE INTERNAL PATH',
+        }):
+            passed = self.session.get(url, timeout=5)
+        self.assertEqual(passed.status_code, 200)
+        self.assertTrue(passed.json()['ok'])
+        self.assertNotIn('PRIVATE INTERNAL PATH', passed.text)
+        self.assertEqual(self.jobs.get(jid)['review'], 'needs_changes')
+
+    def test_inspection_handles_unfinished_missing_and_corrupt_video_safely(self):
+        jid = self.start().json()['id']; self.finish(jid)
+        url = self.base + f'/api/video-jobs/{jid}/inspect'
+        original = self.jobs._record(jid)
+        value = dict(original, status='interrupted')
+        self.jobs._save(value)
+        self.assertEqual(self.session.get(url, timeout=5).status_code, 409)
+        self.jobs._save(original)
+        movie = self.jobs.movie(jid)
+        before = movie.read_bytes()
+        movie.write_bytes(b'not-an-mp4')
+        try:
+            error = self.session.get(url, timeout=10)
+            self.assertEqual(error.status_code, 503, error.text)
+            self.assertNotIn(str(self.root), error.text)
+            self.assertEqual(movie.read_bytes(), b'not-an-mp4')
+        finally:
+            movie.write_bytes(before)
+        self.assertEqual(self.session.get(url, timeout=10).status_code, 200)
+        movie.unlink()
+        self.assertEqual(self.session.get(url, timeout=5).status_code, 404)
+        self.assertEqual(self.jobs.status()['attempts_today'], 1)
+
     def test_finished_movie_review_survives_reopen_and_preserves_file_and_project(self):
         jid = self.start().json()['id']; self.finish(jid)
         original = self.jobs.movie(jid).read_bytes()

@@ -38,6 +38,13 @@ const assert=require('node:assert/strict');
    await play.click();await p.waitForFunction(()=>document.querySelector('#render-movie').readyState>=1);
    const download=p.waitForEvent('download');await p.getByRole('button',{name:'Download MP4',exact:true}).click();
    assert.ok(fs.statSync(await(await download).path()).size>1000);
+   // Read-only FFprobe check detects the deliberately low-resolution test fixture.
+   await p.getByRole('button',{name:'Inspect finished MP4',exact:true}).click();
+   const technical=p.locator('.render-job').filter({hasText:'Your movie is ready'}).getByText('Technical inspection needs attention:',{exact:false});
+   await technical.waitFor();
+   assert.match(await technical.innerText(),/vertical 1080p/);
+   assert.equal((await(await fetch(base+'/api/video',{headers})).json()).jobs.find(j=>j.retry_of===original.id).review,'unreviewed');
+
    assert.match(await p.locator('.render-job').filter({hasText:'Your movie is ready'}).innerText(),/Final review: Not reviewed/);
    accept=false;
    await p.getByRole('button',{name:'Approve video',exact:true}).click();
