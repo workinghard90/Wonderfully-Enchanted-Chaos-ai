@@ -62,6 +62,25 @@ const assert=require('node:assert/strict');
    assert.equal(zip.subarray(0,4).toString('hex'),'504b0304');
    assert.ok(zip.includes(Buffer.from('render-inputs.json')));
    assert.ok(zip.includes(Buffer.from('manifest.json')));
+   // Verify the downloaded production ZIP locally, without uploading any bytes.
+   await p.locator('#verify-video-package').setInputFiles({
+     name:'wec-video-package.zip',mimeType:'application/zip',buffer:zip
+   });
+   await p.locator('#video-package-status').filter({hasText:'Integrity verified:'}).waitFor();
+   assert.match(await p.locator('#video-package-status').innerText(),/not an authenticity signature or human approval/);
+
+   // A modified MP4 must fail both ZIP CRC and/or SHA-256 verification.
+   const modified=Buffer.from(zip);modified[120]^=0x01;
+   await p.locator('#verify-video-package').setInputFiles({
+     name:'modified-video-package.zip',mimeType:'application/zip',buffer:modified
+   });
+   await p.locator('#video-package-status').filter({hasText:'incomplete, modified, or unsupported'}).waitFor();
+   // A truncated ZIP also fails closed. Failed checks never remove a video.
+   await p.locator('#verify-video-package').setInputFiles({
+     name:'truncated-video-package.zip',mimeType:'application/zip',buffer:zip.subarray(0,zip.length-40)
+   });
+   await p.locator('#video-package-status').filter({hasText:'incomplete, modified, or unsupported'}).waitFor();
+   assert.equal((await(await fetch(base+'/api/video',{headers})).json()).jobs.find(j=>j.retry_of===original.id).status,'ready');
    await p.getByRole('button',{name:'Needs changes',exact:true}).click();
    await p.getByText('Final review: Needs changes. Applies to this saved movie only.').waitFor();
    await p.getByRole('button',{name:'Clear review',exact:true}).click();

@@ -19,6 +19,7 @@ ASSETS = (
     ("index.html", "/studio/"),
     ("app.js", "/studio/app.js"),
     ("video.js", "/studio/video.js"),
+    ("video-package-verifier.js", "/studio/video-package-verifier.js"),
     ("store.js", "/studio/store.js"),
     ("artwork-picker.js", "/studio/artwork-picker.js"),
     ("style.css", "/studio/style.css"),
