@@ -125,14 +125,14 @@ def finalize_video(video, output, *, audio=None, captions=None, fps=30, width=10
     return target
 
 
-def verify_delivery(path, *, expected_duration=None, tolerance=1.0, require_audio=True, max_bytes=20_000_000):
+def verify_delivery(path, *, expected_duration=None, tolerance=1.0, require_audio=True, max_bytes=20_000_000, probe_timeout=30):
     if not shutil.which('ffprobe'):
         raise RuntimeError('ffprobe is required')
     file = Path(path)
     if not file.is_file():
         raise FileNotFoundError(file)
     result = subprocess.run(['ffprobe', '-v', 'error', '-show_format', '-show_streams', '-of', 'json', str(file)],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True, text=True, timeout=probe_timeout)
     data = json.loads(result.stdout)
     streams = data.get('streams', [])
     videos = [s for s in streams if s.get('codec_type') == 'video']
