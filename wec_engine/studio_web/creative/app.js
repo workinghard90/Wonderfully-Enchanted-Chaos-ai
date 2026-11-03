@@ -1,4 +1,5 @@
 import { videoPanel } from "/studio/video.js";
+import { verifyVideoPackage } from "/studio/video-package-verifier.js";
 import { chooseSavedArtwork } from "/studio/artwork-picker.js";
 import * as storage from "/studio/store.js";
 import { makeZip, readZip } from "/coloring/zip.js";
@@ -1178,6 +1179,29 @@ $("pdf").onclick = () =>
       "PDF download opened. Review page count, linework and margins before publishing. A cover is separate.",
     );
   });
+const verifyPackageInput = $("verify-video-package");
+verifyPackageInput.onchange = () => {
+  const file = verifyPackageInput.files?.[0];
+  verifyPackageInput.value = "";
+  if (!file) return;
+  run(async () => {
+    const status = $("video-package-status");
+    status.textContent = "Checking this saved ZIP on your device…";
+    try {
+      const result = await verifyVideoPackage(file);
+      status.textContent =
+        "Integrity verified: video and render inputs match the downloaded manifest. " +
+        (result.movieBytes / 1048576).toFixed(1) +
+        " MiB MP4 · " + (result.inputsBytes / 1048576).toFixed(1) +
+        " MiB render inputs. Recorded review: " + result.recordedReview.replace("_", " ") +
+        ". This is not an authenticity signature or human approval. Keep the downloaded copy.";
+      say("Video package integrity verified locally. Your original file was not modified.");
+    } catch (error) {
+      status.textContent = error.message || "Unable to verify this video package.";
+      throw error;
+    }
+  });
+};
 const renders = videoPanel({ api, run, busy: () => busy });
 $("video").onclick = () =>
   run(async () => {
