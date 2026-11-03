@@ -419,6 +419,7 @@ function render() {
         const asset = await inspect(f, "Uploaded original");
         checkAssets(asset, page);
         page.asset = asset;
+        delete page.sourceArtwork; // Independent upload replaces the borrowed bytes.
         page.review = "unreviewed";
         dirty = true;
         await persist();
@@ -430,15 +431,20 @@ function render() {
     visual.append(button("Reuse saved artwork", async () => {
       const chosen = await chooseSavedArtwork(storage, project.id);
       if (!chosen) return;
-      if (page.asset && !confirm("Replace this page's picture with the selected saved artwork? The source project stays unchanged.")) return;
-      const asset = await inspect(new File([chosen.blob], chosen.name, { type: chosen.blob.type }), "Reused saved original");
+      if (page.asset && !confirm("Replace this page's picture with the approved artwork? The source project stays unchanged.")) return;
+      const selected = chosen.asset;
+      const asset = await inspect(new File([selected.blob], selected.name, {type: selected.blob.type}), "Reused approved original");
       checkAssets(asset, page);
+      // Retain traceability only when the exact reused bytes are preserved.
+      if (await imageHash(await asset.blob.arrayBuffer()) !== chosen.sourceArtwork.sha256)
+        throw Error("The copied picture no longer matches its approved source. No changes were saved.");
       page.asset = asset;
+      page.sourceArtwork = chosen.sourceArtwork;
       page.review = "unreviewed";
       dirty = true;
       await persist();
       render();
-      say("Saved artwork copied to this page. Review its suitability for this project before exporting.");
+      say("Approved artwork copied with its source checksum and revision. Review this page and check reused artwork sources before exporting.");
     }));
     if (project.kind === "storybook" || project.kind === "video") {
       const l = document.createElement("label");
@@ -795,6 +801,7 @@ async function receivePicture(pageId, response, mode) {
   checkAssets(asset, current);
   const candidate = snapshot(), page = candidate.pages.find(p => p.id === pageId);
   page.asset = asset; page.review = "unreviewed";
+  delete page.sourceArtwork; // Generated replacement has a different provenance.
   delete page.pendingGeneration;
   await commitGeneration(candidate);
   say("Picture received and saved. Review character consistency and actual resolution before using it.");
@@ -985,6 +992,7 @@ $("pictures").onchange = () =>
           project.pages.push(page);
         }
         page.asset = asset;
+        delete page.sourceArtwork;
         page.review = "unreviewed";
         dirty = true;
         added++;
