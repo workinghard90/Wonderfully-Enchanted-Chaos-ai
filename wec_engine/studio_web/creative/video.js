@@ -72,6 +72,17 @@ export function videoPanel({ api, run, busy }) {
           const review = document.createElement('p');
           review.textContent = 'Final review: ' + ({approved: 'Approved', needs_changes: 'Needs changes'}[job.review] || 'Not reviewed') + '. Applies to this saved movie only.';
           item.append(review);
+          const inspection = document.createElement('p');
+          inspection.setAttribute('role', 'status');
+          inspection.textContent = 'Technical inspection not yet run. Watch and listen before approving any movie.';
+          item.append(inspection);
+          action('Inspect finished MP4', async () => {
+            const report = await (await api(`/api/video-jobs/${job.id}/inspect`)).json();
+            const issues = Object.entries(report.checks).filter(([, passed]) => !passed).map(([name]) => name.replaceAll('_', ' '));
+            inspection.textContent = report.ok
+              ? 'Technical inspection passed: video, audio, duration, file size and playback structure. You must still review spoken words, caption timing and visual quality.'
+              : 'Technical inspection needs attention: ' + issues.join(', ') + '. The saved movie and review were not changed.';
+          });
           action('Play video', () => load(job));
           action('Download MP4', async () => {
             await load(job);
