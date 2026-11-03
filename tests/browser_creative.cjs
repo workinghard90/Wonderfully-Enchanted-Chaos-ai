@@ -307,6 +307,7 @@ const assert = require("node:assert/strict");
       const picker = page.getByRole('dialog', {name:'Reuse saved artwork'});
       await picker.getByLabel('Saved source project').selectOption(backup.id);
       await picker.getByRole('button', {name:/Use page 1/}).waitFor();
+      assert.equal(await picker.getByRole('button', {name:/Use page 2/}).count(),0);
       await picker.screenshot({path:path.join(directory, `artwork-picker-${viewport.width}.png`)});
       assert.equal(await picker.evaluate(el => el.scrollWidth <= el.clientWidth), true);
       await picker.getByRole('button', {name:'Cancel', exact:true}).click(); await ready(page);
@@ -316,7 +317,7 @@ const assert = require("node:assert/strict");
       accept = false;
       await picker.getByRole('button', {name:/Use page 1/}).click(); await ready(page);
       accept = true;
-      assert.notEqual(JSON.parse((await download(page, '#backup')).toString()).pages[0].asset.source, 'Reused saved original');
+      assert.notEqual(JSON.parse((await download(page, '#backup')).toString()).pages[0].asset.source, 'Reused approved original');
       await reuseButton().click();
       await picker.getByLabel('Saved source project').selectOption(backup.id);
       await picker.getByRole('button', {name:/Use page 1/}).click();
@@ -325,16 +326,41 @@ const assert = require("node:assert/strict");
       assert.equal(copied.pages[0].asset.image_base64, png.toString('base64'));
       assert.equal(copied.pages[0].asset.source, 'Reused saved original');
       assert.equal(copied.pages[0].review, 'unreviewed');
+      assert.equal(copied.pages[0].sourceArtwork.projectId,backup.id);
+      assert.equal(copied.pages[0].sourceArtwork.pageId,backup.pages[0].id);
+      assert.equal(copied.pages[0].sourceArtwork.sha256,expectedHash);
+      assert.ok(/^[a-f0-9]{64}$/.test(copied.pages[0].sourceArtwork.referenceFingerprint));
+      await page.locator('#check-sources').click(); await ready(page);
+      assert.match(await page.locator('#source-status').innerText(),/still match/);
       const sourceAsset = await page.evaluate(async id => {
         const store = await import('/studio/store.js');
         return (await store.get(id)).pages[0].asset.source;
       }, backup.id);
       assert.equal(sourceAsset, backup.pages[0].asset.source);
+      // Source approval revocation must be reported, never silently overwrite the copy.
+      await page.evaluate(async id=>{
+        const store=await import('/studio/store.js');
+        const original=await store.get(id);
+        original.pages[0].review='needs_changes';
+        await store.save(original);
+      },backup.id);
+      await page.locator('#check-sources').click();await ready(page);
+      assert.match(await page.locator('#source-status').innerText(),/no longer approved/);
+      assert.equal(JSON.parse((await download(page,'#backup')).toString()).pages[0].sourceArtwork.sha256,expectedHash);
+      // Returning approval clears the warning without modifying the copied image.
+      await page.evaluate(async id=>{
+        const store=await import('/studio/store.js');
+        const original=await store.get(id);
+        original.pages[0].review='approved';
+        await store.save(original);
+      },backup.id);
+      await page.locator('#check-sources').click();await ready(page);
+      assert.match(await page.locator('#source-status').innerText(),/still match/);
       const extraSources = await page.evaluate(async () => {
         const store = await import('/studio/store.js');
         const emptyId = crypto.randomUUID(), badId = crypto.randomUUID();
         await store.save({id:emptyId, title:'Empty source', kind:'art', pages:[]});
-        await store.save({id:badId, title:'Broken image source', kind:'art', pages:[{asset:{name:'broken.png', blob:new Blob(['bad image']), width:40, height:30}}]});
+        await store.save({id:badId, title:'Broken image source', kind:'art', pages:[{id:crypto.randomUUID(), review:'approved', asset:{name:'broken.png', blob:new Blob(['bad image']), width:40, height:30}}]});
         return {emptyId, badId};
       });
       await reuseButton().click();
