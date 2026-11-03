@@ -307,6 +307,7 @@ const assert = require("node:assert/strict");
       const picker = page.getByRole('dialog', {name:'Reuse saved artwork'});
       await picker.getByLabel('Saved source project').selectOption(backup.id);
       await picker.getByRole('button', {name:/Use page 1/}).waitFor();
+      assert.equal(await picker.getByRole('button', {name:/Use page 2/}).count(),0);
       await picker.screenshot({path:path.join(directory, `artwork-picker-${viewport.width}.png`)});
       assert.equal(await picker.evaluate(el => el.scrollWidth <= el.clientWidth), true);
       await picker.getByRole('button', {name:'Cancel', exact:true}).click(); await ready(page);
@@ -316,30 +317,74 @@ const assert = require("node:assert/strict");
       accept = false;
       await picker.getByRole('button', {name:/Use page 1/}).click(); await ready(page);
       accept = true;
-      assert.notEqual(JSON.parse((await download(page, '#backup')).toString()).pages[0].asset.source, 'Reused saved original');
+      assert.notEqual(JSON.parse((await download(page, '#backup')).toString()).pages[0].asset.source, 'Reused approved original');
       await reuseButton().click();
       await picker.getByLabel('Saved source project').selectOption(backup.id);
       await picker.getByRole('button', {name:/Use page 1/}).click();
-      await page.locator('#status').filter({hasText:'Saved artwork copied'}).waitFor();
+      await page.locator('#status').filter({hasText:'Approved artwork copied'}).waitFor();
       const copied = JSON.parse((await download(page, '#backup')).toString());
       assert.equal(copied.pages[0].asset.image_base64, png.toString('base64'));
-      assert.equal(copied.pages[0].asset.source, 'Reused saved original');
+      assert.equal(copied.pages[0].asset.source, 'Reused approved original');
       assert.equal(copied.pages[0].review, 'unreviewed');
+      assert.equal(copied.pages[0].sourceArtwork.projectId,backup.id);
+      assert.equal(copied.pages[0].sourceArtwork.pageId,backup.pages[0].id);
+      assert.equal(copied.pages[0].sourceArtwork.sha256,expectedHash);
+      assert.ok(/^[a-f0-9]{64}$/.test(copied.pages[0].sourceArtwork.referenceFingerprint));
+      await page.locator('#check-sources').click(); await ready(page);
+      assert.match(await page.locator('#source-status').innerText(),/still match/);
       const sourceAsset = await page.evaluate(async id => {
         const store = await import('/studio/store.js');
         return (await store.get(id)).pages[0].asset.source;
       }, backup.id);
       assert.equal(sourceAsset, backup.pages[0].asset.source);
+      // Source approval revocation must be reported, never silently overwrite the copy.
+      await page.evaluate(async id=>{
+        const store=await import('/studio/store.js');
+        const original=await store.get(id);
+        original.pages[0].review='needs_changes';
+        await store.save(original);
+      },backup.id);
+      await page.locator('#check-sources').click();await ready(page);
+      assert.match(await page.locator('#source-status').innerText(),/no longer approved/);
+      assert.equal(JSON.parse((await download(page,'#backup')).toString()).pages[0].sourceArtwork.sha256,expectedHash);
+      // Returning approval clears the warning without modifying the copied image.
+      await page.evaluate(async id=>{
+        const store=await import('/studio/store.js');
+        const original=await store.get(id);
+        original.pages[0].review='approved';
+        await store.save(original);
+      },backup.id);
+      await page.locator('#check-sources').click();await ready(page);
+      assert.match(await page.locator('#source-status').innerText(),/still match/);
+      // Do not copy a stale approved thumbnail if another tab modifies its source
+      // after the picker has loaded the original revision.
+      await reuseButton().click();
+      await picker.getByLabel('Saved source project').selectOption(backup.id);
+      await picker.getByRole('button', {name:/Use page 1/}).waitFor();
+      await page.evaluate(async id=>{
+        const store=await import('/studio/store.js'), source=await store.get(id);
+        source.pages[0].review='needs_changes';
+        await store.save(source);
+      },backup.id);
+      await picker.getByRole('button',{name:/Use page 1/}).click();
+      await picker.getByRole('status').filter({hasText:'source changed or lost approval'}).waitFor();
+      assert.equal(await picker.count(),1);
+      await page.keyboard.press('Escape');await ready(page);
+      await page.evaluate(async id=>{
+        const store=await import('/studio/store.js'), source=await store.get(id);
+        source.pages[0].review='approved';
+        await store.save(source);
+      },backup.id);
       const extraSources = await page.evaluate(async () => {
         const store = await import('/studio/store.js');
         const emptyId = crypto.randomUUID(), badId = crypto.randomUUID();
         await store.save({id:emptyId, title:'Empty source', kind:'art', pages:[]});
-        await store.save({id:badId, title:'Broken image source', kind:'art', pages:[{asset:{name:'broken.png', blob:new Blob(['bad image']), width:40, height:30}}]});
+        await store.save({id:badId, title:'Broken image source', kind:'art', pages:[{id:crypto.randomUUID(), review:'approved', asset:{name:'broken.png', blob:new Blob(['bad image']), width:40, height:30}}]});
         return {emptyId, badId};
       });
       await reuseButton().click();
       await picker.getByLabel('Saved source project').selectOption(extraSources.emptyId);
-      await picker.getByRole('status').filter({hasText:'no saved page pictures'}).waitFor();
+      await picker.getByRole('status').filter({hasText:'no approved page pictures'}).waitFor();
       assert.equal(await picker.getByRole('button', {name:/Use page/}).count(), 0);
       await picker.getByLabel('Saved source project').selectOption(extraSources.badId);
       await picker.getByRole('button', {name:/Use page 1/}).click(); await ready(page);
@@ -349,6 +394,11 @@ const assert = require("node:assert/strict");
       await picker.waitFor({state:'visible'});
       await page.keyboard.press('Escape'); await ready(page);
       assert.equal(await picker.count(), 0);
+      // An independent replacement must remove the earlier source link:
+      // this page now contains an uploaded original, not a borrowed copy.
+      await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
+      await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
+      assert.equal(JSON.parse((await download(page,'#backup')).toString()).pages[0].sourceArtwork,undefined);
       const colorPdf = await download(page, "#pdf");
       assert.equal(
         (colorPdf.toString("latin1").match(/\/Type \/Page\b/g) || []).length,
