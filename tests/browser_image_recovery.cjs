@@ -3,6 +3,13 @@ const {chromium} = require('playwright');
 const {spawn} = require('node:child_process');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
 const assert = require('node:assert/strict');
+async function stage(page, number) {
+  const steps = page.locator(".workflow-tab");
+  if (await steps.count()) {
+    const selected = steps.nth(number - 1);
+    if (await selected.getAttribute("aria-current") !== "step") await selected.click();
+  }
+}
 (async () => {
   const listener = net.createServer();
   await new Promise(r => listener.listen(0,'127.0.0.1',r));
@@ -56,21 +63,21 @@ const assert = require('node:assert/strict');
       await p.goto(base); await p.locator('#status').filter({hasText:'Choose a format'}).waitFor();
       generated=Buffer.from(await p.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=40;const g=c.getContext('2d');g.fillStyle='green';g.fillRect(0,0,40,40);return c.toDataURL('image/png').split(',')[1];}),'base64');
       await p.locator('[data-kind=art]').click();await ready(p);
-      await p.locator('#pictures').setInputFiles({name:'original.png',mimeType:'image/png',buffer:png});
+      await stage(p, 3); await p.locator('#pictures').setInputFiles({name:'original.png',mimeType:'image/png',buffer:png});
       await p.locator('#status').filter({hasText:'1 picture(s) added and saved'}).waitFor();
       await fullStorage(p,true);
-      await p.locator('[data-generate]').click();await ready(p);
+      await stage(p, 3); await p.locator('[data-generate]').click();await ready(p);
       assert.match(await p.locator('#status').innerText(),/Device storage full/);
       assert.equal(calls,0,'Failed receipt save must not contact the provider');
       await fullStorage(p,false);
-      await p.locator('[data-generate]').click();await ready(p);
+      await stage(p, 3); await p.locator('[data-generate]').click();await ready(p);
       assert.equal(calls,1);assert.match(request.request_id,/^[a-f0-9]{32}$/);
       const pending=await backup(p);
       assert.equal(pending.pages[0].pendingGeneration.id,request.request_id);
       assert.equal(pending.pages[0].asset.image_base64,png.toString('base64'));
       await p.reload();await p.locator('#status').filter({hasText:'Choose a format'}).waitFor();
       await p.locator('#library .library-item button').first().click();await ready(p);
-      await p.locator('[data-generate]').click();await ready(p);
+      await stage(p, 3); await p.locator('[data-generate]').click();await ready(p);
       assert.equal(calls,1,'Reload must not resubmit or allow unresolved generation');
       // JSON recovery preserves the receipt too; restored projects still require explicit attachment.
       await p.locator('#restore').setInputFiles({name:'pending.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(pending))});
