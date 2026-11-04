@@ -50,6 +50,7 @@ function fresh(kind) {
     backText: "",
     cover: null,
     narration: "",
+    planDraft: "",
     duration: 35,
     sceneCount: 7,
     pages: [],
@@ -70,6 +71,7 @@ function readFields() {
     ["character", "character"],
     ["style", "style"],
     ["narration", "narration"],
+    ["outline", "planDraft"],
     ["back-text", "backText"],
   ])
     project[key] = $(id).value;
@@ -307,6 +309,7 @@ function render() {
     ["character", "character"],
     ["style", "style"],
     ["narration", "narration"],
+    ["outline", "planDraft"],
     ["back-text", "backText"],
   ])
     $(id).value = project[key];
@@ -878,6 +881,7 @@ for (const id of [
   "character",
   "style",
   "narration",
+  "outline",
   "duration",
   "scene-count",
   "back-text",
@@ -937,12 +941,21 @@ $("plan-pages").onclick = () =>
       else p.prompt = segment;
       project.pages.push(p);
     }
+    $("outline").value = "";
+    project.planDraft = "";
     dirty = true;
     await persist();
-    $("outline").value = "";
     render();
     say("Pages created from your text. Add prompts and pictures next.");
   });
+$("download-plan").onclick = () => run(async () => {
+  readFields();
+  const draft = (project.planDraft || "").trim();
+  if (!draft) throw Error("Write an outline in Plan before downloading it.");
+  // Text-only exports never require generated artwork, approval or printing checks.
+  download(new Blob([draft + "\n"], {type: "text/plain;charset=utf-8"}), "-plan.txt");
+  say("Planning draft downloaded as a text file. Project backup keeps the editable draft.");
+});
 $("split").onclick = () =>
   run(async () => {
     readFields();
@@ -1401,6 +1414,10 @@ async function restore(file) {
     sceneCount: v.sceneCount,
     pages: [],
   };
+  if (v.planDraft !== undefined) {
+    if (typeof v.planDraft !== "string" || v.planDraft.length > 30000) throw Error("Invalid planning draft");
+    candidate.planDraft = v.planDraft;
+  }
   if (v.promoScript !== undefined) {
     if (typeof v.promoScript !== "string" || v.promoScript.length > 1000) throw Error("Invalid promotional script");
     candidate.promoScript = v.promoScript;
