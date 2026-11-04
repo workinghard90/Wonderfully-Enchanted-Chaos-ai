@@ -40,7 +40,7 @@ assign("#generation-status, #page-help, #check-sources, #source-status, #pages, 
 assign("#book-review, #cover-settings, .delivery > h3, #readiness", 3);
 assign("#export-actions, #export-note", 4);
 const toolbar = editor.querySelector("#save")?.closest(".toolbar");
-if (toolbar) toolbar.dataset.workflowStage = "2";
+// Save and add-page controls stay available throughout the workflow.
 const variant = editor.querySelector("#variant")?.closest("details");
 if (variant) variant.dataset.workflowStage = "2";
 function show(index) {
@@ -56,8 +56,8 @@ function show(index) {
   previous.disabled = active === 0;
   next.disabled = active === 4;
   progress.textContent = `Step ${active + 1} of 5: ${steps[active]}. Your project remains editable and saved using the existing controls.`;
-  if (index !== undefined) nav.scrollIntoView({block: "nearest", behavior: "instant"});
+  if (index !== undefined && editor.hidden === false) nav.scrollIntoView({block: "nearest", behavior: "auto"});
 }
 previous.addEventListener("click", () => show(active - 1));
 next.addEventListener("click", () => show(active + 1));
-show(0);
+show();
