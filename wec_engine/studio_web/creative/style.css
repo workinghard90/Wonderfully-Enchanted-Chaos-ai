@@ -743,3 +743,33 @@ button:disabled { opacity: 0.55; }
     transition-duration: .01ms !important;
   }
 }
+
+/* Independent builder workspaces: one area visible at a time, all areas selectable. Preserve approved Cozy palette. */
+#editor .workflow-screen {
+  min-height: calc(100svh - 235px);
+  max-width: 100%;
+  padding: clamp(22px, 4vw, 46px) clamp(12px, 3vw, 34px);
+  border-inline: 1px solid var(--border);
+}
+#editor .workflow-screen > h2,
+#editor .workflow-screen > .workflow-description { max-width: 920px; }
+#editor .workflow-screen > h2 { font-size: clamp(28px, 3.2vw, 42px); }
+#editor .workflow-screen > .workflow-description { margin-bottom: 30px; }
+#editor .workflow-screen:not(.workflow-inactive) {
+  animation: builder-stage-appear .16s ease-out;
+}
+@keyframes builder-stage-appear {
+  from { opacity: .75; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+#editor .workflow-footer {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  width: 100%;
+}
+@media (max-width: 660px) {
+  #editor .workflow-screen { padding: 20px 10px; min-height: calc(100svh - 270px); }
+  #editor .project-steps .workflow-tab { font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #editor .workflow-screen:not(.workflow-inactive) { animation: none; }
+}

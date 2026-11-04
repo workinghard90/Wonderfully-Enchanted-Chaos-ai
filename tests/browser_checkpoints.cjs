@@ -7,6 +7,9 @@ async function stage(page, number) {
   const steps = page.locator(".workflow-tab");
   if (await steps.count()) {
     const selected = steps.nth(number - 1);
+    while (await selected.isDisabled()) {
+      await page.locator(".workflow-footer button").last().click();
+    }
     if (await selected.getAttribute("aria-current") !== "step") await selected.click();
   }
 }
