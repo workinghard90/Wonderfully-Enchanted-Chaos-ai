@@ -13,14 +13,14 @@ const descriptions = [
 nav.replaceChildren();
 nav.setAttribute("aria-label", "Project workflow stages");
 const heading = document.createElement("span");
-heading.textContent = "Build your project · step by step";
+heading.textContent = "Your creative workspaces · choose any stage";
 nav.append(heading);
 const buttons = steps.map((name, index) => {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "secondary workflow-tab";
   button.textContent = `${index + 1}. ${name}`;
-  button.addEventListener("click", () => { if (index <= unlocked) show(index); });
+  button.addEventListener("click", () => show(index));
   nav.append(button);
   return button;
 });
@@ -77,16 +77,10 @@ progress.className = "muted";
 footer.append(previous, progress, next);
 screens[4].after(footer);
 let active = 0;
-let unlocked = 0;
-// A new project begins at Setup. Continue unlocks exactly the next stage;
-// already visited stages stay accessible for corrections.
-function show(index, advance = false) {
-  if (Number.isInteger(index)) {
-    const requested = Math.max(0, Math.min(4, index));
-    if (advance && requested === active + 1) unlocked = Math.max(unlocked, requested);
-    if (requested > unlocked) return;
-    active = requested;
-  }
+// Five separate, equally accessible workspaces. Suggested order is visible,
+// but projects may use any subset without completing other workspaces.
+function show(index) {
+  if (Number.isInteger(index)) active = Math.max(0, Math.min(4, index));
   editor.dataset.workflowStep = String(active);
   screens.forEach((screen, i) => {
     screen.classList.toggle("workflow-inactive", i !== active);
@@ -95,13 +89,13 @@ function show(index, advance = false) {
   buttons.forEach((button, i) => {
     button.setAttribute("aria-current", i === active ? "step" : "false");
     button.setAttribute("aria-controls", screens[i].id);
-    button.disabled = i > unlocked;
-    button.title = i > unlocked ? "Complete the previous stage using Continue" : `Open ${steps[i]} stage`;
+    button.disabled = false;
+    button.title = `Open ${steps[i]} workspace`;
   });
   previous.disabled = active === 0;
   next.disabled = active === 4;
   next.textContent = active === 4 ? "Ready to export" : `Continue to ${steps[active + 1]}`;
-  progress.textContent = `Step ${active + 1} of 5 · ${steps[active]}. Only this stage is shown. Use Continue to unlock the next stage.`;
+  progress.textContent = `Workspace ${active + 1} of 5 · ${steps[active]}. Choose any workspace at any time; only this one is shown.`;
   if (index !== undefined && !editor.hidden) {
     // A new stage starts at the top of its screen instead of a point mid-page.
     nav.scrollIntoView({block: "start", behavior: "instant"});
@@ -112,11 +106,8 @@ const videoContinue = editor.querySelector("#workflow-next");
 videoContinue?.addEventListener("click", () => {
   const label = videoContinue.textContent || "";
   if (/Add picture for scene/.test(label)) {
-    // Video guidance may jump focus, but each stage is still unlocked in order.
-    unlocked = Math.max(unlocked, 2);
     show(2);
   } else if (/Review and render video/.test(label)) {
-    unlocked = Math.max(unlocked, 4);
     show(4);
   } else show(0);
 }, {capture: true});
@@ -131,9 +122,8 @@ for (const id of ["restore", "import-zip"]) {
 }
 function reset() {
   active = 0;
-  unlocked = 0;
   show(0);
 }
 previous.addEventListener("click", () => show(active - 1));
-next.addEventListener("click", () => show(active + 1, true));
+next.addEventListener("click", () => show(active + 1));
 show();
