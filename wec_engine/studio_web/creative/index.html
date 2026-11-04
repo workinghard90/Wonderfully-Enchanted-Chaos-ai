@@ -14,6 +14,13 @@
       ><a href="#existing-projects">Existing projects</a>
     </header>
     <main>
+      <nav class="studio-quicknav" aria-label="Studio shortcuts">
+        <span class="quicknav-label">Jump to</span>
+        <a href="#formats">New project</a>
+        <a href="#library-panel">My library</a>
+        <a href="#editor">Current project</a>
+        <a href="#renders">Video renders</a>
+      </nav>
       <section class="hero">
         <p class="eyebrow">ONE IDEA. A WORLD OF POSSIBILITIES.</p>
         <h1>One studio. Endless possibilities.</h1>
@@ -22,7 +29,7 @@
           characters into coloring books and illustrated stories.
         </p>
       </section>
-      <nav class="formats" aria-label="Create a project">
+      <nav id="formats" class="formats" aria-label="Create a project">
         <button data-kind="video">
           <span>01 / MOTION</span>Video Studio<small
             >Narration → scenes → movie</small
@@ -68,7 +75,7 @@
         <p id="ai-connection-status" role="status">Checking AI connection…</p>
       </section>
       <div class="workspace">
-        <aside class="panel">
+        <aside id="library-panel" class="panel">
           <p class="eyebrow">YOUR COLLECTION</p>
           <h2>Project library</h2>
           <label class="file-button"
@@ -113,6 +120,14 @@
             <button id="workflow-next" type="button" class="secondary">Continue</button>
             <p class="muted">Your saved script and pictures are your progress. Reopen this project to continue. Each generation and render still asks for confirmation.</p>
           </section>
+          <nav class="project-steps" aria-label="Project sections">
+            <span>Jump within this project</span>
+            <a href="#editor-heading">1. Setup</a>
+            <a href="#book-planner">2. Plan</a>
+            <a href="#pages">3. Pages</a>
+            <a href="#book-review">4. Review</a>
+            <a href="#export-actions">5. Export</a>
+          </nav>
           <label for="title">Project title</label
           ><input
             id="title"
@@ -319,7 +334,7 @@
               <ul id="book-review-issues"></ul>
               <p class="muted">Page numbers refer to editor pages, not printed sheet numbers. Exact duplicates means identical file bytes; similar drawings and re-encoded copies need visual review. These checks do not certify KDP acceptance or text layout.</p>
             </section>
-            <div class="toolbar">
+            <div id="export-actions" class="toolbar export-actions">
               <button id="backup" class="secondary">
                 Download project backup</button
               ><button id="cozy-export" class="secondary" type="button">Export approved project for Cozy</button\n              ><button id="zip" class="secondary">Download artwork ZIP</button
