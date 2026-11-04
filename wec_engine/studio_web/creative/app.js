@@ -1109,6 +1109,17 @@ $("cozy-export").onclick = () =>
     const entries = [], hashes = {}, previews = [];
     if (project.pages.length > 40) throw Error("Cozy handoff supports at most 40 preview pages. Split the project before exporting.");
     const approved = project.pages;
+    const handoffAssets = [...approved.map(p => p.asset), ...(project.cover ? [project.cover] : [])];
+    // Check declared sizes before allocating arrays or building a ZIP.
+    if (handoffAssets.some(a => !a.blob?.size || a.blob.size > 42 * 1024 * 1024))
+      throw Error("Cozy handoff files must be nonempty and at most 42 MiB each.");
+    if (handoffAssets.reduce((sum, a) => sum + a.blob.size, 0) + 65536 > 90 * 1024 * 1024)
+      throw Error("Cozy handoff exceeds 90 MiB. Select a smaller project.");
+    for (const asset of handoffAssets) {
+      const checked = await inspect(asset.blob, "handoff");
+      const ext = String(asset.extension || "png").toLowerCase().replace("jpeg", "jpg");
+      if (checked.extension !== ext) throw Error("Artwork content does not match its file type.");
+    }
     for (const [index, page] of approved.entries()) {
       const ext = String(page.asset.extension || "png").toLowerCase();
       if (!["png", "jpg", "jpeg", "webp"].includes(ext))

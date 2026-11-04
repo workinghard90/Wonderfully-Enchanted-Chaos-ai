@@ -1,8 +1,11 @@
-"""Validate a private WEC -> Cozy publishing handoff ZIP (stdlib only).
+"""Validate a private WEC -> Cozy publishing handoff ZIP (requires Pillow).
 
 Usage: python -m tools.cozy_handoff_validate path/to/handoff.zip
 Validation never publishes or modifies source files.
 """
+import io
+import warnings
+from PIL import Image
 import hashlib
 import json
 import re
@@ -18,6 +21,28 @@ SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
 PDF_EXT = {".pdf"}
 FORBIDDEN = ("token", "secret", "password", "api_key", "private_key", "authorization")
+
+
+def validate_media(raw, suffix):
+    """Decode bounded still images; PDF checks establish type, not print readiness."""
+    if suffix == ".pdf":
+        if not raw.startswith(b"%PDF-"):
+            raise ValueError("Invalid PDF content")
+        return
+    expected = {".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".webp": "WEBP"}.get(suffix)
+    if expected is None:
+        raise ValueError("Unsupported image format")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(raw)) as image:
+                if image.format != expected or image.width * image.height > 12_000_000 or getattr(image, "n_frames", 1) != 1:
+                    raise ValueError("Unsupported image format, dimensions or animation")
+                image.verify()
+            with Image.open(io.BytesIO(raw)) as image:
+                image.load()
+    except (OSError, SyntaxError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ValueError("Invalid or unsupported image content") from exc
 
 
 def validate(path):
@@ -100,8 +125,15 @@ def validate(path):
                     expected = checksums.get(item)
                     if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
                         errors.append("Missing checksum: " + item)
-                    elif hashlib.sha256(archive.read(item)).hexdigest() != expected:
-                        errors.append("Checksum mismatch: " + item)
+                    else:
+                        raw = archive.read(item)
+                        if hashlib.sha256(raw).hexdigest() != expected:
+                            errors.append("Checksum mismatch: " + item)
+                        else:
+                            try:
+                                validate_media(raw, PurePosixPath(item).suffix.lower())
+                            except ValueError as exc:
+                                errors.append(str(exc))
     return errors
 
 
