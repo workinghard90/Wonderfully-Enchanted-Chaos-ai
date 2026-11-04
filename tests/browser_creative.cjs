@@ -133,8 +133,8 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "2 picture(s) added and saved" })
         .waitFor();
-      await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
-      await page.locator('.page').nth(1).getByLabel('Artwork review', {exact:true}).selectOption('needs_changes'); await ready(page);
+      await go(page, 3); await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
+      await go(page, 3); await page.locator('.page').nth(1).getByLabel('Artwork review', {exact:true}).selectOption('needs_changes'); await ready(page);
       const backup = JSON.parse(
         (await download(page, "#backup")).toString("utf8"),
       );
@@ -145,7 +145,7 @@ const assert = require("node:assert/strict");
       assert.equal(backup.pages[0].asset.sha256, expectedHash);
       assert.equal(backup.pages[0].review, 'approved');
       assert.equal(backup.pages[1].review, 'needs_changes');
-      await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
+      await go(page, 3); await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
       await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
       assert.equal(await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).inputValue(), 'unreviewed');
       await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
