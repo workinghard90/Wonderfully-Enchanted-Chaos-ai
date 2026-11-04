@@ -519,3 +519,87 @@ button:disabled { opacity: .52; }
 .project-steps .workflow-tab[aria-current="step"] { background:#d8c4ff; color:#1c1730; border-color:#f4eaff; }
 #status.status-alert { position:fixed; bottom:12px; left:12px; right:12px; top:auto; z-index:100; max-height:30vh; overflow:auto; border:2px solid #ffcf91; box-shadow:0 4px 24px #000b; }
 @media (min-width:800px) { #status.status-alert { left:auto; max-width:460px; } }
+
+/* UI 3.0: each workflow step is a dedicated, full-width workspace, not an anchor
+   into a vertically stacked editor. The project library remains available below. */
+body:has(#editor:not([hidden])) .workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+body:has(#editor:not([hidden])) .workspace > #editor {
+  order: 0;
+  width: 100%;
+  min-height: 100svh;
+}
+body:has(#editor:not([hidden])) .workspace > aside {
+  order: 1;
+  width: 100%;
+}
+#editor .project-steps {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 12px 0 0;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 10px 25px #05091080;
+}
+#editor .workflow-screen {
+  min-height: max(420px, calc(100svh - 278px));
+  width: 100%;
+  padding: clamp(18px, 3vw, 36px) 0;
+  overflow-wrap: anywhere;
+}
+#editor .workflow-screen.workflow-inactive { display: none !important; }
+#editor .workflow-screen > h2 {
+  margin: 0 0 10px;
+  font-size: clamp(25px, 3vw, 36px);
+}
+#editor .workflow-description {
+  font-size: 15px;
+  margin: 0 0 24px;
+  max-width: 720px;
+}
+#editor .workflow-save {
+  display: flex;
+  align-items: center;
+}
+#editor .workflow-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 21;
+  margin: 0;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  align-items: center;
+  gap: 10px;
+  background: #101a2b;
+  border: 1px solid #667b9e;
+  border-radius: 12px;
+  box-shadow: 0 -8px 24px #060b15b0;
+}
+#editor .workflow-footer button { min-height: 48px; }
+#editor .workflow-footer p {
+  grid-column: 1 / -1;
+  order: -1;
+  margin: 0;
+}
+#editor .workflow-screen .toolbar { margin-top: 18px; }
+#editor .workflow-screen .delivery { border: 0; margin: 0; }
+@media (max-width:660px) {
+  #editor .project-steps { gap: 5px; padding: 9px; }
+  #editor .project-steps > span { font-size: 11px; }
+  #editor .project-steps .workflow-tab {
+    padding: 8px 3px;
+    flex: 1 1 18%;
+    min-width: 0;
+    font-size: 11px;
+    min-height: 42px;
+  }
+  #editor .workflow-screen { min-height: max(400px, calc(100svh - 290px)); }
+  #editor .workflow-footer { margin: 0 -10px; padding: 10px; }
+  #editor .workflow-footer button { padding-inline: 8px; }
+  #editor .section-heading { display: flex; flex-wrap: wrap; align-items: center; }
+  #editor .workflow-save { margin-left: auto; }
+}
