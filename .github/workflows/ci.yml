@@ -71,6 +71,7 @@ jobs:
           persist-credentials: false
       - run: node tests/browser_cozy_handoff.cjs
       - run: node tests/browser_creative.cjs
+      - run: node tests/browser_guided_workflow.cjs
       - run: node tests/browser_ai_connection.cjs
       - run: node tests/browser_image_recovery.cjs
       - run: node tests/browser_checkpoints.cjs
