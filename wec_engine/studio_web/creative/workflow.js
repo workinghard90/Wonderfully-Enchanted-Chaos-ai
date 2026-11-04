@@ -67,6 +67,16 @@ videoContinue?.addEventListener("click", () => {
   else if (/Review and render video/.test(label)) show(4);
   else show(0);
 }, {capture: true});
+// Starting or reopening a project should always begin at Setup, not reuse
+// the prior project's last export/review tab.
+document.querySelectorAll("[data-kind]").forEach(button =>
+  button.addEventListener("click", () => show(0)));
+document.getElementById("library")?.addEventListener("click", event => {
+  if (event.target.closest("button")) show(0);
+});
+for (const id of ["restore", "import-zip"]) {
+  document.getElementById(id)?.addEventListener("change", () => show(0));
+}
 previous.addEventListener("click", () => show(active - 1));
 next.addEventListener("click", () => show(active + 1));
 show();
