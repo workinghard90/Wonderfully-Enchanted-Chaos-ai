@@ -107,6 +107,7 @@ const assert = require("node:assert/strict");
       await ready(page);
       await page.locator("#save-profile").click();
       await ready(page);
+      await page.getByRole("button", {name:"2. Plan"}).click();
       await page
         .locator("#outline")
         .fill(
@@ -115,6 +116,7 @@ const assert = require("node:assert/strict");
       await page.locator("#plan-pages").click();
       await ready(page);
       assert.equal(await page.locator(".page").count(), 2);
+      await page.getByRole("button", {name:"3. Create"}).click();
       await page
         .locator("#pictures")
         .setInputFiles([fixture, { ...fixture, name: "second.png" }]);
