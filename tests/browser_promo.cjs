@@ -7,6 +7,9 @@ async function stage(page, number) {
   const steps = page.locator(".workflow-tab");
   if (await steps.count()) {
     const selected = steps.nth(number - 1);
+    while (await selected.isDisabled()) {
+      await page.locator(".workflow-footer button").last().click();
+    }
     if (await selected.getAttribute("aria-current") !== "step") await selected.click();
   }
 }
@@ -58,7 +61,7 @@ async function stage(page, number) {
    assert.equal(JSON.parse(await download(p,'#backup')).pages[0].sourceArtwork.pageId,draft.pages[0].sourceArtwork.pageId);
     for(let i=0;i<await p.locator('select[aria-label="Artwork review"]').count();i++){
       await stage(p, 3);
-      await p.locator('.workflow-tab').nth(2).click();
+      await stage(p, 3);
       await p.locator('select[aria-label="Artwork review"]').nth(i).selectOption('approved');
       await ready(p);
     }
