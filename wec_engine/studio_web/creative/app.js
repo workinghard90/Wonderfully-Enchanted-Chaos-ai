@@ -1091,6 +1091,55 @@ $("backup").onclick = () =>
       "Project backup download opened. Save it to Files, including drafts and original pictures.",
     );
   });
+$("cozy-export").onclick = () =>
+  run(async () => {
+    if (!project || !["coloring", "storybook", "art"].includes(project.kind))
+      throw Error("Open an artwork, coloring book, or storybook project first.");
+    readFields();
+    if (!project.pages.length || project.pages.some(p => !p.asset || p.review !== "approved"))
+      throw Error("Approve every page and attach its artwork before preparing a Cozy handoff.");
+    if (!project.title.trim() || !project.author.trim())
+      throw Error("Add a project title and creator before exporting.");
+    const slug = project.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    if (!slug) throw Error("A URL-safe product title is required.");
+    const description = window.prompt("Cozy product description (review before publishing):", project.backText || "");
+    if (description === null) return;
+    if (!description.trim() || description.length > 4000) throw Error("Add a product description (up to 4000 characters).");
+    if (!window.confirm("Approve this project's selected artwork and metadata for a PRIVATE Cozy handoff ZIP? This only downloads a file; it does not publish.")) return;
+    const entries = [], hashes = {}, previews = [];
+    const approved = project.pages.slice(0, 40);
+    for (const [index, page] of approved.entries()) {
+      const ext = String(page.asset.extension || "png").toLowerCase();
+      if (!["png", "jpg", "jpeg", "webp"].includes(ext))
+        throw Error("Unsupported artwork file type.");
+      const name = `assets/preview-${String(index + 1).padStart(3, "0")}.${ext}`;
+      const bytes = new Uint8Array(await page.asset.blob.arrayBuffer());
+      hashes[name] = await imageHash(bytes);
+      entries.push({name, bytes});
+      previews.push(name);
+    }
+    const coverAsset = project.cover;
+    let cover = null;
+    if (coverAsset) {
+      const ext = String(coverAsset.extension || "png").toLowerCase();
+      if (!["png", "jpg", "jpeg", "webp"].includes(ext)) throw Error("Unsupported cover type.");
+      cover = `assets/cover.${ext}`;
+      const bytes = new Uint8Array(await coverAsset.blob.arrayBuffer());
+      hashes[cover] = await imageHash(bytes);
+      entries.push({name: cover, bytes});
+    }
+    const manifest = {
+      schemaVersion: "wec-cozy-handoff-v1", sourceProjectId: project.id,
+      productSlug: slug, title: project.title.trim(), creator: project.author.trim(),
+      productType: ({coloring:"coloring-book", storybook:"storybook", art:"art"})[project.kind],
+      description: description.trim(), publicationStatus: "approved",
+      assets: {cover, previews}, kdp: {interior:null, cover:null},
+      purchaseUrl:null, sha256:hashes,
+    };
+    entries.unshift({name:"manifest.json", bytes:new TextEncoder().encode(JSON.stringify(manifest, null, 2))});
+    download(makeZip(entries), "-cozy-handoff.zip");
+    say("Private Cozy handoff ZIP downloaded. Review it before importing; nothing was published.");
+  });
 $("zip").onclick = () =>
   run(async () => {
     const entries = [],
