@@ -24,8 +24,13 @@ async function stage(page, number) {
   let browser, logs=''; server.stderr.on('data',d=>logs+=d);
   const ready = p => p.waitForFunction(()=>!document.querySelector('#save').disabled);
   async function backup(p) {
+    const current = await p.locator('.workflow-tab[aria-current="step"]').count()
+      ? Number((await p.locator('.workflow-tab[aria-current="step"]').innerText()).charAt(0)) : 3;
+    await stage(p, 5);
     const downloaded=p.waitForEvent('download'); await p.locator('#backup').click();
-    return JSON.parse(fs.readFileSync(await (await downloaded).path(),'utf8'));
+    const value = JSON.parse(fs.readFileSync(await (await downloaded).path(),'utf8'));
+    await stage(p, current);
+    return value;
   }
   async function fullStorage(p, fail) {
     await p.evaluate(fail=>{
