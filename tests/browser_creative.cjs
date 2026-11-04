@@ -455,7 +455,9 @@ const assert = require("node:assert/strict");
         .fill("A floating island\nA moonlit garden");
       await page.locator("#plan-pages").click();
       await ready(page);
-      await go(page, 4); await page.locator('#check-book').click(); await ready(page);
+      await go(page, 4);
+      await page.getByLabel('Review output').selectOption('print');
+      await page.locator('#check-book').click(); await ready(page);
       assert.match(await page.locator('#book-review-status').innerText(), /2 blocking/);
       assert.match(await page.locator('#book-review-issues').innerText(), /Page 1: missing picture/);
       assert.equal(await page.locator(".page").count(), 2);
@@ -483,12 +485,19 @@ const assert = require("node:assert/strict");
       await page.locator("#duration").fill("10");
       await go(page, 1); await page.locator('#split').click();
       await ready(page);
+      await go(page, 4);
+      assert.match(await page.locator('#readiness').innerText(), /picture to every scene/);
+      assert.equal(await page.locator('#asset-review-list li').count(), 2);
+      assert.match(await page.locator('#asset-review-list').innerText(), /little star/);
       await go(page, 3); await page.locator('#pictures')
         .setInputFiles([fixture, { ...fixture, name: "second.png" }]);
       await page
         .locator("#status")
         .filter({ hasText: "2 picture(s) added and saved" })
         .waitFor();
+      await go(page, 4);
+      assert.match(await page.locator('#readiness').innerText(), /Scene inputs ready for rendering/);
+      assert.equal(await page.locator('#asset-review img').count(), 2);
       await go(page, 1); assert.equal(await page.locator('#video-workflow').isVisible(), true);
       assert.equal(await page.locator('#workflow-next').innerText(), 'Review and render video');
       await go(page, 3); await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
