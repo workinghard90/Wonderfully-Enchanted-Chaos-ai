@@ -220,7 +220,16 @@ class CreativeHTTPTests(unittest.TestCase):
             for invalid in ({**body, 'reference_image_base64':'bad'}, {**body, 'mode':'text'},
                             {'prompt':'Pip', 'mode':'reference'}, {**body, 'mode':'unknown'},
                             {**body, 'url':'https://example.com'}):
-                self.assertEqual(self.request('/api/creative/image', invalid)[0], 400)
+                # The preceding HTTP response may beat the media-lock release.
+                # Retry only the documented temporary-busy response, never
+                # quota/provider failures in the successful-generation path.
+                import time
+                for attempt in range(20):
+                    status = self.request('/api/creative/image', invalid)[0]
+                    if status != 429:
+                        break
+                    time.sleep(0.05)
+                self.assertEqual(status, 400)
             post.assert_not_called()
             self.assertEqual(store.generation_usage(self.db), 0)
             status, raw, headers = self.request('/api/creative/image', body)
