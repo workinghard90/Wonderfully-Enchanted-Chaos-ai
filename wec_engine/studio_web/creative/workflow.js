@@ -58,6 +58,15 @@ function show(index) {
   progress.textContent = `Step ${active + 1} of 5: ${steps[active]}. Your project remains editable and saved using the existing controls.`;
   if (index !== undefined && editor.hidden === false) nav.scrollIntoView({block: "nearest", behavior: "auto"});
 }
+// Existing video guidance focuses on controls that can live in other stages.
+// Reveal the destination before its original click handler tries to focus it.
+const videoContinue = editor.querySelector("#workflow-next");
+videoContinue?.addEventListener("click", () => {
+  const label = videoContinue.textContent || "";
+  if (/Add picture for scene/.test(label)) show(2);
+  else if (/Review and render video/.test(label)) show(4);
+  else show(0);
+}, {capture: true});
 previous.addEventListener("click", () => show(active - 1));
 next.addEventListener("click", () => show(active + 1));
 show();
