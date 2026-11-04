@@ -935,6 +935,7 @@ $("plan-pages").onclick = () =>
       )
     )
       throw Error("A page is too long. Split the text into smaller sections.");
+    const previousCount = project.pages.length;
     for (const segment of segments) {
       const p = emptyPage();
       if (project.kind === "storybook") p.text = segment;
@@ -944,7 +945,16 @@ $("plan-pages").onclick = () =>
     $("outline").value = "";
     project.planDraft = "";
     dirty = true;
-    await persist();
+    try {
+      await persist();
+    } catch (error) {
+      // If saving pages fails, preserve the independent planning draft and
+      // remove unsaved additions rather than silently losing the outline.
+      project.pages.length = previousCount;
+      project.planDraft = value;
+      $("outline").value = value;
+      throw error;
+    }
     render();
     say("Pages created from your text. Add prompts and pictures next.");
   });
