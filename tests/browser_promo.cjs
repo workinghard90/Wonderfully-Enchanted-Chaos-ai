@@ -56,7 +56,12 @@ async function stage(page, number) {
    // Old source links remain explicit after importing a separate backup copy.
    await p.locator('#restore').setInputFiles({name:'promo.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(draft))});await ready(p);
    assert.equal(JSON.parse(await download(p,'#backup')).pages[0].sourceArtwork.pageId,draft.pages[0].sourceArtwork.pageId);
-   for(const sel of await p.locator('select[aria-label="Artwork review"]').all()){await sel.selectOption('approved');await ready(p);}
+    for(let i=0;i<await p.locator('select[aria-label="Artwork review"]').count();i++){
+      await stage(p, 3);
+      await p.locator('.workflow-tab').nth(2).click();
+      await p.locator('select[aria-label="Artwork review"]').nth(i).selectOption('approved');
+      await ready(p);
+    }
    await stage(p, 5); await p.locator('#video').click();await ready(p);
    const job=p.locator('.render-job');await job.getByRole('button',{name:'Play video'}).waitFor({timeout:60000});
    await job.getByRole('button',{name:'Play video'}).click();await p.waitForFunction(()=>document.querySelector('#render-movie').readyState>=1);
