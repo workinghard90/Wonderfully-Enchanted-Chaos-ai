@@ -1,4 +1,5 @@
 """Check an actual browser download through both independently checked-out validators."""
+import base64
 import hashlib
 import importlib.util
 import json
@@ -27,6 +28,7 @@ with zipfile.ZipFile(package) as z:
     for name, checksum in manifest["sha256"].items():
         raw = z.read(name)
         assert hashlib.sha256(raw).hexdigest() == checksum
+        assert raw == base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAAK0lEQVR4nO3NMQEAAAQAMPSvIScVfJ6twHI6XtRPKxaLxWKxWCwWi8XiiwX6KQHghAeRJQAAAABJRU5ErkJggg==")
         from PIL import Image
         import io
         with Image.open(io.BytesIO(raw)) as image:

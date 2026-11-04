@@ -67,18 +67,18 @@ class HandoffPreviewTests(unittest.TestCase):
     def test_modified_asset_is_rejected(self):
         self.write(asset=b"tampered")
         with self.assertRaisesRegex(ValueError, "Checksum"):
-            module.preview(self.path)
+            checked(self.path)
 
     def test_traversal_is_rejected(self):
         self.write(extra="../outside.txt")
         with self.assertRaises(ValueError):
-            module.preview(self.path)
+            checked(self.path)
 
     def test_unverified_purchase_link_is_rejected(self):
         self.manifest["purchaseUrl"] = "https://example.com/unverified"
         self.write()
         with self.assertRaises(ValueError):
-            module.preview(self.path)
+            checked(self.path)
 
     def test_supported_image_formats(self):
         for extension, format_name in (("png", "PNG"), ("jpg", "JPEG"), ("webp", "WEBP")):
@@ -92,21 +92,21 @@ class HandoffPreviewTests(unittest.TestCase):
                 with zipfile.ZipFile(self.path, "w") as z:
                     z.writestr("manifest.json", json.dumps(self.manifest))
                     z.writestr(name, raw)
-                module.preview(self.path)
+                checked(self.path)
 
     def test_fake_image_with_matching_hash_is_rejected(self):
         self.asset = b"not an image"
         self.manifest["sha256"]["assets/cover.png"] = hashlib.sha256(self.asset).hexdigest()
         self.write()
         with self.assertRaises(ValueError):
-            module.preview(self.path)
+            checked(self.path)
 
     def test_truncated_image_with_matching_hash_is_rejected(self):
         self.asset = self.asset[:40]
         self.manifest["sha256"]["assets/cover.png"] = hashlib.sha256(self.asset).hexdigest()
         self.write()
         with self.assertRaises(ValueError):
-            module.preview(self.path)
+            checked(self.path)
 
     def test_image_extension_mismatch_is_rejected(self):
         buffer = io.BytesIO()
@@ -115,7 +115,7 @@ class HandoffPreviewTests(unittest.TestCase):
         self.manifest["sha256"]["assets/cover.png"] = hashlib.sha256(self.asset).hexdigest()
         self.write()
         with self.assertRaises(ValueError):
-            module.preview(self.path)
+            checked(self.path)
 
     def test_pdf_in_image_slot_is_rejected(self):
         for slot in ("cover", "previews"):
@@ -128,14 +128,14 @@ class HandoffPreviewTests(unittest.TestCase):
                     z.writestr("manifest.json", json.dumps(self.manifest))
                     z.writestr("kdp/book.pdf", raw)
                 with self.assertRaises(ValueError):
-                    module.preview(self.path)
+                    checked(self.path)
 
     def test_image_in_kdp_slot_is_rejected(self):
         for slot in ("cover", "interior"):
             self.manifest["kdp"][slot] = "assets/cover.png"
             self.write()
             with self.assertRaises(ValueError):
-                module.preview(self.path)
+                checked(self.path)
 
     def test_invalid_pdf_content_is_rejected(self):
         raw = b"not a PDF"
@@ -145,20 +145,20 @@ class HandoffPreviewTests(unittest.TestCase):
         with zipfile.ZipFile(self.path, "a") as z:
             z.writestr("kdp/book.pdf", raw)
         with self.assertRaises(ValueError):
-            module.preview(self.path)
+            checked(self.path)
 
     def test_oversized_entry_is_rejected(self):
         raw = bytes(42 * 1024 * 1024 + 1)
         self.manifest["sha256"]["assets/cover.png"] = hashlib.sha256(raw).hexdigest()
         self.write(asset=raw)
         with self.assertRaises(ValueError):
-            module.preview(self.path)
+            checked(self.path)
 
     def test_truncated_zip_is_rejected(self):
         self.write()
         self.path.write_bytes(self.path.read_bytes()[:40])
         with self.assertRaises(zipfile.BadZipFile):
-            module.preview(self.path)
+            checked(self.path)
 
 
 if __name__ == "__main__":
