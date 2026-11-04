@@ -63,6 +63,13 @@ jobs:
       - run: node tests/browser_coloring.cjs
       - run: node tests/coloring_zip.cjs
       - run: node tests/browser_coloring_recovery.cjs
+      - uses: actions/checkout@v4
+        with:
+          repository: workinghard90/Cozy-Creations-repository
+          ref: dfe4b9fc4d0201268769dbc1f1153a6425826476
+          path: .handoff-cozy
+          persist-credentials: false
+      - run: node tests/browser_cozy_handoff.cjs
       - run: node tests/browser_creative.cjs
       - run: node tests/browser_ai_connection.cjs
       - run: node tests/browser_image_recovery.cjs
