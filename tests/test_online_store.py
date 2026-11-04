@@ -120,9 +120,20 @@ class OnlineStoreTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as caught:
                 urlopen(Request(route, data=package('Wait for video'), headers=headers))
             self.assertEqual(caught.exception.code, 429)
-        with self.assertRaises(HTTPError) as caught:
-            urlopen(Request(route + '/' + item['id'] + '/remove', data=b'{}', headers=headers))
-        self.assertEqual(caught.exception.code, 400)
+        # Busy (429) can briefly outlive the previous response; verify invalid
+        # confirmation is rejected (400) once the shared media lock is free.
+        for attempt in range(20):
+            try:
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(Request(route + '/' + item['id'] + '/remove', data=b'{}', headers=headers))
+                if caught.exception.code == 400:
+                    break
+                self.assertEqual(caught.exception.code, 429)
+            except AssertionError:
+                raise
+            if attempt == 19:
+                self.fail('Invalid removal never reached confirmation validation')
+            time.sleep(0.05)
         # A completed HTTP response can arrive before its handler releases the
         # shared media lock. A transient 429 is a documented busy response.
         # Retry only that response, with a firm bound, not arbitrary failures.

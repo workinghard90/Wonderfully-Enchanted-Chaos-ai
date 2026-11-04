@@ -3,6 +3,13 @@ const {chromium}=require('playwright');
 const {spawn}=require('node:child_process');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),net=require('node:net');
 const assert=require('node:assert/strict');
+async function stage(page, number) {
+  const steps = page.locator(".workflow-tab");
+  if (await steps.count()) {
+    const selected = steps.nth(number - 1);
+    if (await selected.getAttribute("aria-current") !== "step") await selected.click();
+  }
+}
 (async()=>{
   const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));
   const port=listener.address().port;await new Promise(r=>listener.close(r));
@@ -13,7 +20,7 @@ const assert=require('node:assert/strict');
   const png='iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAAK0lEQVR4nO3NMQEAAAQAMPSvIScVfJ6twHI6XtRPKxaLxWKxWCwWi8XiiwX6KQHghAeRJQAAAABJRU5ErkJggg==';
   let browser,logs='';server.stderr.on('data',d=>logs+=d);
   const ready=p=>p.waitForFunction(()=>!document.querySelector('#save').disabled);
-  async function backup(p){const wait=p.waitForEvent('download');await p.locator('#backup').click();const b=JSON.parse(fs.readFileSync(await (await wait).path(),'utf8'));await ready(p);return b;}
+  async function backup(p){const wait=p.waitForEvent('download');await stage(p, 5); await p.locator('#backup').click();const b=JSON.parse(fs.readFileSync(await (await wait).path(),'utf8'));await ready(p);return b;}
   async function info(p,id){return p.evaluate(async id=>(await import('/studio/store.js')).checkpointInfo(id),id);}
   try{
     for(let i=0;i<100;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(server.exitCode!==null||i===99)throw Error(logs||'Startup failed');await new Promise(r=>setTimeout(r,100));}
@@ -38,17 +45,17 @@ const assert=require('node:assert/strict');
       assert.equal(migrated.pages[0].asset.image_base64,png);assert.equal(migrated.reference.image_base64,png);
       assert.equal(await p.evaluate(async()=>{const s=await import('/studio/store.js'),db=await s.database();const version=db.version;db.close();return version;}),2);
       assert.equal(await p.evaluate(async()=>(await (await import('/studio/store.js')).all('profiles')).length),1);
-      await p.locator('#checkpoint-panel summary').click();
+      await stage(p, 3); await p.locator('#checkpoint-panel summary').click();
       await p.locator('#checkpoint-status').filter({hasText:'No checkpoint'}).waitFor();
-      await p.locator('#checkpoint-save').click();await ready(p);
+      await stage(p, 3); await p.locator('#checkpoint-save').click();await ready(p);
       const originalCheckpoint=await info(p,sourceId);assert.ok(originalCheckpoint.checkpointId);
-      await p.locator('#title').fill('Modified original');await p.locator('.page textarea').last().fill('Changed prompt');
+      await stage(p, 1); await p.locator('#title').fill('Modified original');await stage(p, 3); await p.locator('.page textarea').last().fill('Changed prompt');
       await p.locator('#save').click();await ready(p);
       const changedPNG=Buffer.from(await p.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=40;const g=c.getContext('2d');g.fillStyle='green';g.fillRect(0,0,40,40);return c.toDataURL().split(',')[1];}),'base64');
-      await p.locator('.page input[type=file]').setInputFiles({name:'changed.png',mimeType:'image/png',buffer:changedPNG});await ready(p);
-      accept=false;await p.locator('#checkpoint-save').click();await ready(p);accept=true;
+      await stage(p, 3); await p.locator('.page input[type=file]').setInputFiles({name:'changed.png',mimeType:'image/png',buffer:changedPNG});await ready(p);
+      accept=false;await stage(p, 3); await p.locator('#checkpoint-save').click();await ready(p);accept=true;
       assert.equal((await info(p,sourceId)).checkpointId,originalCheckpoint.checkpointId);
-      await p.locator('#checkpoint-open').click();await ready(p);
+      await stage(p, 3); await p.locator('#checkpoint-open').click();await ready(p);
       const copy=await backup(p);
       assert.notEqual(copy.id,sourceId);assert.equal(copy.pages[0].asset.image_base64,png);
       assert.equal(copy.pages[0].prompt,'Original prompt');assert.equal(copy.pages[0].review,'approved');
@@ -61,13 +68,13 @@ const assert=require('node:assert/strict');
       assert.equal((await backup(p)).pages[0].asset.image_base64,changedPNG.toString('base64'));
       // Simulate a quota failure while replacing the checkpoint; preserve the old one.
       await p.evaluate(()=>{window.oldPut=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args){if(this.name==='checkpoints')throw new DOMException('Full','QuotaExceededError');return window.oldPut.apply(this,args);};});
-      await p.locator('#checkpoint-save').click();await ready(p);
+      await stage(p, 3); await p.locator('#checkpoint-save').click();await ready(p);
       assert.match(await p.locator('#status').innerText(),/previous checkpoint was kept/);
       await p.evaluate(()=>{IDBObjectStore.prototype.put=window.oldPut;});
       assert.equal((await info(p,sourceId)).checkpointId,originalCheckpoint.checkpointId);
       // Fail the second write of recovery: no orphan project and no editor switch.
       await p.evaluate(()=>{window.oldAdd=IDBObjectStore.prototype.add;IDBObjectStore.prototype.add=function(...args){if(this.name==='summaries')throw new DOMException('Full','QuotaExceededError');return window.oldAdd.apply(this,args);};});
-      await p.locator('#checkpoint-open').click();await ready(p);
+      await stage(p, 3); await p.locator('#checkpoint-open').click();await ready(p);
       assert.match(await p.locator('#status').innerText(),/could not be saved/);
       await p.evaluate(()=>{IDBObjectStore.prototype.add=window.oldAdd;});
       assert.equal((await backup(p)).id,sourceId);
@@ -89,19 +96,19 @@ const assert=require('node:assert/strict');
       assert.notEqual(conflicts.current.checkpointId,originalCheckpoint.checkpointId);
       await p.reload();await p.locator('#status').filter({hasText:'Choose a format'}).waitFor();
       await p.locator('#library .library-item').filter({hasText:'Modified original'}).getByRole('button',{name:'Open',exact:true}).click();await ready(p);
-      await p.locator('#checkpoint-panel summary').click();
+      await stage(p, 3); await p.locator('#checkpoint-panel summary').click();
       await p.locator('#checkpoint-status').filter({hasText:'Checkpoint saved'}).waitFor();
-      accept=false;await p.locator('#checkpoint-remove').click();await ready(p);accept=true;
+      accept=false;await stage(p, 3); await p.locator('#checkpoint-remove').click();await ready(p);accept=true;
       assert.ok(await info(p,sourceId));
-      await p.locator('#checkpoint-remove').click();await ready(p);assert.equal(await info(p,sourceId),null);
+      await stage(p, 3); await p.locator('#checkpoint-remove').click();await ready(p);assert.equal(await info(p,sourceId),null);
       assert.equal(await p.locator('#library .library-item').count(),2);
       assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
       // Portable recovery survives a clean browser, with both versions and original bytes.
-      await p.locator('#checkpoint-save').click();await ready(p);
-      await p.locator('#title').fill('Latest portable version');
+      await stage(p, 3); await p.locator('#checkpoint-save').click();await ready(p);
+      await stage(p, 1); await p.locator('#title').fill('Latest portable version');
       await p.locator('#save').click();await ready(p);
       const downloaded=p.waitForEvent('download');
-      await p.locator('#recovery-package').click();
+      await stage(p, 3); await p.locator('#recovery-package').click();
       const packageBytes=fs.readFileSync(await (await downloaded).path());await ready(p);
       const envelope=JSON.parse(packageBytes),payload=JSON.parse(envelope.payload);
       assert.equal(envelope.package_version,1);
@@ -140,11 +147,11 @@ const assert=require('node:assert/strict');
       assert.equal(restored.title,'Latest portable version');
       assert.equal(restored.pages[0].asset.image_base64,changedPNG.toString('base64'));
       assert.equal(restored.pages[0].pendingGeneration.id,'a'.repeat(32));
-      await q.locator('#checkpoint-panel summary').click();
-      await q.locator('#checkpoint-open').click();await ready(q);
+      await stage(q, 3); await q.locator('#checkpoint-panel summary').click();
+      await stage(q, 3); await q.locator('#checkpoint-open').click();await ready(q);
       assert.equal((await backup(q)).title,'Modified original — checkpoint');
       // A package without a checkpoint also restores, with no synthetic checkpoint.
-      const noCheckpoint=q.waitForEvent('download');await q.locator('#recovery-package').click();
+      const noCheckpoint=q.waitForEvent('download');await stage(q, 3); await q.locator('#recovery-package').click();
       const plain=fs.readFileSync(await (await noCheckpoint).path());await ready(q);
       assert.equal(JSON.parse(JSON.parse(plain).payload).checkpoint,null);
       await q.locator('#restore').setInputFiles({name:'plain.json',mimeType:'application/json',buffer:plain});await ready(q);

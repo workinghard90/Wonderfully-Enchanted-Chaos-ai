@@ -58,6 +58,25 @@ function show(index) {
   progress.textContent = `Step ${active + 1} of 5: ${steps[active]}. Your project remains editable and saved using the existing controls.`;
   if (index !== undefined && editor.hidden === false) nav.scrollIntoView({block: "nearest", behavior: "auto"});
 }
+// Existing video guidance focuses on controls that can live in other stages.
+// Reveal the destination before its original click handler tries to focus it.
+const videoContinue = editor.querySelector("#workflow-next");
+videoContinue?.addEventListener("click", () => {
+  const label = videoContinue.textContent || "";
+  if (/Add picture for scene/.test(label)) show(2);
+  else if (/Review and render video/.test(label)) show(4);
+  else show(0);
+}, {capture: true});
+// Starting or reopening a project should always begin at Setup, not reuse
+// the prior project's last export/review tab.
+document.querySelectorAll("[data-kind]").forEach(button =>
+  button.addEventListener("click", () => show(0)));
+document.getElementById("library")?.addEventListener("click", event => {
+  if (event.target.closest("button")) show(0);
+});
+for (const id of ["restore", "import-zip"]) {
+  document.getElementById(id)?.addEventListener("change", () => show(0));
+}
 previous.addEventListener("click", () => show(active - 1));
 next.addEventListener("click", () => show(active + 1));
 show();

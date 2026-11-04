@@ -40,11 +40,22 @@ const assert = require("node:assert/strict");
     page.waitForFunction(() => !document.querySelector("#save").disabled);
   const saved = (page) =>
     page.locator("#save-status").filter({ hasText: "Saved" }).waitFor();
+  async function go(page, step) {
+    const tab = page.locator(".workflow-tab").nth(step - 1);
+    if (await tab.getAttribute("aria-current") !== "step") await tab.click();
+  }
   async function download(page, id) {
+    const target = id === "#cover" ? 4 : 5;
+    const current = await page.locator('.workflow-tab[aria-current="step"]').count()
+      ? Number((await page.locator('.workflow-tab[aria-current="step"]').innerText()).charAt(0))
+      : null;
+    if (current !== null) await go(page, target);
     const wait = page.waitForEvent("download");
     await page.locator(id).click();
     const value = await wait;
-    return fs.readFileSync(await value.path());
+    const bytes = fs.readFileSync(await value.path());
+    if (current !== null) await go(page, current);
+    return bytes;
   }
   try {
     for (let i = 0; i < 100; i++) {
@@ -95,9 +106,9 @@ const assert = require("node:assert/strict");
         .waitFor();
       await page.locator("[data-kind=storybook]").click();
       await ready(page);
-      await page.locator("#title").fill("Pip story " + viewport.width);
+      await go(page, 1); await page.locator('#title').fill("Pip story " + viewport.width);
       await page.locator("#author").fill("Melody Autumn Hall");
-      await page.locator(".character").first().locator("summary").click();
+      await go(page, 1); await page.locator('.character').first().locator('summary').click();
       await page.locator("#character-name").fill("Pip");
       await page
         .locator("#character")
@@ -107,23 +118,23 @@ const assert = require("node:assert/strict");
       await ready(page);
       await page.locator("#save-profile").click();
       await ready(page);
-      await page
-        .locator("#outline")
+      await page.getByRole("button", {name:"2. Plan"}).click();
+      await go(page, 2); await page.locator('#outline')
         .fill(
           "Pip found a little star.\n\nTogether they found their way home.",
         );
       await page.locator("#plan-pages").click();
       await ready(page);
       assert.equal(await page.locator(".page").count(), 2);
-      await page
-        .locator("#pictures")
+      await page.getByRole("button", {name:"3. Create"}).click();
+      await go(page, 3); await page.locator('#pictures')
         .setInputFiles([fixture, { ...fixture, name: "second.png" }]);
       await page
         .locator("#status")
         .filter({ hasText: "2 picture(s) added and saved" })
         .waitFor();
-      await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
-      await page.locator('.page').nth(1).getByLabel('Artwork review', {exact:true}).selectOption('needs_changes'); await ready(page);
+      await go(page, 3); await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
+      await go(page, 3); await page.locator('.page').nth(1).getByLabel('Artwork review', {exact:true}).selectOption('needs_changes'); await ready(page);
       const backup = JSON.parse(
         (await download(page, "#backup")).toString("utf8"),
       );
@@ -134,34 +145,34 @@ const assert = require("node:assert/strict");
       assert.equal(backup.pages[0].asset.sha256, expectedHash);
       assert.equal(backup.pages[0].review, 'approved');
       assert.equal(backup.pages[1].review, 'needs_changes');
-      await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
+      await go(page, 3); await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
       await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
       assert.equal(await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).inputValue(), 'unreviewed');
-      await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
+      await go(page, 3); await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
 
       assert.equal(backup.pages.length, 2);
       await page.getByText('Compare with approved reference', {exact:true}).first().click();
-      await page.locator('.character').first().screenshot({path:path.join(directory, `reference-${viewport.width}.png`)});
+      await go(page, 1); await page.locator('.character').first().screenshot({path:path.join(directory, `reference-${viewport.width}.png`)});
       assert.equal(backup.pages[0].asset.image_base64, png.toString("base64"));
       assert.match(backup.character, /lavender/);
       assert.equal(backup.pages[1].text, "Together they found their way home.");
       let bookRequests = 0;
       page.on('request', r => { if (r.url().endsWith('/api/creative/pdf')) bookRequests++; });
-      await page.locator('#check-book').click(); await ready(page);
+      await go(page, 4); await page.locator('#check-book').click(); await ready(page);
       assert.match(await page.locator('#book-review-issues').innerText(), /Exact duplicate artwork on pages 1, 2/);
       assert.match(await page.locator('#book-review-status').innerText(), /0 blocking/);
       assert.match(await page.locator('#book-review-issues').innerText(), /below the 300 PPI/);
       accept = false;
-      await page.locator('#pdf').click(); await ready(page);
+      await go(page, 5); await page.locator('#pdf').click(); await ready(page);
       assert.equal(bookRequests, 0);
       accept = true;
       const storyBox = page.locator('.page').first().getByLabel('Story text', {exact:true});
       const storyBefore = await storyBox.inputValue();
-      await storyBox.fill('');
-      await page.locator('#pdf').click(); await ready(page);
+      await go(page, 3); await storyBox.fill('');
+      await go(page, 5); await page.locator('#pdf').click(); await ready(page);
       assert.equal(bookRequests, 0);
       assert.match(await page.locator('#book-review-issues').innerText(), /Page 1: missing story text/);
-      await storyBox.fill(storyBefore);
+      await go(page, 3); await storyBox.fill(storyBefore);
       const pdf = await download(page, "#pdf");
       assert.ok(pdf.subarray(0, 5).equals(Buffer.from("%PDF-")));
       fs.writeFileSync(path.join(directory, "storybook.pdf"), pdf);
@@ -261,10 +272,10 @@ const assert = require("node:assert/strict");
         .waitFor();
       await other.locator("#library .library-item button").first().click();
       await ready(other);
-      await page.locator("#title").fill("Latest saved title");
+      await go(page, 1); await page.locator('#title').fill("Latest saved title");
       await page.locator("#save").click();
       await ready(page);
-      await other.locator("#title").fill("Conflicting title");
+      await go(other, 1); await other.locator('#title').fill("Conflicting title");
       await other.locator("#save").click();
       await other
         .locator("#status")
@@ -277,14 +288,14 @@ const assert = require("node:assert/strict");
       await other.close();
       await page.locator("[data-kind=coloring]").click();
       await ready(page);
-      await page.locator('.character').first().locator('summary').click();
+      await go(page, 1); await page.locator('.character').first().locator('summary').click();
       await page.locator('#profile').selectOption({label:'Pip'});
       await ready(page);
       const reused = JSON.parse((await download(page, '#backup')).toString());
       assert.equal(reused.reference.image_base64, png.toString('base64'));
       assert.equal(reused.character, backup.character);
       assert.equal(reused.style, backup.style);
-      await page.locator('#remove-reference').click(); await ready(page);
+      await go(page, 1); await page.locator('#remove-reference').click(); await ready(page);
       assert.equal(JSON.parse((await download(page, '#backup')).toString()).reference, null);
       const sourceReference = await page.evaluate(async id => {
         const store = await import('/studio/store.js');
@@ -296,7 +307,7 @@ const assert = require("node:assert/strict");
         await page.locator("#title").inputValue(),
         "Untitled coloring book",
       );
-      await page.locator("#pictures").setInputFiles(fixture);
+      await go(page, 3); await page.locator('#pictures').setInputFiles(fixture);
       await page
         .locator("#status")
         .filter({ hasText: "1 picture(s) added and saved" })
@@ -330,7 +341,7 @@ const assert = require("node:assert/strict");
       assert.equal(copied.pages[0].sourceArtwork.pageId,backup.pages[0].id);
       assert.equal(copied.pages[0].sourceArtwork.sha256,expectedHash);
       assert.ok(/^[a-f0-9]{64}$/.test(copied.pages[0].sourceArtwork.referenceFingerprint));
-      await page.locator('#check-sources').click(); await ready(page);
+      await go(page, 3); await page.locator('#check-sources').click(); await ready(page);
       assert.match(await page.locator('#source-status').innerText(),/still match/);
       const sourceAsset = await page.evaluate(async id => {
         const store = await import('/studio/store.js');
@@ -344,7 +355,7 @@ const assert = require("node:assert/strict");
         original.pages[0].review='needs_changes';
         await store.save(original);
       },backup.id);
-      await page.locator('#check-sources').click();await ready(page);
+      await go(page, 3); await page.locator('#check-sources').click();await ready(page);
       assert.match(await page.locator('#source-status').innerText(),/no longer approved/);
       assert.equal(JSON.parse((await download(page,'#backup')).toString()).pages[0].sourceArtwork.sha256,expectedHash);
       // Returning approval clears the warning without modifying the copied image.
@@ -354,7 +365,7 @@ const assert = require("node:assert/strict");
         original.pages[0].review='approved';
         await store.save(original);
       },backup.id);
-      await page.locator('#check-sources').click();await ready(page);
+      await go(page, 3); await page.locator('#check-sources').click();await ready(page);
       assert.match(await page.locator('#source-status').innerText(),/still match/);
       // Do not copy a stale approved thumbnail if another tab modifies its source
       // after the picker has loaded the original revision.
@@ -396,7 +407,7 @@ const assert = require("node:assert/strict");
       assert.equal(await picker.count(), 0);
       // An independent replacement must remove the earlier source link:
       // this page now contains an uploaded original, not a borrowed copy.
-      await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
+      await go(page, 3); await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
       await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
       assert.equal(JSON.parse((await download(page,'#backup')).toString()).pages[0].sourceArtwork,undefined);
       const colorPdf = await download(page, "#pdf");
@@ -404,7 +415,7 @@ const assert = require("node:assert/strict");
         (colorPdf.toString("latin1").match(/\/Type \/Page\b/g) || []).length,
         4,
       );
-      await page.locator("#cover-settings summary").click();
+      await go(page, 4); await page.locator('#cover-settings summary').click();
       await page
         .locator("#back-text")
         .fill("A cozy cloud world full of little adventures.");
@@ -431,17 +442,17 @@ const assert = require("node:assert/strict");
       assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 1);
       await page.locator("[data-kind=art]").click();
       await ready(page);
+      await go(page, 1);
       if (await page.locator('.character').first().getAttribute('open') === null)
         await page.locator('.character').first().locator('summary').click();
-      await page.locator('#profile').selectOption({label:'Pip'}); await ready(page);
+      await go(page, 1); await page.locator('#profile').selectOption({label:'Pip'}); await ready(page);
       assert.equal(JSON.parse((await download(page, '#backup')).toString()).reference.image_base64, png.toString('base64'));
 
-      await page
-        .locator("#outline")
+      await go(page, 2); await page.locator('#outline')
         .fill("A floating island\nA moonlit garden");
       await page.locator("#plan-pages").click();
       await ready(page);
-      await page.locator('#check-book').click(); await ready(page);
+      await go(page, 4); await page.locator('#check-book').click(); await ready(page);
       assert.match(await page.locator('#book-review-status').innerText(), /2 blocking/);
       assert.match(await page.locator('#book-review-issues').innerText(), /Page 1: missing picture/);
       assert.equal(await page.locator(".page").count(), 2);
@@ -457,46 +468,45 @@ const assert = require("node:assert/strict");
       });
       await page.locator("[data-kind=video]").click();
       await ready(page);
+      await go(page, 1);
       if (await page.locator('.character').first().getAttribute('open') === null)
         await page.locator('.character').first().locator('summary').click();
       await page.locator('#profile').selectOption({label:'Pip'}); await ready(page);
       assert.equal(JSON.parse((await download(page, '#backup')).toString()).reference.image_base64, png.toString('base64'));
 
-      await page
-        .locator("#narration")
+      await go(page, 1); await page.locator('#narration')
         .fill("A cloud found a little star. The star shone bright at home.");
       await page.locator("#scene-count").fill("2");
       await page.locator("#duration").fill("10");
-      await page.locator("#split").click();
+      await go(page, 1); await page.locator('#split').click();
       await ready(page);
-      await page
-        .locator("#pictures")
+      await go(page, 3); await page.locator('#pictures')
         .setInputFiles([fixture, { ...fixture, name: "second.png" }]);
       await page
         .locator("#status")
         .filter({ hasText: "2 picture(s) added and saved" })
         .waitFor();
-      assert.equal(await page.locator('#video-workflow').isVisible(), true);
+      await go(page, 1); assert.equal(await page.locator('#video-workflow').isVisible(), true);
       assert.equal(await page.locator('#workflow-next').innerText(), 'Review and render video');
-      await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
+      await go(page, 3); await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
       const beforeResplit = JSON.parse((await download(page, '#backup')).toString());
-      await page.locator('#split').click(); await ready(page);
+      await go(page, 1); await page.locator('#split').click(); await ready(page);
       const afterResplit = JSON.parse((await download(page, '#backup')).toString());
       assert.deepEqual(afterResplit.pages, beforeResplit.pages);
-      await page.locator('#narration').fill('A cloud found a little star. The star danced in the sky.');
+      await go(page, 1); await page.locator('#narration').fill('A cloud found a little star. The star danced in the sky.');
       assert.equal(await page.locator('#workflow-next').innerText(), 'Review and split narration');
-      await page.locator('#split').click(); await ready(page);
+      await go(page, 1); await page.locator('#split').click(); await ready(page);
       const revisedScenes = JSON.parse((await download(page, '#backup')).toString());
       assert.equal(revisedScenes.pages[0].asset.image_base64, png.toString('base64'));
       assert.equal(revisedScenes.pages[1].asset, null);
       assert.equal(revisedScenes.pages[0].review, 'approved');
       assert.equal(revisedScenes.pages[1].review, 'unreviewed');
       assert.equal(await page.locator('#workflow-next').innerText(), 'Add picture for scene 2');
-      await page.locator('#workflow-next').click();
+      await go(page, 1); await page.locator('#workflow-next').click();
       assert.equal(await page.locator('.page').nth(1).evaluate(el => el === document.activeElement), true);
-      await page.locator('#narration').fill(beforeResplit.narration);
-      await page.locator('#split').click(); await ready(page);
-      await page.locator('.page').nth(1).locator('input[type=file]').setInputFiles(fixture);
+      await go(page, 1); await page.locator('#narration').fill(beforeResplit.narration);
+      await go(page, 1); await page.locator('#split').click(); await ready(page);
+      await go(page, 3); await page.locator('.page').nth(1).locator('input[type=file]').setInputFiles(fixture);
       await ready(page);
       await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
       // Later narration/count edits must never hand off older scenes or erase art.
@@ -505,24 +515,24 @@ const assert = require("node:assert/strict");
         if (request.url() === base + "/api/creative/video") handoffs++;
       });
       const originalNarration = await page.locator("#narration").inputValue();
-      await page.locator("#narration").fill("A newly edited script.");
-      await page.locator("#video").click();
+      await go(page, 1); await page.locator('#narration').fill("A newly edited script.");
+      await go(page, 5); await page.locator('#video').click();
       await ready(page);
       assert.match(await page.locator("#status").innerText(), /Use Split narration/);
       assert.equal(handoffs, 0);
       assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 2);
-      await page.locator("#narration").fill(originalNarration);
+      await go(page, 1); await page.locator('#narration').fill(originalNarration);
       await page.locator("#scene-count").fill("3");
-      await page.locator("#video").click();
+      await go(page, 5); await page.locator('#video').click();
       await ready(page);
       assert.match(await page.locator("#status").innerText(), /Use Split narration/);
       assert.equal(handoffs, 0);
-      await page.locator("#narration").fill("word ".repeat(101));
-      await page.locator("#split").click();
+      await go(page, 1); await page.locator('#narration').fill("word ".repeat(101));
+      await go(page, 1); await page.locator('#split').click();
       await ready(page);
       assert.match(await page.locator("#status").innerText(), /100 words/);
       assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 2);
-      await page.locator("#narration").fill(originalNarration);
+      await go(page, 1); await page.locator('#narration').fill(originalNarration);
       await page.locator("#scene-count").fill("2");
       // Admission failures must not create server copies or consume attempts.
       for (const [state, message] of [
@@ -532,13 +542,13 @@ const assert = require("node:assert/strict");
         [{ready:true, jobs:[{id:'full', title:'Old movie', status:'failed', message:'Failed'}], max_saved_videos:1}, /storage is full/],
       ]) {
         await page.route('**/api/video', r => r.fulfill({json:state}));
-        await page.locator('#video').click(); await ready(page);
+        await go(page, 5); await page.locator('#video').click(); await ready(page);
         assert.match(await page.locator('#status').innerText(), message);
         assert.equal(handoffs, 0);
         await page.unroute('**/api/video');
       }
       accept = false;
-      await page.locator("#video").click();
+      await go(page, 5); await page.locator('#video').click();
       await ready(page);
       assert.equal(handoffs, 0);
       accept = true;
@@ -546,11 +556,11 @@ const assert = require("node:assert/strict");
       await page.route('**/api/projects/*/video', r => {
         failedStarts++; return r.fulfill({status:503, json:{error:'Worker unavailable'}});
       });
-      await page.locator('#video').click(); await ready(page);
+      await go(page, 5); await page.locator('#video').click(); await ready(page);
       assert.match(await page.locator('#status').innerText(), /Refresh renders before trying again/);
       assert.equal(failedStarts, 1);
       await page.unroute('**/api/projects/*/video');
-      await page.locator("#video").click();
+      await go(page, 5); await page.locator('#video').click();
       await ready(page);
       assert.equal(new URL(page.url()).pathname, "/");
       assert.equal(handoffs, 2);
@@ -640,7 +650,7 @@ const assert = require("node:assert/strict");
     await p.locator("#status").filter({ hasText: "Choose a format" }).waitFor();
     await p.locator("[data-kind=art]").click();
     await ready(p);
-    await p.locator("#pictures").setInputFiles(fixture);
+    await go(p, 3); await p.locator('#pictures').setInputFiles(fixture);
     await p
       .locator("#status")
       .filter({ hasText: "1 picture(s) added and saved" })
@@ -694,6 +704,7 @@ const assert = require("node:assert/strict");
         },
       }),
     );
+    await go(p, 1);
     await p
       .locator("details")
       .filter({ has: p.locator("#idea") })
@@ -704,14 +715,15 @@ const assert = require("node:assert/strict");
     await p.locator("#draft").click();
     await p.locator("#status").filter({ hasText: "AI draft saved" }).waitFor();
     assert.equal(await p.locator(".page").count(), 2);
+    await go(p, 3);
     await p
       .locator("details")
       .filter({ has: p.locator("#variant-kind") })
       .locator("summary")
       .click();
-    await p.locator('.character').first().locator('summary').click();
+    await go(p, 1); await p.locator('.character').first().locator('summary').click();
     await p.locator('#reference-picture').setInputFiles(fixture); await ready(p);
-    await p.locator("#variant-kind").selectOption("coloring");
+    await go(p, 3); await p.locator("#variant-kind").selectOption("coloring");
     await p.locator("#variant").click();
     await p
       .locator("#status")
