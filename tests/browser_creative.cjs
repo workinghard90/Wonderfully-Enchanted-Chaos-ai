@@ -704,6 +704,7 @@ const assert = require("node:assert/strict");
         },
       }),
     );
+    await go(p, 1);
     await p
       .locator("details")
       .filter({ has: p.locator("#idea") })
@@ -714,14 +715,15 @@ const assert = require("node:assert/strict");
     await p.locator("#draft").click();
     await p.locator("#status").filter({ hasText: "AI draft saved" }).waitFor();
     assert.equal(await p.locator(".page").count(), 2);
+    await go(p, 3);
     await p
       .locator("details")
       .filter({ has: p.locator("#variant-kind") })
       .locator("summary")
       .click();
-    await p.locator('.character').first().locator('summary').click();
+    await go(p, 1); await p.locator('.character').first().locator('summary').click();
     await p.locator('#reference-picture').setInputFiles(fixture); await ready(p);
-    await p.locator("#variant-kind").selectOption("coloring");
+    await go(p, 3); await p.locator("#variant-kind").selectOption("coloring");
     await p.locator("#variant").click();
     await p
       .locator("#status")
