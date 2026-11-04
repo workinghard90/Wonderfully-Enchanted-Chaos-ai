@@ -168,11 +168,11 @@ const assert = require("node:assert/strict");
       accept = true;
       const storyBox = page.locator('.page').first().getByLabel('Story text', {exact:true});
       const storyBefore = await storyBox.inputValue();
-      await storyBox.fill('');
+      await go(page, 3); await storyBox.fill('');
       await go(page, 5); await page.locator('#pdf').click(); await ready(page);
       assert.equal(bookRequests, 0);
       assert.match(await page.locator('#book-review-issues').innerText(), /Page 1: missing story text/);
-      await storyBox.fill(storyBefore);
+      await go(page, 3); await storyBox.fill(storyBefore);
       const pdf = await download(page, "#pdf");
       assert.ok(pdf.subarray(0, 5).equals(Buffer.from("%PDF-")));
       fs.writeFileSync(path.join(directory, "storybook.pdf"), pdf);
@@ -484,7 +484,7 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "2 picture(s) added and saved" })
         .waitFor();
-      assert.equal(await page.locator('#video-workflow').isVisible(), true);
+      await go(page, 1); assert.equal(await page.locator('#video-workflow').isVisible(), true);
       assert.equal(await page.locator('#workflow-next').innerText(), 'Review and render video');
       await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
       const beforeResplit = JSON.parse((await download(page, '#backup')).toString());
@@ -504,7 +504,7 @@ const assert = require("node:assert/strict");
       assert.equal(await page.locator('.page').nth(1).evaluate(el => el === document.activeElement), true);
       await go(page, 1); await page.locator('#narration').fill(beforeResplit.narration);
       await go(page, 1); await page.locator('#split').click(); await ready(page);
-      await page.locator('.page').nth(1).locator('input[type=file]').setInputFiles(fixture);
+      await go(page, 3); await page.locator('.page').nth(1).locator('input[type=file]').setInputFiles(fixture);
       await ready(page);
       await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
       // Later narration/count edits must never hand off older scenes or erase art.
