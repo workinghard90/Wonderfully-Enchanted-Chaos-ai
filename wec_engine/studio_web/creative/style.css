@@ -744,7 +744,7 @@ button:disabled { opacity: 0.55; }
   }
 }
 
-/* Ordered builder: one editing pass per screen. Preserve the approved Cozy palette. */
+/* Independent builder workspaces: one area visible at a time, all areas selectable. Preserve approved Cozy palette. */
 #editor .workflow-screen {
   min-height: calc(100svh - 235px);
   max-width: 100%;
@@ -755,13 +755,6 @@ button:disabled { opacity: 0.55; }
 #editor .workflow-screen > .workflow-description { max-width: 920px; }
 #editor .workflow-screen > h2 { font-size: clamp(28px, 3.2vw, 42px); }
 #editor .workflow-screen > .workflow-description { margin-bottom: 30px; }
-#editor .project-steps .workflow-tab:disabled {
-  opacity: .55;
-  color: var(--cozy-ink-soft);
-  background: var(--cozy-cream-deep);
-  border-style: dashed;
-  cursor: not-allowed;
-}
 #editor .workflow-screen:not(.workflow-inactive) {
   animation: builder-stage-appear .16s ease-out;
 }
