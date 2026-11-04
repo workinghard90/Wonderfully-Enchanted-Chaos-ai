@@ -88,8 +88,10 @@ const assert = require("node:assert/strict");
       await ready(page);
       await page.locator("#title").fill("Synthetic handoff");
       await page.locator("#author").fill("Fixture Author");
+      await page.getByRole("button", {name:"2. Plan"}).click();
       await page.locator("#outline").fill("A synthetic scene.");
       await page.locator("#plan-pages").click(); await ready(page);
+      await page.getByRole("button", {name:"3. Create"}).click();
       await page.locator("#pictures").setInputFiles(fixture);
       await page.locator("#status").filter({hasText:"1 picture(s) added and saved"}).waitFor();
       await page.getByLabel("Artwork review", {exact:true}).first().selectOption("approved"); await ready(page);
@@ -143,6 +145,7 @@ const assert = require("node:assert/strict");
       for (const kind of ["valid","forty"]) {
         await setCase(kind);
         const before=await fingerprint();
+        await page.getByRole("button", {name:"5. Export"}).click();
         const bytes=await download(page,"#cozy-export"); await ready(page);
         const file=path.join(directory,kind+"-"+viewport.width+".zip");
         fs.writeFileSync(file,bytes);
@@ -155,6 +158,7 @@ const assert = require("node:assert/strict");
       }
       await setCase("valid"); approve=false;
       const beforeCancel=await fingerprint(), beforeDownloads=downloads;
+      await page.getByRole("button", {name:"5. Export"}).click();
       await page.locator("#cozy-export").click();await ready(page);
       assert.equal(downloads,beforeDownloads);assert.equal(await fingerprint(),beforeCancel);
       approve=true;
@@ -165,6 +169,7 @@ const assert = require("node:assert/strict");
       ]) {
         await setCase(kind);
         const before=await fingerprint(), count=downloads;
+        await page.getByRole("button", {name:"5. Export"}).click();
         await page.locator("#cozy-export").click(); await ready(page);
         assert.match(await page.locator("#status").innerText(),pattern);
         assert.equal(downloads,count); assert.equal(await fingerprint(),before);
