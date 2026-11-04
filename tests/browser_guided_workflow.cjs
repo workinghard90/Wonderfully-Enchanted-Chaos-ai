@@ -44,16 +44,70 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#title').isVisible(),true);
       // Plan-only work must remain usable without visiting Create/Review/Export.
       await tabs.nth(1).click();
-      await page.locator('#outline').fill('Independent story idea\\nSecond scene to consider');
-      const textDownload = page.waitForEvent('download');
-      await page.locator('#download-plan').click();
-      assert.match(readFileSync(await (await textDownload).path(),'utf8'),/Independent story idea/);
+      const outline = 'Independent story idea\nSecond scene to consider';
+      await page.locator('#outline').fill(outline);
+      const [textFile] = await Promise.all([
+        page.waitForEvent('download'), page.locator('#download-plan').click()
+      ]);
+      assert.equal(readFileSync(await textFile.path(),'utf8'),outline+'\n');
+      await page.waitForFunction(() => !document.querySelector('#save').disabled);
+      await page.reload();
+      await page.locator('#library button').first().click();
+      await tabs.nth(1).click();
+      assert.equal(await page.locator('#outline').inputValue(),outline);
       assert.equal(await page.locator('.page').count(),0);
-      const backupDownload = page.waitForEvent('download');
-      await page.locator('#backup').click();
-      const backup = JSON.parse(readFileSync(await (await backupDownload).path(),'utf8'));
-      assert.match(backup.planDraft,/Independent story idea/);
+      await tabs.nth(4).click();
+      const [backupFile] = await Promise.all([
+        page.waitForEvent('download'), page.locator('#backup').click()
+      ]);
+      const backupPath = await backupFile.path();
+      const backup = JSON.parse(readFileSync(backupPath,'utf8'));
+      assert.equal(backup.planDraft,outline);
       assert.equal(backup.pages.length,0);
+      await page.locator('#restore').setInputFiles(backupPath);
+      await page.locator('#status').filter({hasText:'Backup restored'}).waitFor();
+      await tabs.nth(1).click();
+      assert.equal(await page.locator('#outline').inputValue(),outline);
+      await page.evaluate(() => {
+        const transaction = IDBDatabase.prototype.transaction;
+        IDBDatabase.prototype.transaction = function(stores, mode, ...options) {
+          if (mode === 'readwrite') {
+            IDBDatabase.prototype.transaction = transaction;
+            throw new DOMException('Device storage full','QuotaExceededError');
+          }
+          return transaction.call(this, stores, mode, ...options);
+        };
+      });
+      await page.locator('#plan-pages').click();
+      await page.locator('#status').filter({hasText:'Device storage full'}).waitFor();
+      assert.equal(await page.locator('#outline').inputValue(),outline);
+      await page.locator('#plan-pages').click();
+      await page.locator('#status').filter({hasText:'Pages created'}).waitFor();
+      await tabs.nth(2).click();
+      assert.deepEqual(await page.getByLabel('Scene / image prompt').evaluateAll(
+        inputs => inputs.map(input => input.value)),outline.split('\n'));
+      // Start a separate artwork project and go directly to Create.
+      await page.locator('[data-kind=art]').click();
+      await tabs.nth(2).click();
+      await page.getByRole('button',{name:'Add artwork',exact:true}).click();
+      await page.locator('.page input[type=file]').waitFor();
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAAK0lEQVR4nO3NMQEAAAQAMPSvIScVfJ6twHI6XtRPKxaLxWKxWCwWi8XiiwX6KQHghAeRJQAAAABJRU5ErkJggg==','base64');
+      await page.locator('.page input[type=file]').setInputFiles({name:'original.png',mimeType:'image/png',buffer:png});
+      const original = page.getByRole('link',{name:'Download original image'});
+      await original.waitFor();
+      await page.getByLabel('Scene / image prompt').fill('Evening clouds');
+      await page.locator('#save').click();
+      await page.locator('#status').filter({hasText:'Project saved on this device'}).waitFor();
+      await page.reload();
+      await page.locator('#library button').first().click();
+      await tabs.nth(2).click();
+      assert.equal(await page.getByLabel('Scene / image prompt').inputValue(),'Evening clouds');
+      assert.equal(await page.getByLabel('Artwork review').inputValue(),'unreviewed');
+      await page.locator('#add').click();
+      const [artFile] = await Promise.all([page.waitForEvent('download'),original.click()]);
+      assert.equal(artFile.suggestedFilename(),'artwork-1.png');
+      assert.deepEqual(readFileSync(await artFile.path()),png);
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
       await tabs.nth(0).click();
       // Each workspace is directly accessible, regardless of which stages were used.
       for (const tab of await tabs.all()) assert.equal(await tab.isEnabled(), true);
@@ -70,7 +124,7 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#workflow-screen-3').isVisible(),true);
       await page.locator('#add').click();
       await page.waitForFunction(() => !document.querySelector('#save').disabled);
-      assert.equal(await page.locator('.page').count(),1);
+      assert.equal(await page.locator('.page').count(),3);
       assert.equal(await page.locator('#pages').isVisible(),true);
       assert.equal(await page.locator('#save').isVisible(),true);
       await continueButton.click();
@@ -81,7 +135,7 @@ const assert = require('node:assert/strict');
       assert.equal(await screens.filter({visible:true}).count(),1);
       assert.equal(await page.locator('#editor').evaluate(el => el.getBoundingClientRect().width > innerWidth*.8),true);
       await tabs.nth(0).click();
-      assert.equal(await page.locator('#title').inputValue(),'Workflow regression');
+      assert.equal(await page.locator('#title').inputValue(),(await page.locator('#library strong').first().innerText()));
       await tabs.nth(4).click();
       await page.locator('[data-kind=coloring]').click();
       assert.equal(await tabs.nth(0).getAttribute('aria-current'),'step');

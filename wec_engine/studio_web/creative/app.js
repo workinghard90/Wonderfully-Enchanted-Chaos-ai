@@ -312,7 +312,7 @@ function render() {
     ["outline", "planDraft"],
     ["back-text", "backText"],
   ])
-    $(id).value = project[key];
+    $(id).value = project[key] ?? "";
   $("duration").value = project.duration;
   $("scene-count").value = project.sceneCount;
   $("cover-settings").hidden = project.kind === "video";
@@ -332,6 +332,7 @@ function render() {
     reference.append(name);
   } else reference.textContent = "No approved reference selected.";
   $("remove-reference").hidden = !project.reference;
+  $("add").textContent = project.kind === "art" ? "Add artwork" : "Add page";
   $("kind-label").textContent = labels[project.kind];
   $("video-settings").hidden = project.kind !== "video";
   $("book-planner").hidden = project.kind === "video";
@@ -356,7 +357,7 @@ function render() {
     card.className = "page";
     card.dataset.page = page.id;
     const title = document.createElement("h3");
-    title.textContent = `${project.kind === "video" ? "Scene" : "Page"} ${i + 1}`;
+    title.textContent = `${project.kind === "video" ? "Scene" : project.kind === "art" ? "Artwork" : "Page"} ${i + 1}`;
     card.append(title);
     const grid = document.createElement("div");
     grid.className = "two";
@@ -368,7 +369,11 @@ function render() {
       urls.push(img.src);
       img.alt = page.asset.name;
       img.loading = "lazy";
-      visual.append(img);
+      const original = document.createElement("a");
+      original.href = img.src;
+      original.download = `artwork-${i + 1}.${page.asset.extension}`;
+      original.textContent = "Download original image";
+      visual.append(img, original);
       const info = document.createElement("p");
       info.className = "muted";
       info.textContent = `${page.asset.width} × ${page.asset.height} · ${page.asset.source} · ${ppi(page)} PPI at planned size`;
@@ -921,8 +926,8 @@ $("add").onclick = () =>
   });
 $("plan-pages").onclick = () =>
   run(async () => {
-    const value = $("outline").value.trim();
-    if (!value) throw Error("Add your ideas or story text first.");
+    const value = $("outline").value;
+    if (!value.trim()) throw Error("Add your ideas or story text first.");
     const segments = value
       .split(project.kind === "storybook" ? /\n\s*\n/ : /\n/)
       .map((s) => s.trim())
@@ -964,6 +969,7 @@ $("download-plan").onclick = () => run(async () => {
   if (!draft) throw Error("Write an outline in Plan before downloading it.");
   // Text-only exports never require generated artwork, approval or printing checks.
   download(new Blob([draft + "\n"], {type: "text/plain;charset=utf-8"}), "-plan.txt");
+  if (dirty) await persist();
   say("Planning draft downloaded as a text file. Project backup keeps the editable draft.");
 });
 $("split").onclick = () =>
