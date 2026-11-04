@@ -1107,7 +1107,8 @@ $("cozy-export").onclick = () =>
     if (!description.trim() || description.length > 4000) throw Error("Add a product description (up to 4000 characters).");
     if (!window.confirm("Approve this project's selected artwork and metadata for a PRIVATE Cozy handoff ZIP? This only downloads a file; it does not publish.")) return;
     const entries = [], hashes = {}, previews = [];
-    const approved = project.pages.slice(0, 40);
+    if (project.pages.length > 40) throw Error("Cozy handoff supports at most 40 preview pages. Split the project before exporting.");
+    const approved = project.pages;
     for (const [index, page] of approved.entries()) {
       const ext = String(page.asset.extension || "png").toLowerCase();
       if (!["png", "jpg", "jpeg", "webp"].includes(ext))
