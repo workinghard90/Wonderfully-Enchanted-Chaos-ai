@@ -1,6 +1,6 @@
 const {chromium} = require('playwright');
 const {spawn} = require('node:child_process');
-const {mkdtempSync} = require('node:fs');
+const {mkdtempSync, readFileSync} = require('node:fs');
 const {tmpdir} = require('node:os');
 const {join} = require('node:path');
 const net = require('node:net');
@@ -42,6 +42,19 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#workflow-screen-5 #cozy-export').count(),1);
       assert.ok(await page.locator('#editor').evaluate(el => el.getBoundingClientRect().width > 0));
       assert.equal(await page.locator('#title').isVisible(),true);
+      // Plan-only work must remain usable without visiting Create/Review/Export.
+      await tabs.nth(1).click();
+      await page.locator('#outline').fill('Independent story idea\\nSecond scene to consider');
+      const textDownload = page.waitForEvent('download');
+      await page.locator('#download-plan').click();
+      assert.match(readFileSync(await (await textDownload).path(),'utf8'),/Independent story idea/);
+      assert.equal(await page.locator('.page').count(),0);
+      const backupDownload = page.waitForEvent('download');
+      await page.locator('#backup').click();
+      const backup = JSON.parse(readFileSync(await (await backupDownload).path(),'utf8'));
+      assert.match(backup.planDraft,/Independent story idea/);
+      assert.equal(backup.pages.length,0);
+      await tabs.nth(0).click();
       // Each workspace is directly accessible, regardless of which stages were used.
       for (const tab of await tabs.all()) assert.equal(await tab.isEnabled(), true);
       await tabs.nth(4).click();
