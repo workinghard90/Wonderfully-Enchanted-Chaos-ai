@@ -442,9 +442,10 @@ const assert = require("node:assert/strict");
       assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 1);
       await page.locator("[data-kind=art]").click();
       await ready(page);
+      await go(page, 1);
       if (await page.locator('.character').first().getAttribute('open') === null)
-        await go(page, 1); await page.locator('.character').first().locator('summary').click();
-      await page.locator('#profile').selectOption({label:'Pip'}); await ready(page);
+        await page.locator('.character').first().locator('summary').click();
+      await go(page, 1); await page.locator('#profile').selectOption({label:'Pip'}); await ready(page);
       assert.equal(JSON.parse((await download(page, '#backup')).toString()).reference.image_base64, png.toString('base64'));
 
       await go(page, 2); await page.locator('#outline')
@@ -467,8 +468,9 @@ const assert = require("node:assert/strict");
       });
       await page.locator("[data-kind=video]").click();
       await ready(page);
+      await go(page, 1);
       if (await page.locator('.character').first().getAttribute('open') === null)
-        await go(page, 1); await page.locator('.character').first().locator('summary').click();
+        await page.locator('.character').first().locator('summary').click();
       await page.locator('#profile').selectOption({label:'Pip'}); await ready(page);
       assert.equal(JSON.parse((await download(page, '#backup')).toString()).reference.image_base64, png.toString('base64'));
 
