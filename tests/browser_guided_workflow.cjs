@@ -37,6 +37,8 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#book-planner').isVisible(),true);
       assert.equal(await page.locator('#title').isVisible(),false);
       await tabs.nth(2).click();
+      await page.locator('#add').click();
+      assert.equal(await page.locator('.page').count(),1);
       assert.equal(await page.locator('#pages').isVisible(),true);
       assert.equal(await page.locator('#save').isVisible(),true);
       await tabs.nth(3).click();
