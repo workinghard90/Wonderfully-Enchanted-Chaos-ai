@@ -44,7 +44,7 @@ const toolbar = editor.querySelector("#save")?.closest(".toolbar");
 const variant = editor.querySelector("#variant")?.closest("details");
 if (variant) variant.dataset.workflowStage = "2";
 function show(index) {
-  active = Math.max(0, Math.min(4, index));
+  if (Number.isInteger(index)) active = Math.max(0, Math.min(4, index));
   editor.dataset.workflowStep = String(active);
   editor.querySelectorAll("[data-workflow-stage]").forEach(node => {
     // Use hidden on stage sections only; retain native hidden semantics on nested features.
