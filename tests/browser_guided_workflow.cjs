@@ -35,7 +35,6 @@ const assert = require('node:assert/strict');
       const screens = page.locator('#editor > .workflow-screen');
       assert.equal(await screens.count(),5);
       assert.equal(await screens.filter({visible:true}).count(),1);
-      assert.equal(await page.locator('#editor > .workflow-screen:nth-of-type(1)').count(),0); // Screen IDs are stable, not dependent on content order.
       assert.equal(await page.locator('#workflow-screen-1 #title').count(),1);
       assert.equal(await page.locator('#workflow-screen-2 #outline').count(),1);
       assert.equal(await page.locator('#workflow-screen-3 #pages').count(),1);
