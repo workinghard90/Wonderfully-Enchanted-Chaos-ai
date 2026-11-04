@@ -3,6 +3,13 @@ const {chromium} = require('playwright');
 const {spawn} = require('node:child_process');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
 const assert = require('node:assert/strict');
+async function stage(page, number) {
+  const steps = page.locator(".workflow-tab");
+  if (await steps.count()) {
+    const selected = steps.nth(number - 1);
+    if (await selected.getAttribute("aria-current") !== "step") await selected.click();
+  }
+}
 (async () => {
   const listener = net.createServer();
   await new Promise(r => listener.listen(0, '127.0.0.1', r));
@@ -34,7 +41,7 @@ const assert = require('node:assert/strict');
       assert.equal(dialogs,0);
       assert.match(await p.locator('#ai-connection-status').innerText(), /not signed in/);
       await p.locator('[data-kind=art]').click(); await ready(p);
-      await p.locator('#add').click(); await ready(p);
+      await stage(p, 3); await p.locator('#add').click(); await ready(p);
       assert.equal(await p.locator('.page').count(),1);
       assert.equal(await p.locator('[data-generate]').isDisabled(),true);
       await p.locator('#check-ai').click(); await ready(p);
@@ -65,19 +72,19 @@ const assert = require('node:assert/strict');
       await p.locator('#check-ai').click(); await ready(p);
       assert.equal(await p.locator('[data-generate]').isDisabled(),false);
       // Prompt previews must reflect character/style edits made after page creation.
-      await p.locator('.character').first().locator('summary').click();
+      await stage(p, 1); await p.locator('.character').first().locator('summary').click();
       await p.locator('#character').fill('A lavender cloud with a curl');
       await p.locator('#style').fill('Watercolor');
       assert.match(await p.locator('.prompt-preview').first().textContent(), /lavender cloud/);
       assert.match(await p.locator('.prompt-preview').nth(1).textContent(), /Watercolor/);
       await p.route('**/api/creative/image', r => {calls++; return r.abort('failed');});
-      await p.locator('[data-generate]').click(); await ready(p);
+      await stage(p, 3); await p.locator('[data-generate]').click(); await ready(p);
       assert.equal(calls,1);
       assert.match(await p.locator('#status').innerText(), /Cannot reach/);
       const box = await p.locator('#status').boundingBox();
       assert.ok(box.y >= 0 && box.y < 1000, 'Error stays visible on mobile');
       assert.equal(await p.locator('#save').isDisabled(), false);
-      await p.locator('[data-generate]').click(); await ready(p);
+      await stage(p, 3); await p.locator('[data-generate]').click(); await ready(p);
       assert.equal(calls,1, 'An unresolved receipt blocks another billable request');
       await p.getByRole('button', {name:'Dismiss generation receipt',exact:true}).click(); await ready(p);
       // A stalled server must release UI controls without replaying a paid request.
@@ -85,7 +92,7 @@ const assert = require('node:assert/strict');
       await p.clock.install();
       await p.route('**/api/creative/image', () => {calls++;});
       const sent = p.waitForRequest('**/api/creative/image');
-      await p.locator('[data-generate]').click(); await sent;
+      await stage(p, 3); await p.locator('[data-generate]').click(); await sent;
       assert.equal(await p.locator('.page textarea').first().isDisabled(),true, 'Rebuilt fields stay locked during generation');
       await p.clock.fastForward(90001); await ready(p);
       assert.equal(calls,2);
