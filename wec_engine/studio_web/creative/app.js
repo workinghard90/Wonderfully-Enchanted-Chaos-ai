@@ -23,6 +23,7 @@ let project = null,
   verifiedVideoPackage = null;
 const say = (s) => {
   $("status").textContent = s;
+  $("status").classList.toggle("status-alert", /Cannot reach|90 seconds|failed|error|unavailable/i.test(s));
 };
 function button(label, action, disabled = false) {
   const b = document.createElement("button");
