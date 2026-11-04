@@ -148,7 +148,7 @@ const assert = require("node:assert/strict");
       await go(page, 3); await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
       await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
       assert.equal(await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).inputValue(), 'unreviewed');
-      await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
+      await go(page, 3); await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
 
       assert.equal(backup.pages.length, 2);
       await page.getByText('Compare with approved reference', {exact:true}).first().click();
@@ -407,7 +407,7 @@ const assert = require("node:assert/strict");
       assert.equal(await picker.count(), 0);
       // An independent replacement must remove the earlier source link:
       // this page now contains an uploaded original, not a borrowed copy.
-      await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
+      await go(page, 3); await page.locator('.page').first().locator('input[type=file]').setInputFiles(fixture);
       await page.locator('#status').filter({hasText:'Picture attached and saved'}).waitFor();
       assert.equal(JSON.parse((await download(page,'#backup')).toString()).pages[0].sourceArtwork,undefined);
       const colorPdf = await download(page, "#pdf");
@@ -488,7 +488,7 @@ const assert = require("node:assert/strict");
         .waitFor();
       await go(page, 1); assert.equal(await page.locator('#video-workflow').isVisible(), true);
       assert.equal(await page.locator('#workflow-next').innerText(), 'Review and render video');
-      await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
+      await go(page, 3); await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
       const beforeResplit = JSON.parse((await download(page, '#backup')).toString());
       await go(page, 1); await page.locator('#split').click(); await ready(page);
       const afterResplit = JSON.parse((await download(page, '#backup')).toString());
