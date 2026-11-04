@@ -1,0 +1,57 @@
+const {chromium} = require('playwright');
+const {spawn} = require('node:child_process');
+const {mkdtempSync} = require('node:fs');
+const {tmpdir} = require('node:os');
+const {join} = require('node:path');
+const net = require('node:net');
+const assert = require('node:assert/strict');
+(async () => {
+  const listener = net.createServer();
+  await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
+  const port = listener.address().port;
+  await new Promise(resolve => listener.close(resolve));
+  const server = spawn(process.env.PYTHON || 'python',
+    ['-m', 'wec_engine.studio', '--port', String(port), '--data-dir', mkdtempSync(join(tmpdir(), 'wec-workflow-'))],
+    {env: {...process.env, WEC_STUDIO_TOKEN:'test-only-workflow-token-32-characters'}, stdio:'ignore'});
+  let browser;
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    for (let i=0; i<100; i++) {
+      try {if ((await fetch(base+'/api/health')).ok) break;} catch {}
+      if (i===99 || server.exitCode!==null) throw Error('Studio did not start');
+      await new Promise(r=>setTimeout(r,100));
+    }
+    browser = await chromium.launch({headless:true});
+    for (const width of [390,1440]) {
+      const context = await browser.newContext({viewport:{width,height:1000}});
+      const page = await context.newPage();
+      const errors=[];
+      page.on('pageerror', e=>errors.push(e.message));
+      await page.goto(base);
+      await page.locator('[data-kind=art]').click();
+      await page.locator('#title').fill('Workflow regression');
+      const tabs=page.locator('.workflow-tab');
+      assert.equal(await tabs.count(),5);
+      assert.equal(await page.locator('#title').isVisible(),true);
+      await tabs.nth(1).click();
+      assert.equal(await page.locator('#book-planner').isVisible(),true);
+      assert.equal(await page.locator('#title').isVisible(),false);
+      await tabs.nth(2).click();
+      assert.equal(await page.locator('#pages').isVisible(),true);
+      assert.equal(await page.locator('#save').isVisible(),true);
+      await tabs.nth(3).click();
+      assert.equal(await page.locator('#book-review').isVisible(),true);
+      await tabs.nth(4).click();
+      assert.equal(await page.locator('#cozy-export').isVisible(),true);
+      await tabs.nth(0).click();
+      assert.equal(await page.locator('#title').inputValue(),'Workflow regression');
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+      assert.deepEqual(errors,[]);
+      await context.close();
+      console.log(`PASS guided workflow ${width}px`);
+    }
+  } finally {
+    if(browser) await browser.close();
+    server.kill();
+  }
+})().catch(e=>{console.error(e);process.exitCode=1;});

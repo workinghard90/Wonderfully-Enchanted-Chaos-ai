@@ -510,3 +510,12 @@ button:disabled { opacity: .52; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
 }
+
+/* Guided workflow: preserve the existing DOM and all editor event handlers. */
+#editor [data-workflow-stage].workflow-inactive { display: none !important; }
+.workflow-footer { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 20px; }
+.workflow-footer p { flex-basis:100%; margin:0; }
+.project-steps .workflow-tab { flex:1 1 120px; min-height:44px; }
+.project-steps .workflow-tab[aria-current="step"] { background:#d8c4ff; color:#1c1730; border-color:#f4eaff; }
+#status.status-alert { position:fixed; bottom:12px; left:12px; right:12px; top:auto; z-index:100; max-height:30vh; overflow:auto; border:2px solid #ffcf91; box-shadow:0 4px 24px #000b; }
+@media (min-width:800px) { #status.status-alert { left:auto; max-width:460px; } }
