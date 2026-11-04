@@ -519,3 +519,227 @@ button:disabled { opacity: .52; }
 .project-steps .workflow-tab[aria-current="step"] { background:#d8c4ff; color:#1c1730; border-color:#f4eaff; }
 #status.status-alert { position:fixed; bottom:12px; left:12px; right:12px; top:auto; z-index:100; max-height:30vh; overflow:auto; border:2px solid #ffcf91; box-shadow:0 4px 24px #000b; }
 @media (min-width:800px) { #status.status-alert { left:auto; max-width:460px; } }
+
+/* UI 3.0: each workflow step is a dedicated, full-width workspace, not an anchor
+   into a vertically stacked editor. The project library remains available below. */
+body:has(#editor:not([hidden])) .workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+body:has(#editor:not([hidden])) .workspace > #editor {
+  order: 0;
+  width: 100%;
+  min-height: 100svh;
+}
+body:has(#editor:not([hidden])) .workspace > aside {
+  order: 1;
+  width: 100%;
+}
+#editor .project-steps {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 12px 0 0;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 10px 25px #05091080;
+}
+#editor .workflow-screen {
+  min-height: max(420px, calc(100svh - 278px));
+  width: 100%;
+  padding: clamp(18px, 3vw, 36px) 0;
+  overflow-wrap: anywhere;
+}
+#editor .workflow-screen.workflow-inactive { display: none !important; }
+#editor .workflow-screen > h2 {
+  margin: 0 0 10px;
+  font-size: clamp(25px, 3vw, 36px);
+}
+#editor .workflow-description {
+  font-size: 15px;
+  margin: 0 0 24px;
+  max-width: 720px;
+}
+#editor .workflow-save {
+  display: flex;
+  align-items: center;
+}
+#editor .workflow-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 21;
+  margin: 0;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  align-items: center;
+  gap: 10px;
+  background: #101a2b;
+  border: 1px solid #667b9e;
+  border-radius: 12px;
+  box-shadow: 0 -8px 24px #060b15b0;
+}
+#editor .workflow-footer button { min-height: 48px; }
+#editor .workflow-footer p {
+  grid-column: 1 / -1;
+  order: -1;
+  margin: 0;
+}
+#editor .workflow-screen .toolbar { margin-top: 18px; }
+#editor .workflow-screen .delivery { border: 0; margin: 0; }
+@media (max-width:660px) {
+  #editor .project-steps { gap: 5px; padding: 9px; }
+  #editor .project-steps > span { font-size: 11px; }
+  #editor .project-steps .workflow-tab {
+    padding: 8px 3px;
+    flex: 1 1 18%;
+    min-width: 0;
+    font-size: 11px;
+    min-height: 42px;
+  }
+  #editor .workflow-screen { min-height: max(400px, calc(100svh - 290px)); }
+  #editor .workflow-footer { margin: 0 -10px; padding: 10px; }
+  #editor .workflow-footer button { padding-inline: 8px; }
+  #editor .section-heading { display: flex; flex-wrap: wrap; align-items: center; }
+  #editor .workflow-save { margin-left: auto; }
+}
+
+/* UI 3.0 / Cozy Creations by Autumn palette — exact shared brand tokens.
+   WEC remains a separate product; Pip lavender is collection-specific, not
+   used for general studio navigation or primary action buttons. */
+:root {
+  color-scheme: light;
+  --cozy-cream: #fbf7ef;
+  --cozy-cream-deep: #f3ead9;
+  --cozy-red-soft: #f5e4e0;
+  --cozy-red: #8c3333;
+  --cozy-red-deep: #7f1f1f;
+  --cozy-gold: #b08d57;
+  --cozy-gold-soft: #f1e5c8;
+  --cozy-ink: #2f2b28;
+  --cozy-ink-soft: #5d564e;
+  --cozy-ink-deep: #262120;
+  --muted: var(--cozy-ink-soft);
+  --border: #c8b9a5;
+  --accent: var(--cozy-red);
+  font-family: "Nunito", ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
+  color: var(--cozy-ink);
+  background: var(--cozy-cream);
+}
+body { background: var(--cozy-cream); color: var(--cozy-ink); }
+header, footer { border-color: var(--border); }
+header { background: var(--cozy-cream-deep); }
+a { color: var(--cozy-red-deep); }
+a:hover { color: var(--cozy-red); }
+.brand, h1, h2, h3, #editor .workflow-screen > h2 {
+  color: var(--cozy-ink-deep);
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+}
+.brand span, .muted, .notice, .quicknav-label, .project-steps > span,
+.hero > p:last-child, .empty p, .library-item p, .page .prompt-preview,
+footer { color: var(--cozy-ink-soft); }
+.eyebrow { color: var(--cozy-red); }
+.panel, .page, .artwork-picker {
+  color: var(--cozy-ink);
+  background: #fffdf9;
+  border-color: var(--border);
+  box-shadow: 0 12px 32px -16px rgb(47 43 40 / 22%);
+}
+.page { background: var(--cozy-cream); border-color: #cbbba7; }
+.delivery, .character, .library-item { border-color: var(--border); }
+input, textarea, select {
+  color: var(--cozy-ink);
+  background: #fffdf9;
+  border-color: #9c8b78;
+  color-scheme: light;
+}
+input::placeholder, textarea::placeholder { color: #736a62; }
+button, .file-button {
+  color: #fff;
+  background: var(--cozy-red);
+  border-color: var(--cozy-red-deep);
+}
+button:hover, .file-button:hover { filter: brightness(0.94); }
+button:disabled { opacity: 0.55; }
+.secondary, .file-button {
+  color: var(--cozy-ink-deep);
+  background: var(--cozy-cream-deep);
+  border-color: #9e8667;
+}
+.formats button, .formats button:nth-child(2),
+.formats button:nth-child(3), .formats button:nth-child(4) {
+  background: linear-gradient(155deg, #fffdf9, var(--cozy-red-soft));
+  color: var(--cozy-ink-deep);
+  border-color: #b99782;
+}
+.formats span, .formats small { color: var(--cozy-red-deep); }
+.studio-quicknav {
+  background: var(--cozy-cream-deep);
+  border-color: #bba78c;
+  box-shadow: 0 6px 22px rgb(47 43 40 / 14%);
+}
+.studio-quicknav a, .project-steps a {
+  background: #fffdf9;
+  border-color: #a78b6a;
+  color: var(--cozy-red-deep);
+}
+.studio-quicknav a:hover, .project-steps a:hover,
+.studio-quicknav a:focus-visible, .project-steps a:focus-visible {
+  background: var(--cozy-red-soft);
+  border-color: var(--cozy-red);
+  color: var(--cozy-red-deep);
+}
+#editor .project-steps {
+  background: var(--cozy-cream-deep);
+  border-color: #ad9477;
+  box-shadow: 0 10px 24px rgb(47 43 40 / 14%);
+}
+.project-steps .workflow-tab, .project-steps .workflow-tab.secondary {
+  background: #fffdf9;
+  color: var(--cozy-red-deep);
+  border-color: #ab8e70;
+}
+.project-steps .workflow-tab[aria-current="step"],
+.project-steps .workflow-tab.secondary[aria-current="step"] {
+  background: var(--cozy-red);
+  color: #fff;
+  border-color: var(--cozy-red-deep);
+}
+#editor .workflow-footer {
+  background: var(--cozy-cream-deep);
+  border-color: #b49b7d;
+  box-shadow: 0 -8px 24px rgb(47 43 40 / 12%);
+}
+#editor .workflow-footer button:not(.secondary) {
+  background: var(--cozy-red);
+  border-color: var(--cozy-red-deep);
+  color: #fff;
+}
+.export-actions, #editor .workflow-screen .export-actions {
+  background: var(--cozy-gold-soft);
+  border-color: var(--cozy-gold);
+}
+#cozy-export { background: var(--cozy-red); color: #fff; border-color: var(--cozy-red-deep); }
+#status {
+  color: var(--cozy-ink-deep);
+  background: var(--cozy-gold-soft);
+  border-color: var(--cozy-gold);
+}
+#status.status-alert {
+  background: #fff8e9;
+  border-color: var(--cozy-red-deep);
+  box-shadow: 0 4px 24px rgb(47 43 40 / 25%);
+}
+.empty > span { color: var(--cozy-red); }
+.notice { border-left-color: var(--cozy-gold); }
+:focus-visible { outline: 3px solid var(--cozy-ink); outline-offset: 3px; }
+#render-movie { background: var(--cozy-ink-deep); }
+.render-job { border-color: var(--border); }
+.artwork-picker::backdrop { background: rgb(38 33 32 / 65%); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
