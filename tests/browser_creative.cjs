@@ -42,6 +42,9 @@ const assert = require("node:assert/strict");
     page.locator("#save-status").filter({ hasText: "Saved" }).waitFor();
   async function go(page, step) {
     const tab = page.locator(".workflow-tab").nth(step - 1);
+    while (await tab.isDisabled()) {
+      await page.locator(".workflow-footer button").last().click();
+    }
     if (await tab.getAttribute("aria-current") !== "step") await tab.click();
   }
   async function download(page, id) {
