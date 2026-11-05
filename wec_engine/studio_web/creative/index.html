@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/studio/style.css" />
     <script type="module" src="/studio/app.js"></script>
     <script type="module" src="/studio/workflow.js"></script>
+    <script type="module" src="/studio/automation.js"></script>
   </head>
   <body>
     <header>
@@ -236,6 +237,23 @@
             </p>
           </div>
           <p id="generation-status" class="muted">Checking image generation…</p>
+          <section id="automation-recipes" class="panel" aria-labelledby="automation-heading">
+            <h3 id="automation-heading">Creative automation · manual recipes</h3>
+            <p class="muted">Preview a reusable creative path, then choose which workspace to open. These recipes do not generate images, spend credits, create pages, render movies or publish anything.</p>
+            <label for="automation-recipe">Recipe</label>
+            <select id="automation-recipe">
+              <option value="plan">Plan only</option>
+              <option value="artwork">Artwork collection</option>
+              <option value="book">Printable book</option>
+              <option value="video">Faceless video</option>
+            </select>
+            <div class="toolbar">
+              <button type="button" id="automation-preview-button" class="secondary">Preview recipe</button>
+              <button type="button" id="automation-clear-button" class="secondary">Clear preview</button>
+            </div>
+            <p id="automation-status" class="muted" role="status"></p>
+            <div id="automation-preview"></div>
+          </section>
           <div id="book-planner">
             <label for="outline">Page ideas or story paragraphs</label
             ><textarea
