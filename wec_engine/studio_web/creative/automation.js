@@ -1,5 +1,5 @@
-// First automation milestone: read-only, explicit recipe previews.
-// No stored schedules, provider requests, generation, rendering, or publishing.
+// Manual automation: preview suggested paths and explicitly execute safe local actions.
+// No schedules, provider requests, generation, rendering, or publishing.
 const root = document.getElementById("automation-recipes");
 if (root) {
   const select = root.querySelector("#automation-recipe");
@@ -19,6 +19,91 @@ if (root) {
     "Storybook": "storybook",
   };
   let chosen = "";
+  let executing = false;
+  const actions = {
+    save: {
+      label: "Save current project",
+      button: "save",
+      description: "Save the current project on this device using the existing Save control.",
+      success: /Project saved on this device/,
+    },
+    convert: {
+      label: "Convert planning draft to pages",
+      button: "plan-pages",
+      description: "Append pages from your planning text. Existing pages remain; the draft clears only after a successful save.",
+      success: /Pages created/,
+    },
+  };
+  // Observe the app's existing status rather than claiming success from a click.
+  // The original handlers remain responsible for saving and validation.
+  function waitForResult(button, success) {
+    const message = document.getElementById("status");
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = value => {
+        if (settled) return;
+        settled = true;
+        observer.disconnect();
+        clearTimeout(timeout);
+        resolve(value);
+      };
+      const observer = new MutationObserver(() => {
+        const text = message.textContent.trim();
+        if (success.test(text)) finish({ok: true, message: text});
+        else if (text) finish({ok: false, message: text});
+      });
+      observer.observe(message, {childList:true, characterData:true, subtree:true});
+      const timeout = setTimeout(() => finish({ok:false, message:"The action's result was not confirmed. Check the project and Save status before retrying."}), 12000);
+      button.click();
+    });
+  }
+  async function execute(key, expectedTitle, expectedKind) {
+    const action = actions[key];
+    if (!action || executing || !chosen) return;
+    const editor = document.getElementById("editor");
+    const title = () => document.getElementById("editor-heading").textContent.trim();
+    const kind = () => document.getElementById("kind-label").textContent.trim();
+    if (editor.hidden || title() !== expectedTitle || kind() !== expectedKind) {
+      status.textContent = "Project changed. Preview this recipe again before taking action.";
+      return;
+    }
+    const original = document.getElementById(action.button);
+    if (!original || original.disabled) {
+      status.textContent = "This action is not available while another operation is running.";
+      return;
+    }
+    if (key === "convert") {
+      if (expectedKind === "Faceless video") {
+        status.textContent = "Use the existing Split narration control for video projects.";
+        return;
+      }
+      if (!document.getElementById("outline").value.trim()) {
+        status.textContent = "Add planning text before converting it into pages.";
+        return;
+      }
+    }
+    // Only a direct user click can approve a mutation. No auto-chaining.
+    if (!window.confirm(action.description + "\n\nContinue for “" + expectedTitle + "”?")) {
+      status.textContent = "Cancelled. No automation action was started.";
+      return;
+    }
+    if (editor.hidden || title() !== expectedTitle || kind() !== expectedKind || original.disabled) {
+      status.textContent = "Project changed or busy. No action was started.";
+      return;
+    }
+    executing = true;
+    status.textContent = action.label + " requested. Checking result…";
+    try {
+      const result = await waitForResult(original, action.success);
+      status.textContent = result.ok ? action.label + " completed. " + result.message : action.label + " not confirmed: " + result.message;
+      if (result.ok && key === "convert") {
+        chosen = "";
+        preview.replaceChildren();
+      }
+    } finally {
+      executing = false;
+    }
+  }
   function clear() {
     chosen = "";
     preview.replaceChildren();
@@ -56,6 +141,23 @@ if (root) {
       list.append(item);
     }
     preview.append(list);
+    const actionList = document.createElement("div");
+    const title = document.createElement("h4");
+    title.textContent = "Optional actions (one at a time)";
+    actionList.append(title);
+    const expectedTitle = document.getElementById("editor-heading").textContent.trim();
+    const expectedKind = document.getElementById("kind-label").textContent.trim();
+    const available = select.value === "plan" || select.value === "book" ? ["save", "convert"] : ["save"];
+    for (const key of available) {
+      const action = actions[key];
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = action.label;
+      button.addEventListener("click", () => execute(key, expectedTitle, expectedKind));
+      actionList.append(button);
+    }
+    preview.append(actionList);
     status.textContent = recipe.name + " preview ready. Each action remains your choice; no steps have run.";
   });
   root.querySelector("#automation-clear-button").addEventListener("click", clear);
