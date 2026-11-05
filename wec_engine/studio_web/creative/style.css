@@ -817,3 +817,30 @@ body:has(#editor:not([hidden])) .studio-quicknav { position: static; }
   border-radius: 0;
   box-shadow: none;
 }
+
+/* Phase 6 guided recipe orchestration: modest, responsive, and non-modal. */
+#automation-guided {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: clamp(12px, 2.5vw, 20px);
+  margin-block: 16px;
+  background: var(--cozy-cream-deep);
+  overflow-wrap: anywhere;
+}
+#automation-guided h4 { margin-top: 0; }
+#automation-guided-steps {
+  padding-left: 1.4rem;
+  max-width: 100%;
+}
+#automation-guided-steps li { padding-block: .3rem; }
+#automation-guided-steps [aria-current="step"] { font-weight: 700; }
+#automation-guided .toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#automation-guided .toolbar button {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
