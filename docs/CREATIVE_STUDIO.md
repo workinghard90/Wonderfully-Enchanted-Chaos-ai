@@ -41,6 +41,8 @@ The **Plan** workspace contains reusable recipe previews for planning, art, prin
 
 The first executable actions are **Save current project** and, for planning and print recipes, **Convert planning draft to pages**. Each requires its own explicit confirmation. The existing editor actions own validation and saving; the recipe UI reports success only when those actions report success. Errors and cancellations leave the creator in control, with no automatic retries or later steps.
 
+Use **Check recipe inputs** for an optional, read-only snapshot of the outline, artwork/page slots, or narration. A format mismatch is flagged; it does not change the project's format. These are guidance checks only: the existing Review and Export validators are still authoritative for artwork approval, print, video, and Cozy publishing packages.
+
 Recipe previews never make AI requests, approve artwork, render media, publish content or schedule work. Converting a draft adds pages only after confirmation, and existing failed-save safeguards retain the original draft. Use a project backup to protect work across devices.
 
 ## Four delivery paths
