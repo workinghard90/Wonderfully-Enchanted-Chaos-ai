@@ -165,6 +165,38 @@ if (productionRoot) {
     setTimeout(()=>URL.revokeObjectURL(url),1000);
     status.textContent="Preparation report downloaded. No production output was generated.";
   }
+  // Local-only exports may be launched after a separate confirmation, using
+  // the original app handler. Never trigger PDF, Cozy or video tasks here.
+  function runLocalExport() {
+    if(!samePrepared()) return invalidate();
+    const target=selection.value;
+    if(target!=="backup" && target!=="artwork") {
+      status.textContent="Use the original output button for PDF, Cozy or video approval.";
+      return;
+    }
+    const latest=collect();
+    if(!latest) return invalidate();
+    if(target==="artwork" &&
+      (!latest.pages.length || latest.pages.some(p=>!p.imageAttached))) {
+      status.textContent="An artwork ZIP requires a picture for every slot. Check the inventory before exporting.";
+      return;
+    }
+    const name=label[target];
+    if(!window.confirm("Download "+name+" using the existing WEC export controls? No automatic publishing or provider requests.")) {
+      status.textContent="Local export cancelled. No download was started.";
+      return;
+    }
+    if(!samePrepared()) return invalidate();
+    const original=$(destination[target]);
+    if(!original || original.disabled || original.hidden){
+      status.textContent="The original export action is currently unavailable.";
+      return;
+    }
+    // This is a user-requested, one-off invocation. The existing handler owns
+    // serialization and reports actual failures; do not auto-retry or infer success.
+    original.click();
+    status.textContent="Requested "+name+" through WEC's original export handler. Check the browser download and studio status for its result.";
+  }
   function handoff() {
     if(!samePrepared()) return invalidate();
     const target=selection.value;
@@ -195,6 +227,7 @@ if (productionRoot) {
   }
   $("production-prepare").addEventListener("click",prepare);
   $("production-download").addEventListener("click",download);
+  $("production-run-local").addEventListener("click",runLocalExport);
   $("production-handoff").addEventListener("click",handoff);
   $("production-review").addEventListener("click",review);
   selection.addEventListener("change",invalidate);
