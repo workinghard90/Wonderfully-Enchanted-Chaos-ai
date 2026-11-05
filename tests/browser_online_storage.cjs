@@ -33,6 +33,7 @@ const assert=require('node:assert/strict');
     return (await s.restoreRecovery(value,{createdAt:123,project:cp})).id;
    },{png,width});
    await p.reload();await p.locator('#library .library-item button').first().click();await ready(p);
+   await p.locator('[data-page-link="library"]').click();
    await p.locator('#online-panel summary').click();
    await p.locator('#online-save').click();await ready(p);
    await p.locator('#status').filter({hasText:'Online snapshot saved and verified'}).waitFor();
@@ -51,7 +52,9 @@ const assert=require('node:assert/strict');
    const q=await other.newPage();q.on('pageerror',e=>errors.push(e.message));q.on('dialog',d=>d.accept());
    await q.goto(base);await q.locator('#status').filter({hasText:'Choose a format'}).waitFor();
    assert.equal(await q.locator('#library .library-item').count(),0);
+   await q.locator('[data-page-link="library"]').click();
    await q.locator('#online-panel summary').click();await q.locator('#online-refresh').click();await ready(q);
+   await q.locator('[data-page-link="library"]').click();
    await q.locator('#online-library .library-item').filter({hasText:'Online '+width}).getByRole('button',{name:'Open local copy',exact:true}).click();await ready(q);
    await q.locator('#status').filter({hasText:'Recovery package restored'}).waitFor();
    const restored=await q.evaluate(async()=>{
