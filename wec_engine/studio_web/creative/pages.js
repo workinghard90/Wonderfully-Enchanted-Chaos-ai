@@ -14,6 +14,11 @@ if (main && document.getElementById("library-panel") && document.getElementById(
     link.href = "#/" + key;
     link.textContent = name;
     link.dataset.pageLink = key;
+    link.addEventListener("click", event => {
+      event.preventDefault();
+      if (location.hash !== link.getAttribute("href")) location.hash = link.getAttribute("href");
+      route();
+    });
     nav.append(link);
     links[key] = link;
     const section = document.createElement("section");
