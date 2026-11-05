@@ -50,7 +50,12 @@ if (root) {
       status.textContent = "Finish the current action before starting a guided run.";
       return;
     }
-    // Starting again cannot inherit completed flags from another run.
+    // Replacing the current run is a deliberate action; never inherit
+    // old completion claims or silently discard its session progress.
+    if (guided && !window.confirm("Replace the active guided run? Its session-only progress will be cleared. Project content will remain unchanged.")) {
+      status.textContent = "Existing guided run kept. No new run started.";
+      return;
+    }
     guided = {
       projectId:currentProject(), title:currentTitle(), kind:currentKind(),
       recipeKey, index:0, paused:false, states:recipe.stages.map(() => "pending")
@@ -131,6 +136,18 @@ if (root) {
       status.textContent = guided.paused ? "Guided run paused. No actions will run." :
         "Guided run resumed. Verify current inputs before taking action.";
     }, executing);
+    control("Check inputs for current step", () => {
+      if (!sameProject(guided) || guided.paused || executing) return;
+      const {compatible, rows} = collectInputs(guided.recipeKey, guided.kind);
+      if (!compatible) {
+        guided.paused = true;
+        status.textContent = "Project format mismatch. Guided run paused.";
+      } else {
+        status.textContent = "Current inputs: " + rows.join(" ") +
+          " These checks are guidance, not output approval.";
+      }
+      renderGuided();
+    }, guided.paused || executing);
     control("End guided run", () => {
       if (executing) return;
       stopGuided("Guided run ended. Project data and existing work are unchanged.");
@@ -436,7 +453,11 @@ if (root) {
     status.textContent = recipe.name + " preview ready. Each action remains your choice; no steps have run.";
   });
   root.querySelector("#automation-clear-button").addEventListener("click", clear);
-  select.addEventListener("change", clear);
+  select.addEventListener("change", () => {
+    clear();
+    // A change of preview does not silently abandon an active guided run.
+    if (guided) status.textContent = "Preview changed. The existing guided run stays active until ended or replaced.";
+  });
   // Project changes reset stale previews, so a recipe never implies that
   // its tasks were performed on a different project.
   function projectChanged() {
