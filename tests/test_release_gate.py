@@ -72,7 +72,7 @@ class ReleaseGateTests(unittest.TestCase):
             with patch.object(release_gate, "build_opener", return_value=opener):
                 result = release_gate.run_gate("https://wec.test", directory, token="private-secret")
             self.assertTrue(result["passed"], result["checks"])
-            self.assertEqual(len(result["checks"]), 14)
+            self.assertEqual(len(result["checks"]), 15)
             for module in ("workflow.js", "automation.js", "production.js"):
                 with self.subTest(module=module):
                     self.assertTrue(next(c for c in result["checks"]
@@ -118,6 +118,16 @@ class ReleaseGateTests(unittest.TestCase):
             self.assertFalse(result["passed"])
             self.assertFalse(next(c for c in result["checks"]
                                   if c["name"] == "asset:production.js")["pass"])
+
+    def test_missing_page_navigation_blocks_release(self):
+        with tempfile.TemporaryDirectory() as directory:
+            opener = self.fixture(Path(directory))
+            opener.routes["/studio/pages.js"] = (404, b"")
+            with patch.object(release_gate, "build_opener", return_value=opener):
+                result = release_gate.run_gate("https://wec.test", directory, public_only=True)
+            self.assertFalse(result["passed"])
+            self.assertFalse(next(c for c in result["checks"]
+                                  if c["name"] == "asset:pages.js")["pass"])
 
     def test_unsecured_api_is_a_blocker(self):
         with tempfile.TemporaryDirectory() as directory:

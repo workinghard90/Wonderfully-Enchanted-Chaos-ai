@@ -75,7 +75,7 @@ jobs:
         shell: bash
         run: |
           failed=0
-          for suite in browser_cozy_handoff browser_creative browser_guided_workflow browser_ai_connection browser_image_recovery browser_checkpoints browser_promo browser_video_retry browser_online_storage; do
+          for suite in browser_pages browser_cozy_handoff browser_creative browser_guided_workflow browser_ai_connection browser_image_recovery browser_checkpoints browser_promo browser_video_retry browser_online_storage; do
             echo "::group::${suite}"
             if node "tests/${suite}.cjs"; then
               echo "PASS ${suite}"

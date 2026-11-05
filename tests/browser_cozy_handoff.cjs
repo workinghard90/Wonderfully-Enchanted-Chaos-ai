@@ -84,6 +84,7 @@ const assert = require("node:assert/strict");
       page.on("download", () => downloads++);
       page.on("dialog", d => d.type() === "prompt" ? d.accept("Synthetic handoff description") : approve ? d.accept() : d.dismiss());
       await page.goto(base + "/");
+      await page.locator('[data-page-link="home"]').click();
       await page.locator("[data-kind=coloring]").click();
       await ready(page);
       await page.locator("#title").fill("Synthetic handoff");
@@ -141,6 +142,7 @@ const assert = require("node:assert/strict");
           });db.close();
         },kind);
         await page.reload();
+        await page.locator('[data-page-link="library"]').click();
         await page.locator("#library").getByRole("button",{name:"Open",exact:true}).first().click();
         await ready(page);
       }

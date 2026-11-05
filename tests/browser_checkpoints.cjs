@@ -43,6 +43,7 @@ async function stage(page, number) {
         return value.id;
       },png);
       await p.goto(base);await p.locator('#status').filter({hasText:'Choose a format'}).waitFor();
+      await p.locator('[data-page-link="library"]').click();
       await p.locator('#library .library-item button').first().click();await ready(p);
       const migrated=await backup(p);
       assert.equal(migrated.pages[0].asset.image_base64,png);assert.equal(migrated.reference.image_base64,png);
@@ -67,6 +68,7 @@ async function stage(page, number) {
       assert.equal(await info(p,copy.id),null);
       assert.equal(await p.evaluate(async id=>(await (await import('/studio/store.js')).get(id)).title,sourceId),'Modified original');
       assert.equal(await p.locator('#library .library-item').count(),2);
+      await p.locator('[data-page-link="library"]').click();
       await p.locator('#library .library-item').filter({hasText:'Modified original'}).getByRole('button',{name:'Open',exact:true}).click();await ready(p);
       assert.equal((await backup(p)).pages[0].asset.image_base64,changedPNG.toString('base64'));
       // Simulate a quota failure while replacing the checkpoint; preserve the old one.
@@ -98,6 +100,7 @@ async function stage(page, number) {
       assert.equal(conflicts.errors.length,4);assert.equal(conflicts.count,1);
       assert.notEqual(conflicts.current.checkpointId,originalCheckpoint.checkpointId);
       await p.reload();await p.locator('#status').filter({hasText:'Choose a format'}).waitFor();
+      await p.locator('[data-page-link="library"]').click();
       await p.locator('#library .library-item').filter({hasText:'Modified original'}).getByRole('button',{name:'Open',exact:true}).click();await ready(p);
       await stage(p, 3); await p.locator('#checkpoint-panel summary').click();
       await p.locator('#checkpoint-status').filter({hasText:'Checkpoint saved'}).waitFor();

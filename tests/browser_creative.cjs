@@ -107,6 +107,7 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "Choose a format" })
         .waitFor();
+      await page.locator('[data-page-link="home"]').click();
       await page.locator("[data-kind=storybook]").click();
       await ready(page);
       await go(page, 1); await page.locator('#title').fill("Pip story " + viewport.width);
@@ -184,6 +185,7 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "Choose a format" })
         .waitFor();
+      await page.locator('[data-page-link="library"]').click();
       await page.locator("#library .library-item button").first().click();
       await ready(page);
       assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 2);
@@ -273,6 +275,7 @@ const assert = require("node:assert/strict");
         .locator("#status")
         .filter({ hasText: "Choose a format" })
         .waitFor();
+      await other.locator('[data-page-link="library"]').click();
       await other.locator("#library .library-item button").first().click();
       await ready(other);
       await go(page, 1); await page.locator('#title').fill("Latest saved title");
@@ -289,6 +292,7 @@ const assert = require("node:assert/strict");
       );
       assert.equal(conflict.title, "Conflicting title");
       await other.close();
+      await page.locator('[data-page-link="home"]').click();
       await page.locator("[data-kind=coloring]").click();
       await ready(page);
       await go(page, 1); await page.locator('.character').first().locator('summary').click();
@@ -443,6 +447,7 @@ const assert = require("node:assert/strict");
         .filter({ hasText: "Coloring ZIP imported" })
         .waitFor();
       assert.equal(await page.locator(".page img:not([alt=\"Approved reference for comparison\"])").count(), 1);
+      await page.locator('[data-page-link="home"]').click();
       await page.locator("[data-kind=art]").click();
       await ready(page);
       await go(page, 1);
@@ -471,6 +476,7 @@ const assert = require("node:assert/strict");
         path: path.join(directory, `studio-${viewport.width}.png`),
         fullPage: true,
       });
+      await page.locator('[data-page-link="home"]').click();
       await page.locator("[data-kind=video]").click();
       await ready(page);
       await go(page, 1);
@@ -582,6 +588,7 @@ const assert = require("node:assert/strict");
       await ready(page);
       assert.equal(new URL(page.url()).pathname, "/");
       assert.equal(handoffs, 2);
+      await page.locator('[data-page-link="renders"]').click();
       const job = page.locator('.render-job');
       await job.getByRole('button', {name: 'Play video'}).waitFor();
       await job.getByRole('button', {name: 'Play video'}).click();
@@ -620,6 +627,7 @@ const assert = require("node:assert/strict");
     const queuePage = await queueContext.newPage();
     queuePage.on('dialog', d => {dialogs++; d.dismiss();});
     await queuePage.goto(base);
+    await queuePage.locator('[data-page-link="renders"]').click();
     await queuePage.locator('#refresh-renders').click();
     await queuePage.getByRole('button', {name:'Cancel render', exact:true}).click();
     await queuePage.locator('.render-job').getByText('cancelled', {exact:true}).waitFor();
@@ -666,6 +674,7 @@ const assert = require("node:assert/strict");
     p.on("dialog", (d) => acceptGeneration ? d.accept() : d.dismiss());
     await p.goto(base + "/studio/");
     await p.locator("#status").filter({ hasText: "Choose a format" }).waitFor();
+    await p.locator('[data-page-link="home"]').click();
     await p.locator("[data-kind=art]").click();
     await ready(p);
     await go(p, 3); await p.locator('#pictures').setInputFiles(fixture);
@@ -709,6 +718,7 @@ const assert = require("node:assert/strict");
     assert.match(generated.pages[0].asset.source, /reference-guided/);
     assert.equal(generated.reference.image_base64, png.toString('base64'));
 
+    await p.locator('[data-page-link="home"]').click();
     await p.locator("[data-kind=storybook]").click();
     await ready(p);
     await c.route("**/api/creative/draft", (r) =>

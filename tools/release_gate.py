@@ -18,6 +18,7 @@ SOURCE = Path(__file__).resolve().parents[1] / "wec_engine" / "studio_web" / "cr
 ASSETS = (
     ("index.html", "/studio/"),
     ("app.js", "/studio/app.js"),
+    ("pages.js", "/studio/pages.js"),
     ("workflow.js", "/studio/workflow.js"),
     ("automation.js", "/studio/automation.js"),
     ("production.js", "/studio/production.js"),
