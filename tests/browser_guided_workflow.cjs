@@ -131,6 +131,13 @@ const assert = require('node:assert/strict');
       assert.match(await page.locator('#automation-history-list li').first().innerText(),/completed.*inventory prepared/);
       assert.match(await page.locator('#save-status').innerText(),/^Saved /);
       assert.equal(await page.locator('#automation-history-list li').count(),2);
+      assert.match(await page.locator('#automation-durable-status').innerText(),/completed · done · artwork/);
+      const completedLedger = await page.evaluate(() => JSON.parse(localStorage.getItem('wec-automation-ledger-v1')));
+      assert.equal(completedLedger.length,1);
+      assert.equal(completedLedger[0].state,'completed');
+      assert.equal(completedLedger[0].step,'done');
+      assert.equal(Object.hasOwn(completedLedger[0],'title'),false);
+      assert.equal(Object.hasOwn(completedLedger[0],'text'),false);
       assert.equal(automationCalls,0,'Local automation must not call the image provider');
       await page.getByRole('button',{name:'Check recipe inputs'}).click();
       assert.match(await page.getByRole('status',{name:'Recipe input check'}).innerText(),/No artwork slots/);
@@ -267,6 +274,27 @@ const assert = require('node:assert/strict');
       await page.reload();
       await page.locator('[data-page-link="library"]').click();
       await page.locator('#library button').first().click();
+      await tabs.nth(1).click();
+      assert.match(await page.locator('#automation-durable-status').innerText(),/completed · done · artwork/,
+        'A successful local execution remains visible after reloading and reopening the same project');
+      // Simulate a browser crash between verified Save and the inventory
+      // checkpoint, then verify reload marks it interrupted without executing.
+      await page.evaluate(() => {
+        const key='wec-automation-ledger-v1';
+        const records=JSON.parse(localStorage.getItem(key));
+        records[0].state='running';
+        records[0].step='inventory';
+        localStorage.setItem(key,JSON.stringify(records));
+      });
+      await page.reload();
+      await page.locator('[data-page-link="library"]').click();
+      await page.locator('#library button').first().click();
+      await tabs.nth(1).click();
+      await page.locator('#automation-durable-status').filter({hasText:'Interrupted at inventory'}).waitFor();
+      const recovered = await page.evaluate(()=>JSON.parse(localStorage.getItem('wec-automation-ledger-v1')));
+      assert.equal(recovered[0].state,'interrupted');
+      assert.equal(await page.locator('#production-summary').innerText(),'',
+        'Recovery must not replay a previous production step');
       await tabs.nth(4).click();
       assert.equal(await page.locator('#editor-heading').innerText(),'Workflow regression');
       await page.locator('#save').click();

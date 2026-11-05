@@ -23,6 +23,85 @@ if (root) {
   // A guided run is a session-only navigation aid, not a durable job or proof
   // of completion. The existing editor remains responsible for all changes.
   let guided = null;
+  // Browser-local automation checkpoint, not a server-side background queue.
+  // Store ONLY bounded workflow metadata. No titles, prompts, images or tokens.
+  const ledgerKey = "wec-automation-ledger-v1";
+  const ledgerStates = new Set(["running","interrupted","completed","needs-review"]);
+  function readLedger() {
+    try {
+      const raw = localStorage.getItem(ledgerKey);
+      if (!raw) return [];
+      if (raw.length > 24000) throw Error("oversized");
+      const value = JSON.parse(raw);
+      if (!Array.isArray(value)) throw Error("malformed");
+      return value.filter(x => x && x.schema_version === 1 &&
+        typeof x.projectId === "string" && /^[0-9a-f-]{20,80}$/i.test(x.projectId) &&
+        ["art","video","coloring","storybook"].includes(x.kind) &&
+        ["plan","artwork","book","video"].includes(x.recipe) &&
+        ["backup","artwork","print","video"].includes(x.target) &&
+        ledgerStates.has(x.state) &&
+        ["save","inventory","done"].includes(x.step) &&
+        Number.isFinite(x.updated) && x.updated > 0).slice(0,20);
+    } catch {
+      return [];
+    }
+  }
+  function writeLedger(records) {
+    try {
+      localStorage.setItem(ledgerKey, JSON.stringify(records.slice(0,20)));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function updateLedger(projectId, fields) {
+    const records=readLedger().filter(x=>x.projectId!==projectId);
+    const previous=readLedger().find(x=>x.projectId===projectId);
+    const record={schema_version:1,projectId,
+      kind:fields.kind??previous?.kind,
+      recipe:fields.recipe??previous?.recipe,
+      target:fields.target??previous?.target,
+      state:fields.state??previous?.state,
+      step:fields.step??previous?.step,
+      updated:Date.now()};
+    if (!ledgerStates.has(record.state)) return false;
+    const ok=writeLedger([record,...records]);
+    if(ok) renderLedger();
+    return ok;
+  }
+  function renderLedger() {
+    const panel=root.querySelector("#automation-durable");
+    if(!panel) return;
+    const id=currentProject();
+    const record=readLedger().find(x=>x.projectId===id);
+    panel.replaceChildren();
+    const title=document.createElement("h4");
+    title.textContent="Last local automation run";
+    const info=document.createElement("p");
+    info.id="automation-durable-status";
+    info.setAttribute("role","status");
+    if (!record || document.getElementById("editor").hidden) {
+      info.textContent="No saved run record for this project on this browser.";
+    } else if (record.state==="interrupted") {
+      info.textContent="Interrupted at "+record.step+". Review project Save and Export before starting a new confirmed run. Nothing resumed automatically.";
+    } else {
+      info.textContent=record.state+" · "+record.step+" · "+record.recipe+
+        " recipe. This is local metadata, not output approval or cloud job state.";
+    }
+    panel.append(title,info);
+  }
+  function recoverLedger() {
+    const id=currentProject();
+    if (!id || document.getElementById("editor").hidden) return;
+    const record=readLedger().find(x=>x.projectId===id);
+    if(record?.state==="running")
+      updateLedger(id,{state:"interrupted"});
+    else renderLedger();
+  }
+  const durablePanel=document.createElement("section");
+  durablePanel.id="automation-durable";
+  durablePanel.setAttribute("aria-label","Local automation recovery");
+  root.append(durablePanel);
   const currentProject = () => document.getElementById("review-mode")?.dataset.projectId || "";
   const currentTitle = () => document.getElementById("editor-heading").textContent.trim();
   const currentKind = () => document.getElementById("kind-label").textContent.trim();
@@ -338,11 +417,21 @@ if (root) {
       status.textContent = "Project changed or save became unavailable. No run started.";
       return;
     }
+    // Persist the running marker BEFORE touching the project's Save handler.
+    // A tab crash/reload turns this into "interrupted", never "completed".
+    if (!updateLedger(expectedId,{kind:projectKinds[expectedKind],recipe:recipeKey,
+      target,state:"running",step:"save"})) {
+      status.textContent="Browser storage is unavailable. Local automation was not started. Save manually and download a recovery backup.";
+      return;
+    }
     executing = true;
     renderGuided();
     addReceipt("Local preparation", "running", "Step 1: saving");
     const receipt = historyList.firstElementChild;
     const finish = (outcome, message) => {
+      const state=outcome==="completed"?"completed":outcome==="stopped"?"interrupted":"needs-review";
+      if(!updateLedger(expectedId,{state,step:state==="completed"?"done":undefined}))
+        status.textContent="Unable to save run outcome to browser storage. Check this project's Save and Export status.";
       if (receipt) receipt.textContent = "Local preparation — " + outcome + ": " + message;
       status.textContent = "Local preparation " + outcome + ". " + message;
     };
@@ -358,6 +447,10 @@ if (root) {
       if (editor.hidden || currentProject() !== expectedId ||
           currentTitle() !== expectedTitle || currentKind() !== expectedKind) {
         finish("stopped", "Project changed after save; no output check was started.");
+        return;
+      }
+      if (!updateLedger(expectedId,{state:"running",step:"inventory"})) {
+        finish("needs review", "Save completed, but run checkpoint storage failed. No inventory check started.");
         return;
       }
       // The workbench is read-only. Switch to the recipe's intended output,
@@ -577,6 +670,9 @@ if (root) {
     clear();
     resetHistory();
     stopGuided();
+    // Editor replacement is async; update the display after the existing
+    // project-open handler changes its ID. Do not restore session claims.
+    queueMicrotask(recoverLedger);
   }
   document.querySelectorAll("[data-kind]").forEach(button => button.addEventListener("click", projectChanged));
   document.getElementById("library")?.addEventListener("click", event => {
@@ -586,4 +682,17 @@ if (root) {
   document.getElementById("import-zip")?.addEventListener("change", projectChanged);
   clear();
   renderGuided();
+  renderLedger();
+  // Rehydrate on a successful create/open/restore; status is only a hint.
+  // The exact current project ID is always checked before showing a record.
+  const editor=document.getElementById("editor");
+  new MutationObserver(recoverLedger).observe(editor,{attributes:true,attributeFilter:["hidden"]});
+  const projectIdNode=document.getElementById("review-mode");
+  if(projectIdNode) new MutationObserver(recoverLedger)
+    .observe(projectIdNode,{attributes:true,attributeFilter:["data-project-id"]});
+  const sharedStatus=document.getElementById("status");
+  if(sharedStatus) new MutationObserver(() => {
+    if(/^(Created |Opened |Backup restored|Recovery package restored)/.test(sharedStatus.textContent.trim()))
+      recoverLedger();
+  }).observe(sharedStatus,{childList:true,subtree:true});
 }

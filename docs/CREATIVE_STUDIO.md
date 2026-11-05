@@ -4,6 +4,33 @@ Open **`/`** (or `/studio/`) on the same studio host. The original story/video d
 at `/video/` and coloring editor at `/coloring/` remain available. This release adds
 a multi-project workspace without migrating or replacing either older store.
 
+## Browser-local automation recovery (PR #73)
+
+The **Save + prepare output** workflow now checkpoints a **bounded local run
+record** in this browser before Save begins, before output inventory starts,
+and after completion or a failed result. It stores only schema version, project
+identifier, project format, recipe, selected output, current step, state and
+timestamp. It never stores text drafts, artwork, video contents, credentials,
+provider tokens or even project titles in the automation ledger.
+
+The last recorded state remains visible in Plan after reload and opening the
+same project. If the page closed while a run was **running**, reopening marks it
+**interrupted**, rather than claiming success or automatically executing an
+unknown operation. The owner must inspect the current project Save and Export
+state and explicitly confirm a **new** run before any work occurs. Previous
+failures are marked **needs review**. Cancelling a confirmation does not run
+or checkpoint a new job.
+
+**Scope:** localStorage on this exact browser and origin, at most 20 project
+entries, latest run per project. This is **not** a server queue, shared browser
+synchronization, durable cloud backup, a cross-device audit log or an
+unattended worker. Clearing browser data deletes the run ledger; project backups
+and online snapshots remain separate. Work may have completed just before an
+interruption, so no automatic retries or duplicate actions occur on reload.
+For full unattended orchestration, a separate owner-authenticated server job
+store, idempotent task definitions, restart recovery, rate and cost limits,
+and explicit approvals for paid operations are still required.
+
 ## Executable local automation — first connected workflow (PR #72)
 
 The Plan workspace automation preview now offers **Save + prepare output**.
