@@ -93,4 +93,12 @@ if (main && document.getElementById("library-panel") && document.getElementById(
       location.hash="#/studio";
     previouslyHidden=nowHidden;
   }).observe(editor,{attributes:true,attributeFilter:["hidden"]});
+  // Reopening another project can leave the editor element already unhidden;
+  // navigate only once the original editor announces a successful result.
+  const sharedStatus=document.getElementById("status");
+  if(sharedStatus) new MutationObserver(() => {
+    const message=sharedStatus.textContent.trim();
+    if(!editor.hidden && /^(Created |Opened |Backup restored)/.test(message) &&
+        location.hash!=="#/studio") location.hash="#/studio";
+  }).observe(sharedStatus,{childList:true,characterData:true,subtree:true});
 }
