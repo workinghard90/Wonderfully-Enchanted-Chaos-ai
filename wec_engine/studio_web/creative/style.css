@@ -536,7 +536,7 @@ body:has(#editor:not([hidden])) .workspace > aside {
   order: 1;
   width: 100%;
 }
-#editor .project-steps {
+#editor .workspace-header {
   position: sticky;
   top: 0;
   z-index: 20;
@@ -784,3 +784,36 @@ button:disabled { opacity: 0.55; }
 }
 
 #export-image-list a { overflow-wrap: anywhere; }
+
+/* Reserve the top edge for the active project's controls while editing. */
+body:has(#editor:not([hidden])) .studio-quicknav { position: static; }
+#editor .workspace-header {
+  background: var(--cozy-cream-deep);
+  color: var(--cozy-ink);
+  border: 1px solid #ad9477;
+}
+#editor .workspace-header .section-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 8px 12px;
+}
+.workspace-header .section-heading > div:first-child { min-width: 0; }
+.workspace-header #kind-label { margin: 0; }
+.workspace-header #editor-heading {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+  font-size: clamp(1rem, 2.5vw, 1.4rem);
+}
+.workspace-header #save-status { grid-column: 1; margin: 0; color: var(--cozy-ink); }
+#editor .workspace-header .workflow-save { grid-area: 1 / 2 / 3 / 3; }
+#editor .workspace-header .project-steps {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid #ad9477;
+  border-radius: 0;
+  box-shadow: none;
+}
