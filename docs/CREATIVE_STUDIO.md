@@ -4,6 +4,12 @@ Open **`/`** (or `/studio/`) on the same studio host. The original story/video d
 at `/video/` and coloring editor at `/coloring/` remain available. This release adds
 a multi-project workspace without migrating or replacing either older store.
 
+## UI 4.1 — Inline workspace navigation
+
+The **Previous step** and **Continue to …** buttons sit **below the current Studio workspace** in the normal reading order, rather than following you as a sticky overlay. This keeps the Plan recipe controls, text, page inputs and output review fully visible on phones and desktop. The five Setup/Plan/Create/Review/Export tabs remain available at the top of Studio, so the bottom buttons are optional shortcuts. Switching steps does not automatically save, create, approve, export or modify any project content.
+
+**Release acceptance after UI 4.1 CI:** inspect the real iPhone layout on Plan, Create and Review; verify original projects and backups remain available; run one controlled restore using an independent backup copy; inspect live owner storage free bytes and snapshot limits; then manually review a sample exported PDF and video without invoking paid AI generation. These are owner-session checks and must not be inferred from synthetic CI or a successful Render deploy.
+
 ## Separate pages for the Creative Studio
 
 The primary WEC Creative Studio is organized as **four distinct pages**, rather than one long vertical dashboard: **Create** (`#/home`), **Library** (`#/library`), **Studio** (`#/studio`), and **Renders** (`#/renders`). Each is linkable from the main navigation; browser Back/Forward and reload reopen the selected screen. The five Setup, Plan, Create, Review and Export stages remain inside the **Studio** page, where only one workspace is visible at a time.
