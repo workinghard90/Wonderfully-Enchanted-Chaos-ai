@@ -136,6 +136,15 @@ if (root) {
       status.textContent = guided.paused ? "Guided run paused. No actions will run." :
         "Guided run resumed. Verify current inputs before taking action.";
     }, executing);
+    // Every actionable handoff is user initiated and goes through execute(),
+    // which checks the project, inputs, consent and the original editor result.
+    if (recipe.stages[guided.index] === 1 &&
+        (guided.recipeKey === "plan" || guided.recipeKey === "book")) {
+      control("Convert draft at this step (confirm)", () =>
+        execute("convert", guided.title, guided.kind), guided.paused || executing);
+    }
+    control("Save project at this step (confirm)", () =>
+      execute("save", guided.title, guided.kind), guided.paused || executing);
     control("Check inputs for current step", () => {
       if (!sameProject(guided) || guided.paused || executing) return;
       const {compatible, rows} = collectInputs(guided.recipeKey, guided.kind);
@@ -232,7 +241,8 @@ if (root) {
   }
   async function execute(key, expectedTitle, expectedKind) {
     const action = actions[key];
-    if (!action || executing || !chosen) return;
+    if (!action || executing ||
+        (!chosen && !(guided && sameProject(guided)))) return;
     const editor = document.getElementById("editor");
     const title = () => document.getElementById("editor-heading").textContent.trim();
     const kind = () => document.getElementById("kind-label").textContent.trim();
@@ -275,10 +285,12 @@ if (root) {
       if (currentReceipt) currentReceipt.textContent = action.label + (result.ok ? " — completed" : " — needs review") + ": " + result.message;
       if (!result.ok && guided && sameProject(guided)) {
         guided.paused = true;
-        status.textContent = "The action needs review. Guided run paused; check project state before resuming.";
       }
-      status.textContent = result.ok ? action.label + " completed. " + result.message : action.label + " not confirmed: " + result.message;
+      status.textContent = result.ok ? action.label + " completed. " + result.message :
+        action.label + " needs review. Guided run paused if active. Check the saved project before deciding whether to retry: " + result.message;
       if (result.ok && key === "convert") {
+        // A completed conversion changes the outline; refresh the preview
+        // before another manual conversion, without abandoning the guided run.
         chosen = "";
         preview.replaceChildren();
       }
