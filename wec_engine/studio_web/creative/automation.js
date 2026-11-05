@@ -299,6 +299,90 @@ if (root) {
       renderGuided();
     }
   }
+  // Real execution of a bounded, local-only two-step recipe. The existing
+  // editor owns persistence and the production workbench owns inventory checks.
+  // No AI calls, renders, downloads, publication, or implicit approvals.
+  async function runLocalPreparation(recipeKey, expectedTitle, expectedKind, expectedId) {
+    if (executing || chosen !== recipeKey || !recipes[recipeKey]) return;
+    const editor = document.getElementById("editor");
+    const {compatible} = collectInputs(recipeKey, expectedKind);
+    if (!compatible || editor.hidden || currentProject() !== expectedId ||
+        currentTitle() !== expectedTitle || currentKind() !== expectedKind) {
+      status.textContent = "Project or recipe changed. Preview the matching recipe again.";
+      return;
+    }
+    const targets = {
+      "Faceless video":"video", "Art collection":"artwork",
+      "Coloring book":"print", "Storybook":"print"
+    };
+    // Plan-only still gets a safe backup inventory; other recipes get a
+    // format-specific output assessment, never the actual export itself.
+    const target = recipeKey === "plan" ? "backup" : targets[expectedKind];
+    const save = document.getElementById("save");
+    const prepare = document.getElementById("production-prepare");
+    const selection = document.getElementById("production-target");
+    const preparationStatus = document.getElementById("production-status");
+    if (!target || !save || save.disabled || !prepare || !selection || !preparationStatus) {
+      status.textContent = "Save or production preparation is unavailable. No run started.";
+      return;
+    }
+    if (!window.confirm("Run two local steps for “" + expectedTitle +
+        "”?\\n1. Save the current project on this device.\\n2. Inspect its " +
+        target + " output inventory and warnings.\\n\\nNo AI generation, downloads, rendering, publishing or paid services.")) {
+      addReceipt("Local preparation", "cancelled", "No action started");
+      status.textContent = "Local preparation cancelled. No action started.";
+      return;
+    }
+    if (editor.hidden || currentProject() !== expectedId ||
+        currentTitle() !== expectedTitle || currentKind() !== expectedKind || save.disabled) {
+      status.textContent = "Project changed or save became unavailable. No run started.";
+      return;
+    }
+    executing = true;
+    renderGuided();
+    addReceipt("Local preparation", "running", "Step 1: saving");
+    const receipt = historyList.firstElementChild;
+    const finish = (outcome, message) => {
+      if (receipt) receipt.textContent = "Local preparation — " + outcome + ": " + message;
+      status.textContent = "Local preparation " + outcome + ". " + message;
+    };
+    try {
+      status.textContent = "Local preparation: saving project…";
+      const saved = await waitForResult(save, /Project saved on this device/);
+      const saveStatus = document.getElementById("save-status")?.textContent || "";
+      if (!saved.ok || !saveStatus.startsWith("Saved ")) {
+        finish("needs review", "Save was not verified; output preparation was NOT run. " + saved.message);
+        if (guided && sameProject(guided)) guided.paused = true;
+        return;
+      }
+      if (editor.hidden || currentProject() !== expectedId ||
+          currentTitle() !== expectedTitle || currentKind() !== expectedKind) {
+        finish("stopped", "Project changed after save; no output check was started.");
+        return;
+      }
+      // The workbench is read-only. Switch to the recipe's intended output,
+      // then run its original inspection handler synchronously.
+      selection.value = target;
+      selection.dispatchEvent(new Event("change", {bubbles:true}));
+      prepare.click();
+      const message = preparationStatus.textContent.trim();
+      if (!message.startsWith("Production inventory prepared.")) {
+        finish("needs review", "Project was saved, but production preparation did not confirm success.");
+        return;
+      }
+      const warnings = document.querySelectorAll("#production-issues li").length;
+      const summary = document.getElementById("production-summary")?.textContent.trim() || "";
+      finish("completed", "Project save verified and " + target +
+        " inventory prepared. " + warnings + " guidance warning(s). " + summary +
+        " Review the inventory in Export; outputs are NOT approved or generated.");
+    } catch (error) {
+      finish("needs review", "Unexpected preparation error. Check Save and Export before retrying.");
+      if (guided && sameProject(guided)) guided.paused = true;
+    } finally {
+      executing = false;
+      renderGuided();
+    }
+  }
   // Read-only preflight: descriptive checks, not an export/print certification.
   // Never infer approval from an uploaded image or bypass the existing validators.
   // One source for both on-screen input guidance and the downloaded run sheet.
@@ -445,6 +529,23 @@ if (root) {
       actionList.append(button);
     }
     preview.append(actionList);
+    const bounded = document.createElement("div");
+    const boundedTitle = document.createElement("h4");
+    boundedTitle.textContent = "Run safe local preparation";
+    const boundedInfo = document.createElement("p");
+    boundedInfo.className = "muted";
+    boundedInfo.textContent = "One confirmed run saves the current project, then inspects output inventory and warnings. It does not generate, render, download or publish anything.";
+    const boundedButton = document.createElement("button");
+    boundedButton.type = "button";
+    boundedButton.className = "secondary";
+    boundedButton.id = "automation-run-local";
+    boundedButton.textContent = "Save + prepare output";
+    const expectedId = currentProject();
+    const recipeKey = select.value;
+    boundedButton.addEventListener("click", () =>
+      runLocalPreparation(recipeKey, expectedTitle, expectedKind, expectedId));
+    bounded.append(boundedTitle, boundedInfo, boundedButton);
+    preview.append(bounded);
     const readiness = document.createElement("div");
     const check = document.createElement("button");
     check.type = "button";
