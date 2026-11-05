@@ -61,6 +61,8 @@ const assert = require('node:assert/strict');
       await page.locator('#automation-preview-button').click();
       assert.match(await page.locator('#automation-status').innerText(),/Each action remains your choice/);
       assert.equal(await page.locator('#automation-preview li').count(),3);
+      await page.getByRole('button',{name:'Check recipe inputs'}).click();
+      assert.match(await page.getByRole('status',{name:'Recipe input check'}).innerText(),/No artwork slots/);
       assert.equal(await page.locator('.page').count(),0);
       await page.locator('#automation-preview').getByRole('button',{name:'Open Review'}).click();
       assert.equal(await tabs.nth(3).getAttribute('aria-current'),'step');
@@ -75,6 +77,9 @@ const assert = require('node:assert/strict');
       await page.locator('#outline').fill(outline);
       await page.locator('#automation-recipe').selectOption('plan');
       await page.locator('#automation-preview-button').click();
+      await page.getByRole('button',{name:'Check recipe inputs'}).click();
+      assert.match(await page.getByRole('status',{name:'Recipe input check'}).innerText(),/Planning text is present/);
+      assert.equal(await page.locator('.page').count(),0);
       // Confirmed actions are opt-in; cancellation must not create pages.
       page.once('dialog', dialog => dialog.dismiss());
       await page.locator('#automation-preview').getByRole('button',{name:'Convert planning draft to pages'}).click();
