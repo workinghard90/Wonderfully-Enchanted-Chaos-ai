@@ -327,8 +327,8 @@ if (root) {
       return;
     }
     if (!window.confirm("Run two local steps for “" + expectedTitle +
-        "”?\\n1. Save the current project on this device.\\n2. Inspect its " +
-        target + " output inventory and warnings.\\n\\nNo AI generation, downloads, rendering, publishing or paid services.")) {
+        "”?\n1. Save the current project on this device.\n2. Inspect its " +
+        target + " output inventory and warnings.\n\nNo AI generation, downloads, rendering, publishing or paid services.")) {
       addReceipt("Local preparation", "cancelled", "No action started");
       status.textContent = "Local preparation cancelled. No action started.";
       return;
