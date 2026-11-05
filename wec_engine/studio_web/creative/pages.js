@@ -25,6 +25,8 @@ if (main && document.getElementById("library-panel") && document.getElementById(
   }
   const oldNav = main.querySelector(".studio-quicknav");
   oldNav?.replaceWith(nav);
+  const sharedStatusBar=document.getElementById("status");
+  if(sharedStatusBar) nav.after(sharedStatusBar);
   const hero = main.querySelector(".hero");
   hero?.before(...Object.values(pages));
   const homeItems = [
