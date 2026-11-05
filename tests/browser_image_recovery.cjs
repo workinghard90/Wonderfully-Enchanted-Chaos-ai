@@ -67,6 +67,7 @@ async function stage(page, number) {
       p.on('dialog',d=>accept?d.accept():d.dismiss());
       await p.goto(base); await p.locator('#status').filter({hasText:'Choose a format'}).waitFor();
       generated=Buffer.from(await p.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=40;const g=c.getContext('2d');g.fillStyle='green';g.fillRect(0,0,40,40);return c.toDataURL('image/png').split(',')[1];}),'base64');
+      await p.locator('[data-page-link="home"]').click();
       await p.locator('[data-kind=art]').click();await ready(p);
       await stage(p, 3); await p.locator('#pictures').setInputFiles({name:'original.png',mimeType:'image/png',buffer:png});
       await p.locator('#status').filter({hasText:'1 picture(s) added and saved'}).waitFor();
@@ -81,6 +82,7 @@ async function stage(page, number) {
       assert.equal(pending.pages[0].pendingGeneration.id,request.request_id);
       assert.equal(pending.pages[0].asset.image_base64,png.toString('base64'));
       await p.reload();await p.locator('#status').filter({hasText:'Choose a format'}).waitFor();
+      await p.locator('[data-page-link="library"]').click();
       await p.locator('#library .library-item button').first().click();await ready(p);
       await stage(p, 3); await p.locator('[data-generate]').click();await ready(p);
       assert.equal(calls,1,'Reload must not resubmit or allow unresolved generation');
