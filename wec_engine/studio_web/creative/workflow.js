@@ -46,7 +46,7 @@ function move(selector, step) {
   editor.querySelectorAll(selector).forEach(node => screens[step].append(node));
 }
 move("#video-workflow, label[for=title], #title, label[for=author], #author, details.character, #video-settings", 0);
-move("#book-planner", 1);
+move("#book-planner, #automation-recipes", 1);
 move("#generation-status, #page-help, #check-sources, #source-status, #pages, #checkpoint-panel", 2);
 move("#review-mode-label, #readiness, #asset-review, #book-review, #cover-settings", 3);
 move("#export-actions, #export-error, #export-originals, #export-note", 4);
