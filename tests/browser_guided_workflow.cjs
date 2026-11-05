@@ -82,6 +82,31 @@ const assert = require('node:assert/strict');
       // Manual automation recipes preview navigation only. No pages or AI requests.
       await tabs.nth(1).click();
       assert.equal(await page.locator('#automation-recipes').isVisible(),true);
+      // UI 4.1: the footer follows the currently active workspace; it may
+      // never float over a Plan recipe or obscure a mobile form field.
+      const inlineNav = await page.evaluate(() => {
+        const footer=document.querySelector('#editor .workflow-footer');
+        const screen=document.querySelector('#workflow-screen-2');
+        const recipe=document.querySelector('#automation-recipes');
+        return {
+          position:getComputedStyle(footer).position,
+          afterScreen:Boolean(screen.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING),
+          belowScreen:footer.getBoundingClientRect().top >= screen.getBoundingClientRect().bottom-1,
+          recipeVisible:getComputedStyle(recipe).display!=='none',
+          width:footer.getBoundingClientRect().width,
+          pageWidth:document.documentElement.scrollWidth,
+          viewportWidth:innerWidth
+        };
+      });
+      assert.equal(inlineNav.position,'static','Workflow navigation must never be sticky or fixed');
+      assert.equal(inlineNav.afterScreen,true,'Controls follow the active Plan workspace');
+      assert.equal(inlineNav.belowScreen,true,'Controls may not overlap Plan content');
+      assert.equal(inlineNav.recipeVisible,true);
+      assert.ok(inlineNav.width>0 && inlineNav.pageWidth<=inlineNav.viewportWidth,'No sideways overflow');
+      await page.locator('.workflow-footer button').last().click();
+      assert.equal(await tabs.nth(2).getAttribute('aria-current'),'step');
+      await page.locator('.workflow-footer button').first().click();
+      assert.equal(await tabs.nth(1).getAttribute('aria-current'),'step');
       let automationCalls = 0;
       await page.route('**/api/creative/image', route => {automationCalls++; return route.abort();});
       await page.locator('#automation-recipe').selectOption('artwork');
