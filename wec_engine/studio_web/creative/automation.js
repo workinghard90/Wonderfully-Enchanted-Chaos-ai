@@ -20,6 +20,31 @@ if (root) {
   };
   let chosen = "";
   let executing = false;
+  // Ephemeral, per-open-project receipts. Never persist claims of completion
+  // or infer that a project is publication-ready from an action result.
+  const history = document.createElement("section");
+  history.id = "automation-history";
+  history.setAttribute("aria-label", "Recent recipe actions");
+  history.setAttribute("role", "region");
+  const historyTitle = document.createElement("h4");
+  historyTitle.textContent = "Recent recipe actions (this session)";
+  const historyList = document.createElement("ol");
+  historyList.id = "automation-history-list";
+  const historyHint = document.createElement("p");
+  historyHint.className = "muted";
+  historyHint.textContent = "Only actions started through this panel appear here. Recheck saved work before retrying; this is not a durable audit trail.";
+  history.append(historyTitle, historyHint, historyList);
+  root.append(history);
+  function addReceipt(label, outcome, detail) {
+    const item = document.createElement("li");
+    // No source content is retained in this history, only a short outcome.
+    item.textContent = label + " — " + outcome + (detail ? ": " + detail : "");
+    historyList.prepend(item);
+    while (historyList.children.length > 10) historyList.lastElementChild.remove();
+  }
+  function resetHistory() {
+    historyList.replaceChildren();
+  }
   const actions = {
     save: {
       label: "Save current project",
@@ -85,6 +110,7 @@ if (root) {
     // Only a direct user click can approve a mutation. No auto-chaining.
     if (!window.confirm(action.description + "\n\nContinue for “" + expectedTitle + "”?")) {
       status.textContent = "Cancelled. No automation action was started.";
+      addReceipt(action.label, "cancelled", "No action started");
       return;
     }
     if (editor.hidden || title() !== expectedTitle || kind() !== expectedKind || original.disabled) {
@@ -92,9 +118,12 @@ if (root) {
       return;
     }
     executing = true;
+    addReceipt(action.label, "running", "Waiting for the existing editor handler");
+    const currentReceipt = historyList.firstElementChild;
     status.textContent = action.label + " requested. Checking result…";
     try {
       const result = await waitForResult(original, action.success);
+      if (currentReceipt) currentReceipt.textContent = action.label + (result.ok ? " — completed" : " — needs review") + ": " + result.message;
       status.textContent = result.ok ? action.label + " completed. " + result.message : action.label + " not confirmed: " + result.message;
       if (result.ok && key === "convert") {
         chosen = "";
@@ -267,11 +296,15 @@ if (root) {
   select.addEventListener("change", clear);
   // Project changes reset stale previews, so a recipe never implies that
   // its tasks were performed on a different project.
-  document.querySelectorAll("[data-kind]").forEach(button => button.addEventListener("click", clear));
+  function projectChanged() {
+    clear();
+    resetHistory();
+  }
+  document.querySelectorAll("[data-kind]").forEach(button => button.addEventListener("click", projectChanged));
   document.getElementById("library")?.addEventListener("click", event => {
-    if (event.target.closest("button")) clear();
+    if (event.target.closest("button")) projectChanged();
   });
-  document.getElementById("restore")?.addEventListener("change", clear);
-  document.getElementById("import-zip")?.addEventListener("change", clear);
+  document.getElementById("restore")?.addEventListener("change", projectChanged);
+  document.getElementById("import-zip")?.addEventListener("change", projectChanged);
   clear();
 }
