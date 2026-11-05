@@ -145,12 +145,18 @@ function lock(value) {
 }
 async function run(action) {
   if (busy) return;
+  $("export-error").hidden = true;
   clearTimeout(saveTimer);
   lock(true);
   try {
     await action();
   } catch (e) {
-    say(e.message || String(e));
+    const message = e.message || String(e);
+    say(message);
+    if ($("editor").dataset.workflowStep === "4") {
+      $("export-error").textContent = message;
+      $("export-error").hidden = false;
+    }
   } finally {
     lock(false);
     if (dirty)
@@ -341,6 +347,10 @@ function render() {
   $("book-planner").hidden = project.kind === "video";
   $("video").hidden = project.kind !== "video";
   $("pdf").hidden = project.kind === "video";
+  $("cozy-export").hidden = project.kind === "video";
+  $("export-plan").hidden = project.kind === "video";
+  const exportImages = $("export-image-list");
+  exportImages.replaceChildren();
   $("page-help").textContent =
     project.kind === "video"
       ? "Split your finished narration first, then attach one picture per scene. Render video builds a movie here from a saved copy of your scenes."
@@ -377,6 +387,11 @@ function render() {
       original.download = `artwork-${i + 1}.${page.asset.extension}`;
       original.textContent = "Download original image";
       visual.append(img, original);
+      const item = document.createElement("li");
+      const exportLink = original.cloneNode(false);
+      exportLink.textContent = title.textContent + " — " + page.asset.name;
+      item.append(exportLink);
+      exportImages.append(item);
       const info = document.createElement("p");
       info.className = "muted";
       info.textContent = `${page.asset.width} × ${page.asset.height} · ${page.asset.source} · ${ppi(page)} PPI at planned size`;
@@ -557,6 +572,11 @@ function render() {
       );
     card.append(actions);
     $("pages").append(card);
+  }
+  if (!exportImages.childElementCount) {
+    const item = document.createElement("li");
+    item.textContent = "Attach a picture in Create to download an original image.";
+    exportImages.append(item);
   }
   updateReviewPanel();
   readiness();
@@ -1033,15 +1053,19 @@ $("plan-pages").onclick = () =>
     render();
     say("Pages created from your text. Add prompts and pictures next.");
   });
-$("download-plan").onclick = () => run(async () => {
-  readFields();
-  const draft = (project.planDraft || "").trim();
-  if (!draft) throw Error("Write an outline in Plan before downloading it.");
-  // Text-only exports never require generated artwork, approval or printing checks.
-  download(new Blob([draft + "\n"], {type: "text/plain;charset=utf-8"}), "-plan.txt");
-  if (dirty) await persist();
-  say("Planning draft downloaded as a text file. Project backup keeps the editable draft.");
-});
+function downloadPlan() {
+  return run(async () => {
+    readFields();
+    const draft = (project.planDraft || "").trim();
+    if (!draft) throw Error("Write an outline in Plan before downloading it.");
+    // Text-only exports never require generated artwork, approval or printing checks.
+    download(new Blob([draft + "\n"], {type: "text/plain;charset=utf-8"}), "-plan.txt");
+    if (dirty) await persist();
+    say("Planning draft downloaded as a text file. Project backup keeps the editable draft.");
+  });
+}
+$("download-plan").onclick = downloadPlan;
+$("export-plan").onclick = downloadPlan;
 $("split").onclick = () =>
   run(async () => {
     readFields();
@@ -1348,7 +1372,7 @@ async function approveBookExport() {
       updateReadinessSummary();
     }
     $("book-review").scrollIntoView({block:"center", behavior:"smooth"});
-    throw Error("Fix the missing book content listed in Review before printing. Project backup still keeps unfinished work.");
+    throw Error(result.issues.find(issue => issue.error).text + " Open Review for all print findings.");
   }
   return !result.issues.length || confirm(result.issues.map(i => i.text).join("\n") + "\nExport a review PDF anyway? No artwork is changed or removed.");
 }

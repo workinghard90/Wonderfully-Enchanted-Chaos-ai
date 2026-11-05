@@ -53,10 +53,13 @@ const assert = require('node:assert/strict');
       await page.waitForFunction(() => !document.querySelector('#save').disabled);
       await page.reload();
       await page.locator('#library button').first().click();
-      await tabs.nth(1).click();
+      await tabs.nth(4).click();
+      const [exportText] = await Promise.all([
+        page.waitForEvent('download'), page.locator('#export-plan').click()
+      ]);
+      assert.equal(readFileSync(await exportText.path(),'utf8'),outline+'\n');
       assert.equal(await page.locator('#outline').inputValue(),outline);
       assert.equal(await page.locator('.page').count(),0);
-      await tabs.nth(4).click();
       const [backupFile] = await Promise.all([
         page.waitForEvent('download'), page.locator('#backup').click()
       ]);
@@ -109,6 +112,23 @@ const assert = require('node:assert/strict');
       assert.deepEqual(readFileSync(await artFile.path()),png);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
       await tabs.nth(0).click();
+      await page.reload();
+      await page.locator('#library button').first().click();
+      await tabs.nth(4).click();
+      await page.locator('#export-originals summary').click();
+      const images = page.locator('#export-image-list a');
+      assert.equal(await images.count(),1);
+      const [standalone] = await Promise.all([page.waitForEvent('download'),images.first().click()]);
+      assert.equal(standalone.suggestedFilename(),'artwork-1.png');
+      assert.deepEqual(readFileSync(await standalone.path()),png);
+      await page.locator('#zip').click();
+      await page.locator('#status').filter({hasText:'Every page needs a picture'}).waitFor();
+      await page.locator('#pdf').click();
+      await page.locator('#export-error').filter({hasText:'Page 2: missing picture'}).waitFor();
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+      // A failed PDF check selects print review so the creator can inspect the findings.
+      await tabs.nth(3).click();
+      await page.getByLabel('Review output').selectOption('art');
       // Each workspace is directly accessible, regardless of which stages were used.
       for (const tab of await tabs.all()) assert.equal(await tab.isEnabled(), true);
       await tabs.nth(4).click();
@@ -167,6 +187,10 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#cover-settings').isVisible(),false);
       assert.equal(await page.locator('#book-review').isVisible(),false);
       assert.equal(await page.locator('#asset-review-heading').innerText(),'Scene review');
+      await tabs.nth(4).click();
+      for (const id of ['pdf','cozy-export','export-plan']) assert.equal(await page.locator('#'+id).isVisible(),false);
+      assert.equal(await page.locator('#video').isVisible(),true);
+      assert.equal(await page.locator('#export-image-list a').count(),0);
       assert.deepEqual(errors,[]);
       await context.close();
       console.log(`PASS guided workflow ${width}px`);
