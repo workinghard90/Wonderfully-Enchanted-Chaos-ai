@@ -844,3 +844,13 @@ body:has(#editor:not([hidden])) .studio-quicknav { position: static; }
   white-space: normal;
   text-align: center;
 }
+
+/* Phase 7 production preparation remains inside the existing Export workspace. */
+#production-workbench { margin-block: 18px; overflow-wrap: anywhere; }
+#production-workbench .toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+#production-workbench .toolbar button { white-space: normal; max-width: 100%; }
+#production-inventory { padding-left: 1.35rem; }
+#production-inventory li { padding: .35rem 0; overflow-wrap: anywhere; }
+#production-inventory li button { margin: .25rem .5rem; }
+#production-issues { padding-left: 1.35rem; }
+#production-issues li { margin-block: .35rem; }
