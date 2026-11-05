@@ -413,6 +413,19 @@ const assert = require('node:assert/strict');
       for (const id of ['pdf','cozy-export','export-plan']) assert.equal(await page.locator('#'+id).isVisible(),false);
       assert.equal(await page.locator('#video').isVisible(),true);
       assert.equal(await page.locator('#export-image-list a').count(),0);
+      // Production preparation respects video-specific requirements and
+      // keeps actual rendering behind the existing consent controls.
+      await page.locator('#production-target').selectOption('video');
+      await page.locator('#production-prepare').click();
+      assert.match(await page.locator('#production-issues').innerText(),/Add narration/);
+      await page.locator('#production-handoff').click();
+      assert.equal(await page.locator('#video').evaluate(e=>e===document.activeElement),true);
+      await page.locator('#production-target').selectOption('print');
+      await page.locator('#production-prepare').click();
+      assert.match(await page.locator('#production-issues').innerText(),/not supported/);
+      await page.locator('#production-handoff').click();
+      assert.match(await page.locator('#production-status').innerText(),/unavailable/);
+      assert.equal(await page.locator('#video').isVisible(),true);
       await tabs.nth(1).click();
       await page.locator('#automation-recipe').selectOption('artwork');
       await page.locator('#automation-preview-button').click();
