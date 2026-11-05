@@ -4,6 +4,7 @@ const {spawn} = require('node:child_process');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), net = require('node:net');
 const assert = require('node:assert/strict');
 async function stage(page, number) {
+  if(!(await page.locator("#wec-page-studio").isVisible())) await page.locator('[data-page-link="studio"]').click();
   const steps = page.locator(".workflow-tab");
   if (await steps.count()) {
     const selected = steps.nth(number - 1);
@@ -45,15 +46,15 @@ async function stage(page, number) {
       await stage(p, 3); await p.locator('#add').click(); await ready(p);
       assert.equal(await p.locator('.page').count(),1);
       assert.equal(await p.locator('[data-generate]').isDisabled(),true);
-      await p.locator('#check-ai').click(); await ready(p);
+      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
       assert.equal(dialogs,1);
       assert.match(await p.locator('#ai-connection-status').innerText(), /cancelled/);
       answer = '   ';
-      await p.locator('#check-ai').click(); await ready(p);
+      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
       assert.match(await p.locator('#ai-connection-status').innerText(), /not completed/);
       assert.equal(await p.evaluate(()=>sessionStorage.getItem('wec_token')),null);
       answer = 'wrong';
-      await p.locator('#check-ai').click(); await ready(p);
+      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
       assert.match(await p.locator('#ai-connection-status').innerText(), /sign-in was not accepted/);
       assert.equal(await p.evaluate(()=>sessionStorage.getItem('wec_token')),null);
       // A stale tab must explain the rejected sign-in without a startup prompt.
@@ -66,12 +67,12 @@ async function stage(page, number) {
       await p.locator('[data-page-link="library"]').click();
       await p.locator('#library .library-item button').first().click(); await ready(p);
       answer = '  '+token+'  ';
-      await p.locator('#check-ai').click(); await ready(p);
+      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
       assert.match(await p.locator('#ai-connection-status').innerText(), /WEC_ENABLE_IMAGE_GENERATION/);
       assert.equal(await p.evaluate(()=>sessionStorage.getItem('wec_token')),token);
       assert.equal(await p.locator('.page').count(),1);
       await p.route('**/api/generation', r => r.fulfill({json:{ready:true,creative_ready:true,reference_ready:true,attempts_today:used,daily_limit:20,message:'Fixture configured'}}));
-      await p.locator('#check-ai').click(); await ready(p);
+      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
       assert.equal(await p.locator('[data-generate]').isDisabled(),false);
       // Prompt previews must reflect character/style edits made after page creation.
       await stage(p, 1); await p.locator('.character').first().locator('summary').click();
@@ -100,7 +101,7 @@ async function stage(page, number) {
       assert.equal(calls,2);
       assert.match(await p.locator('#status').innerText(), /90 seconds/);
       used = 20;
-      await p.locator('#check-ai').click(); await ready(p);
+      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
       assert.equal(await p.locator('[data-generate]').isDisabled(),true);
       assert.match(await p.locator('#ai-connection-status').innerText(), /Daily limit reached/);
       assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth),false);
