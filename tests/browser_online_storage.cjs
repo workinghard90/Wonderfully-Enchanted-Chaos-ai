@@ -21,7 +21,7 @@ const assert=require('node:assert/strict');
    const p=await context.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
    await p.goto(base);await p.locator('#status').filter({hasText:'Choose a format'}).waitFor();
    // Capacity is read-only; distinguish video slots and disk bytes before cleanup.
-   await p.locator('#check-storage').click();await ready(p);
+   await p.locator('[data-page-link="renders"]').click();await p.locator('#check-storage').click();await ready(p);
    await p.locator('#server-storage-status').filter({hasText:'Saved renders: 0/3'}).waitFor();
    assert.match(await p.locator('#server-storage-status').innerText(),/Online snapshots: 0\/50/);
    const id=await p.evaluate(async ({png,width})=>{
@@ -32,13 +32,14 @@ const assert=require('node:assert/strict');
     const cp=structuredClone(value);cp.pages[0].prompt='Checkpoint prompt';
     return (await s.restoreRecovery(value,{createdAt:123,project:cp})).id;
    },{png,width});
-   await p.reload();await p.locator('#library .library-item button').first().click();await ready(p);
+   await p.reload();await p.locator('[data-page-link="library"]').click();await p.locator('#library .library-item button').first().click();await ready(p);
    await p.locator('[data-page-link="library"]').click();
    await p.locator('#online-panel summary').click();
    await p.locator('#online-save').click();await ready(p);
    await p.locator('#status').filter({hasText:'Online snapshot saved and verified'}).waitFor();
    await p.locator('#check-storage').click();await ready(p);
    await p.locator('#server-storage-status').filter({hasText:'Online snapshots: 1/50'}).waitFor();
+   await p.locator('[data-page-link="library"]').click();
    const row=p.locator('#online-library .library-item').filter({hasText:'Online '+width});
    assert.equal(await row.count(),1);
    const wait=p.waitForEvent('download');await row.getByRole('button',{name:'Download snapshot',exact:true}).click();
@@ -66,7 +67,7 @@ const assert=require('node:assert/strict');
    assert.equal(restored.checkpoint,'Checkpoint prompt');assert.equal(restored.receipt,'a'.repeat(32));
    // Failed upload leaves both local work and the prior remote snapshot usable.
    await q.route('**/api/creative/snapshots',route=>route.request().method()==='POST'?route.fulfill({status:507,contentType:'application/json',body:JSON.stringify({error:'Test disk full; prior snapshots kept'})}):route.continue());
-   await q.locator('#online-save').click();await ready(q);await q.locator('#status').filter({hasText:'Test disk full'}).waitFor();
+   await q.locator('[data-page-link="library"]').click();await q.locator('#online-save').click();await ready(q);await q.locator('#status').filter({hasText:'Test disk full'}).waitFor();
    assert.equal(await q.locator('#library .library-item').count(),1);
    await q.unroute('**/api/creative/snapshots');
    await row.getByRole('button',{name:'Remove online snapshot',exact:true}).click();await ready(p);
