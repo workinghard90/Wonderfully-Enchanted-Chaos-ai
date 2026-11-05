@@ -72,8 +72,11 @@ class ReleaseGateTests(unittest.TestCase):
             with patch.object(release_gate, "build_opener", return_value=opener):
                 result = release_gate.run_gate("https://wec.test", directory, token="private-secret")
             self.assertTrue(result["passed"], result["checks"])
-            self.assertEqual(len(result["checks"]), 12)
-            self.assertTrue(next(c for c in result["checks"] if c["name"] == "asset:pages.js")["pass"])
+            self.assertEqual(len(result["checks"]), 15)
+            for module in ("workflow.js", "automation.js", "production.js"):
+                with self.subTest(module=module):
+                    self.assertTrue(next(c for c in result["checks"]
+                                         if c["name"] == "asset:" + module)["pass"])
             self.assertTrue(all(request.get_method() == "GET" for request in opener.requests))
             self.assertTrue(all(not request.full_url.endswith("private-secret") for request in opener.requests))
             protected = [req for req in opener.requests if "/api/video" in req.full_url or
@@ -92,6 +95,29 @@ class ReleaseGateTests(unittest.TestCase):
             self.assertFalse(result["passed"])
             self.assertFalse(next(c for c in result["checks"] if c["name"] == "asset:app.js")["pass"])
             self.assertEqual(result["scope"], "public-only")
+
+    def test_missing_or_stale_automation_module_blocks_release(self):
+        for module in ("workflow.js", "automation.js", "production.js"):
+            with self.subTest(module=module), tempfile.TemporaryDirectory() as directory:
+                opener = self.fixture(Path(directory))
+                route = "/studio/" + module
+                status, content = opener.routes[route]
+                opener.routes[route] = (status, content + b"stale")
+                with patch.object(release_gate, "build_opener", return_value=opener):
+                    result = release_gate.run_gate("https://wec.test", directory, public_only=True)
+                self.assertFalse(result["passed"])
+                self.assertFalse(next(c for c in result["checks"]
+                                      if c["name"] == "asset:" + module)["pass"])
+
+    def test_missing_automation_module_blocks_release(self):
+        with tempfile.TemporaryDirectory() as directory:
+            opener = self.fixture(Path(directory))
+            opener.routes["/studio/production.js"] = (404, b"")
+            with patch.object(release_gate, "build_opener", return_value=opener):
+                result = release_gate.run_gate("https://wec.test", directory, public_only=True)
+            self.assertFalse(result["passed"])
+            self.assertFalse(next(c for c in result["checks"]
+                                  if c["name"] == "asset:production.js")["pass"])
 
     def test_missing_page_navigation_blocks_release(self):
         with tempfile.TemporaryDirectory() as directory:
