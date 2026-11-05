@@ -782,3 +782,5 @@ button:disabled { opacity: 0.55; }
   margin-block: .5rem;
   object-fit: contain;
 }
+
+#export-image-list a { overflow-wrap: anywhere; }

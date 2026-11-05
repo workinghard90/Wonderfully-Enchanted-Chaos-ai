@@ -349,12 +349,18 @@
               <p class="muted">Page numbers refer to editor pages, not printed sheet numbers. Exact duplicates means identical file bytes; similar drawings and re-encoded copies need visual review. These checks do not certify KDP acceptance or text layout.</p>
             </section>
             <div id="export-actions" class="toolbar export-actions">
-              <button id="backup" class="secondary">
-                Download project backup</button
-              ><button id="cozy-export" class="secondary" type="button">Export approved project for Cozy</button\n              ><button id="zip" class="secondary">Download artwork ZIP</button
-              ><button id="pdf">Download book PDF</button
-              ><button id="video">Render video</button>
+              <button id="backup" class="secondary">Download project backup</button>
+              <button id="export-plan" type="button" class="secondary">Download planning text</button>
+              <button id="zip" class="secondary">Download artwork ZIP</button>
+              <button id="pdf">Download book PDF</button>
+              <button id="video">Render video</button>
+              <button id="cozy-export" class="secondary" type="button">Export approved project for Cozy</button>
             </div>
+            <p id="export-error" hidden></p>
+            <details id="export-originals">
+              <summary>Download individual images</summary>
+              <ul id="export-image-list"></ul>
+            </details>
             <p id="export-note" class="muted"></p>
           </section>
         </section>
