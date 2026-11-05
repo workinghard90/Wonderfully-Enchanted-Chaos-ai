@@ -1,4 +1,5 @@
 import json
+from contextlib import closing
 import sqlite3
 import tempfile
 import threading
@@ -49,8 +50,9 @@ class AutomationJobsTests(unittest.TestCase):
             db = Path(td) / "jobs.sqlite3"
             jobs = AutomationJobs(db)
             record, _ = jobs.create(payload())
-            with sqlite3.connect(db) as conn:
+            with closing(sqlite3.connect(db)) as conn:
                 conn.execute("UPDATE jobs SET status='running' WHERE id=?", (record["id"],))
+                conn.commit()
             restarted = AutomationJobs(db)
             self.assertEqual(restarted.get(record["id"])["status"], "interrupted")
 
