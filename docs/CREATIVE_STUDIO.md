@@ -4,6 +4,14 @@ Open **`/`** (or `/studio/`) on the same studio host. The original story/video d
 at `/video/` and coloring editor at `/coloring/` remain available. This release adds
 a multi-project workspace without migrating or replacing either older store.
 
+## Separate pages for the Creative Studio
+
+The primary WEC Creative Studio is organized as **four distinct pages**, rather than one long vertical dashboard: **Create** (`#/home`), **Library** (`#/library`), **Studio** (`#/studio`), and **Renders** (`#/renders`). Each is linkable from the main navigation; browser Back/Forward and reload reopen the selected screen. The five Setup, Plan, Create, Review and Export stages remain inside the **Studio** page, where only one workspace is visible at a time.
+
+**Create** selects a project format; a successful create opens Studio automatically. **Library** manages saved browser projects, portable backup restore, online snapshots and existing server story access. Opening or restoring a project navigates to Studio only after the original editor reports success. **Renders** shows retained server video jobs and verification tools separately. AI connection and introduction live on Create. The existing save status and errors remain visible across pages.
+
+Routing is client-side via URL fragments, not a new API or separate server/database. Existing project DOM nodes and event handlers are moved **without recreating data or saves**; device storage and backup formats are unchanged. Direct links work on mobile and desktop. This navigation does not synchronize browser projects, bypass confirmation prompts, publish content, or start AI work. Legacy `/video/` and `/coloring/` tools remain available and unchanged.
+
 ## Create and keep a project
 
 1. Choose Faceless video, Art collection, Coloring book or Storybook.
