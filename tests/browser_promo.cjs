@@ -4,6 +4,7 @@ const {spawn}=require('node:child_process');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),net=require('node:net');
 const assert=require('node:assert/strict');
 async function stage(page, number) {
+  if(!(await page.locator("#wec-page-studio").isVisible())) await page.locator('[data-page-link="studio"]').click();
   const steps = page.locator(".workflow-tab");
   if (await steps.count()) {
     const selected = steps.nth(number - 1);
@@ -34,7 +35,7 @@ async function stage(page, number) {
     const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));const asset={blob,name:'pip.png',width:100,height:100,extension:'png',source:'Original test art'};
     return s.save({app:'wec-creative-studio',schema_version:1,id:crypto.randomUUID(),revision:0,kind:'art',title:'Pip collection',author:'Test',characterName:'Pip',character:'Cloud',style:'Watercolor',reference:asset,cover:null,backText:'',narration:'',duration:35,sceneCount:7,pages:[0,1,2].map(i=>({id:crypto.randomUUID(),text:'',prompt:'Pip scene '+i,asset,review:i===1?'needs_changes':'approved'}))});
    });
-   await p.reload();await p.locator('#library .library-item button').first().click();await ready(p);
+   await p.reload();await p.locator('[data-page-link="library"]').click();await p.locator('#library .library-item button').first().click();await ready(p);
    await stage(p, 3); await p.getByText('Use this idea in another format',{exact:true}).click();
    await stage(p, 3); await p.locator('#promo-video').click();await ready(p);assert.match(await p.locator('#status').innerText(),/script first/);
    await p.locator('#promo-script').fill('word '.repeat(101));await stage(p, 3); await p.locator('#promo-video').click();await ready(p);assert.match(await p.locator('#status').innerText(),/100 words/);assert.equal(await p.locator('#library .library-item').count(),1);
@@ -54,7 +55,7 @@ async function stage(page, number) {
    await p.evaluate(async id=>{const s=await import('/studio/store.js'),v=await s.get(id);v.style='Changed style';await s.save(v);},source.id);
    await stage(p, 3); await p.locator('#check-sources').click();await ready(p);assert.match(await p.locator('#source-status').innerText(),/reference has changed/);
    assert.equal(JSON.parse(await download(p,'#backup')).pages[0].asset.image_base64,draft.pages[0].asset.image_base64);
-   await p.reload();await p.locator('#library .library-item').filter({hasText:'promotional video'}).getByRole('button',{name:'Open',exact:true}).click();await ready(p);
+   await p.reload();await p.locator('[data-page-link="library"]').click();await p.locator('#library .library-item').filter({hasText:'promotional video'}).getByRole('button',{name:'Open',exact:true}).click();await ready(p);
    assert.equal(JSON.parse(await download(p,'#backup')).pages[0].sourceArtwork.sha256,draft.pages[0].sourceArtwork.sha256);
    // Old source links remain explicit after importing a separate backup copy.
    await p.locator('#restore').setInputFiles({name:'promo.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(draft))});await ready(p);
@@ -66,6 +67,7 @@ async function stage(page, number) {
       await ready(p);
     }
    await stage(p, 5); await p.locator('#video').click();await ready(p);
+   await p.locator('[data-page-link="renders"]').click();
    const job=p.locator('.render-job');await job.getByRole('button',{name:'Play video'}).waitFor({timeout:60000});
    await job.getByRole('button',{name:'Play video'}).click();await p.waitForFunction(()=>document.querySelector('#render-movie').readyState>=1);
    const w=p.waitForEvent('download');await job.getByRole('button',{name:'Download MP4'}).click();const movie=await(await w).path();assert.ok(fs.statSync(movie).size>1000);fs.copyFileSync(movie,path.join(directory,`promo-${width}.mp4`));
