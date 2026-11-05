@@ -294,7 +294,6 @@ function render() {
   urls.forEach((u) => URL.revokeObjectURL(u));
   urls = [];
   $("video-workflow").hidden = project?.kind !== "video";
-  $("book-review").hidden = !project || project.kind === "video";
   $("editor").hidden = !project;
   $("empty").hidden = !!project;
   refreshCheckpointInfo();
@@ -315,7 +314,11 @@ function render() {
     $(id).value = project[key] ?? "";
   $("duration").value = project.duration;
   $("scene-count").value = project.sceneCount;
-  $("cover-settings").hidden = project.kind === "video";
+  const mode = $("review-mode");
+  if (mode.dataset.projectId !== project.id) {
+    mode.dataset.projectId = project.id;
+    mode.value = "art";
+  }
   $("cover-info").textContent = project.cover
     ? `${project.cover.name} · ${project.cover.width} × ${project.cover.height}`
     : "No separate cover picture. The first page will be used.";
@@ -383,18 +386,7 @@ function render() {
         provenance.textContent = `Copied from ${page.sourceArtwork.projectTitle}, page ${page.sourceArtwork.pageNumber}, saved revision ${page.sourceArtwork.revision}. The source is not changed by edits here.`;
         visual.append(provenance);
       }
-      const reviewLabel = document.createElement("label"); reviewLabel.textContent = "Artwork review";
-      const review = document.createElement("select");
-      review.setAttribute("aria-label", "Artwork review");
-      for (const [value, text] of [["unreviewed", "Not reviewed"], ["approved", "Approved"], ["needs_changes", "Needs changes"]])
-        review.add(new Option(text, value));
-      review.value = ["approved", "needs_changes"].includes(page.review) ? page.review : "unreviewed";
-      review.onchange = () => run(async () => {
-        page.review = review.value; dirty = true; await persist(); render();
-        say("Artwork review saved. This records your review, not publishing approval.");
-      });
-      reviewLabel.append(review); visual.append(reviewLabel);
-
+      visual.append(reviewControl(page, "Artwork review"));
       visual.append(button("Use as approved reference", async () => {
         if (!confirm("Use this picture as the approved character reference for this project? Save the character profile to reuse it elsewhere.")) return;
         checkAssets(page.asset, project.reference);
@@ -566,8 +558,72 @@ function render() {
     card.append(actions);
     $("pages").append(card);
   }
+  updateReviewPanel();
   readiness();
 }
+function reviewControl(page, labelText) {
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", labelText);
+  for (const [value, text] of [["unreviewed", "Not reviewed"], ["approved", "Approved"], ["needs_changes", "Needs changes"]])
+    select.add(new Option(text, value));
+  select.value = page.review || "unreviewed";
+  select.onchange = () => run(async () => {
+    const previous = page.review;
+    const wasDirty = dirty;
+    page.review = select.value;
+    dirty = true;
+    try {
+      await persist();
+    } catch (error) {
+      page.review = previous;
+      select.value = previous || "unreviewed";
+      dirty = wasDirty;
+      throw error;
+    }
+    render();
+    say("Artwork review saved.");
+  });
+  label.append(select);
+  return label;
+}
+function updateReviewPanel() {
+  const video = project.kind === "video";
+  const art = project.kind === "art";
+  const print = !video && (!art || $("review-mode").value === "print");
+  $("review-mode-label").hidden = !art;
+  $("book-review").hidden = !print;
+  $("cover-settings").hidden = !print;
+  $("asset-review").hidden = print;
+  const list = $("asset-review-list");
+  list.replaceChildren();
+  if (print) return;
+  $("asset-review-heading").textContent = video ? "Scene review" : "Artwork review";
+  for (const [index, page] of project.pages.entries()) {
+    const item = document.createElement("li");
+    const name = (video ? "Scene " : "Artwork ") + (index + 1);
+    const heading = document.createElement("strong");
+    heading.textContent = name;
+    item.append(heading);
+    if (video) {
+      const text = document.createElement("p");
+      text.textContent = page.text;
+      item.append(text);
+    }
+    if (page.asset) {
+      // Share the preview URL already managed by render().
+      const image = $("pages").children[index].querySelector("img").cloneNode(false);
+      item.append(image, reviewControl(page, name + " approval"));
+    } else {
+      const missing = document.createElement("p");
+      missing.textContent = video ? "Attach a scene picture in Create." : "Empty artwork slot";
+      item.append(missing);
+    }
+    list.append(item);
+  }
+}
+$("review-mode").onchange = () => { updateReviewPanel(); readiness(); };
 function promptFor(page, useReference = false) {
   const format =
     project.kind === "coloring"
@@ -589,6 +645,9 @@ function readiness() {
   if (!project) return;
   $("book-review-status").textContent = "Check the current pages before printing. Export checks them again automatically.";
   $("book-review-issues").replaceChildren();
+  updateReadinessSummary();
+}
+function updateReadinessSummary() {
   if (project.kind === "video") {
     const hasScript = Boolean(project.narration.trim());
     const arranged = hasScript && project.pages.length > 0 && !videoSceneIssue();
@@ -614,15 +673,26 @@ function readiness() {
       if (target.tagName === "LI") { target.tabIndex = -1; }
       target.focus({preventScroll:true});
     };
+    $("readiness").textContent = !hasScript ? "Add narration before rendering."
+      : !arranged ? videoSceneIssue()
+      : !illustrated ? "Attach a picture to every scene before rendering."
+      : "Scene inputs ready for rendering.";
+    return;
+  }
+  const attached = project.pages.filter(page => page.asset);
+  const approved = attached.filter(page => page.review === "approved").length;
+  if (project.kind === "art" && $("review-mode").value === "art") {
+    $("readiness").textContent = attached.length
+      ? `${approved} of ${attached.length} attached pictures approved.`
+      : "Add a picture in Create to review artwork.";
+    return;
   }
   const n = project.pages.length,
-    complete = project.pages.filter((p) => p.asset).length,
-    low = project.pages.filter((p) => p.asset && ppi(p) < 300).length;
+    complete = attached.length,
+    low = attached.filter(p => ppi(p) < 300).length;
   const count = project.kind === "coloring" ? 2 + n * 2 : 2 + n + (n % 2);
   $("readiness").textContent =
-    `${complete}/${n} pictures ready · ${project.pages.filter(p => p.asset && p.review === "approved").length}/${complete} pictures approved${project.kind === "video" ? "" : ` · ${count} PDF pages`}${low ? ` · ${low} image(s) below the 300 PPI print target` : ""}. ${project.kind === "storybook" ? "Every picture needs its own story text." : ""}`;
-  if (project.kind === "video" && videoSceneIssue())
-    $("readiness").textContent += " " + videoSceneIssue();
+    `${complete}/${n} pictures ready · ${approved}/${complete} pictures approved · ${count} PDF pages${low ? ` · ${low} image(s) below the 300 PPI print target` : ""}. ${project.kind === "storybook" ? "Every picture needs its own story text." : ""}`;
 }
 function videoSceneIssue() {
   const normalized = (value) => value.trim().replace(/\s+/g, " ");
@@ -1245,10 +1315,18 @@ async function checkBook() {
   }
   $("book-review-issues").replaceChildren(...issues.map(issue => {
     const li = document.createElement("li"); li.textContent = issue.text + " ";
-    if (issue.index !== undefined) li.append(button("Go to page " + (issue.index + 1), () => {
-      const card = $("pages").children[issue.index];
-      card.tabIndex = -1; card.scrollIntoView({block:"center", behavior:"smooth"}); card.focus({preventScroll:true});
-    }));
+    if (issue.index !== undefined) {
+      const jump = document.createElement("button");
+      jump.type = "button";
+      jump.className = "secondary";
+      jump.textContent = "Go to page " + (issue.index + 1);
+      jump.onclick = () => {
+        document.querySelector('[aria-controls="workflow-screen-3"]').click();
+        const card = $("pages").children[issue.index];
+        card.tabIndex = -1; card.scrollIntoView({block:"center", behavior:"smooth"}); card.focus({preventScroll:true});
+      };
+      li.append(jump);
+    }
     return li;
   }));
   const errors = issues.filter(i => i.error).length;
@@ -1264,6 +1342,11 @@ $("check-book").onclick = () => run(async () => {
 async function approveBookExport() {
   const result = await checkBook();
   if (result.errors) {
+    if (project.kind === "art") {
+      $("review-mode").value = "print";
+      updateReviewPanel();
+      updateReadinessSummary();
+    }
     $("book-review").scrollIntoView({block:"center", behavior:"smooth"});
     throw Error("Fix the missing book content listed in Review before printing. Project backup still keeps unfinished work.");
   }

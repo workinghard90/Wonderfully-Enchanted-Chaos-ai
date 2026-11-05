@@ -7,7 +7,7 @@ const descriptions = [
   "Name your project, choose a character and set your creative direction.",
   "Turn your idea into a page-by-page plan. Your existing work is preserved.",
   "Build and revise individual pages, images and recovery checkpoints.",
-  "Check content, artwork and print readiness before exporting.",
+  "Inspect the content for your chosen output.",
   "Download and hand off your approved project to its destination."
 ];
 nav.replaceChildren();
@@ -47,7 +47,7 @@ function move(selector, step) {
 move("#video-workflow, label[for=title], #title, label[for=author], #author, details.character, #video-settings", 0);
 move("#book-planner", 1);
 move("#generation-status, #page-help, #check-sources, #source-status, #pages, #checkpoint-panel", 2);
-move("#book-review, #cover-settings, .delivery > h3, #readiness", 3);
+move("#review-mode-label, #readiness, #asset-review, #book-review, #cover-settings", 3);
 move("#export-actions, #export-note", 4);
 // Save belongs to the project header and remains accessible from every screen.
 // Page creation, uploads and format conversion belong to Create.

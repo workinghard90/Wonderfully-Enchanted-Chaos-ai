@@ -304,7 +304,16 @@
           <p id="source-status" role="status" class="muted"></p>
           <ol id="pages"></ol>
           <section class="delivery">
-            <h3>Make something you can keep.</h3>
+            <label id="review-mode-label" hidden>Review output
+              <select id="review-mode">
+                <option value="art">Artwork collection</option>
+                <option value="print">Printable interior</option>
+              </select>
+            </label>
+            <section id="asset-review" hidden aria-labelledby="asset-review-heading">
+              <h3 id="asset-review-heading"></h3>
+              <ol id="asset-review-list"></ol>
+            </section>
             <p id="readiness"></p>
             <details id="cover-settings">
               <summary>Paperback cover</summary>
