@@ -49,6 +49,23 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#workflow-screen-5 #cozy-export').count(),1);
       assert.ok(await page.locator('#editor').evaluate(el => el.getBoundingClientRect().width > 0));
       assert.equal(await page.locator('#title').isVisible(),true);
+      // Manual automation recipes preview navigation only. No pages or AI requests.
+      await tabs.nth(1).click();
+      assert.equal(await page.locator('#automation-recipes').isVisible(),true);
+      let automationCalls = 0;
+      await page.route('**/api/creative/image', route => {automationCalls++; return route.abort();});
+      await page.locator('#automation-recipe').selectOption('artwork');
+      await page.locator('#automation-preview-button').click();
+      assert.match(await page.locator('#automation-status').innerText(),/Each action remains your choice/);
+      assert.equal(await page.locator('#automation-preview li').count(),3);
+      assert.equal(await page.locator('.page').count(),0);
+      await page.locator('#automation-preview').getByRole('button',{name:'Open Review'}).click();
+      assert.equal(await tabs.nth(3).getAttribute('aria-current'),'step');
+      assert.equal(await page.locator('.page').count(),0);
+      assert.equal(automationCalls,0);
+      await tabs.nth(1).click();
+      await page.locator('#automation-clear-button').click();
+      assert.equal(await page.locator('#automation-preview li').count(),0);
       // Plan-only work must remain usable without visiting Create/Review/Export.
       await tabs.nth(1).click();
       const outline = 'Independent story idea\nSecond scene to consider';
