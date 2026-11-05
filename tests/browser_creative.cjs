@@ -498,6 +498,12 @@ const assert = require("node:assert/strict");
       await go(page, 4);
       assert.match(await page.locator('#readiness').innerText(), /Scene inputs ready for rendering/);
       assert.equal(await page.locator('#asset-review img').count(), 2);
+      await page.locator('#asset-review-list li').nth(1).getByRole('button',{name:'Edit in Create'}).click();
+      const secondScene = page.locator('.page').nth(1);
+      assert.equal(await secondScene.evaluate(el=>el===document.activeElement), true);
+      await secondScene.getByRole('button',{name:'Open in Review'}).click();
+      assert.equal(await page.locator('#asset-review-list li').nth(1).evaluate(el=>el===document.activeElement), true);
+
       await go(page, 1); assert.equal(await page.locator('#video-workflow').isVisible(), true);
       assert.equal(await page.locator('#workflow-next').innerText(), 'Review and render video');
       await go(page, 3); await page.locator('.page').first().getByLabel('Artwork review', {exact:true}).selectOption('approved'); await ready(page);
