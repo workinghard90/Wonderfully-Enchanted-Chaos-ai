@@ -103,11 +103,13 @@ const assert = require('node:assert/strict');
       page.once('dialog', dialog => dialog.dismiss());
       await page.locator('#automation-preview').getByRole('button',{name:'Convert planning draft to pages'}).click();
       assert.match(await page.locator('#automation-status').innerText(),/Cancelled/);
+      assert.match(await page.locator('#automation-history-list').innerText(),/Convert planning draft to pages — cancelled/);
       assert.equal(await page.locator('.page').count(),0);
       // Save is a separate explicit action using the existing persistence handler.
       page.once('dialog', dialog => dialog.accept());
       await page.locator('#automation-preview').getByRole('button',{name:'Save current project'}).click();
       await page.locator('#automation-status').filter({hasText:'Save current project completed'}).waitFor();
+      assert.match(await page.locator('#automation-history-list').innerText(),/Save current project — completed/);
       assert.equal(await page.locator('.page').count(),0);
       const [textFile] = await Promise.all([
         page.waitForEvent('download'), page.locator('#download-plan').click()
@@ -157,6 +159,7 @@ const assert = require('node:assert/strict');
       page.once('dialog', dialog => dialog.accept());
       await page.locator('#automation-preview').getByRole('button',{name:'Convert planning draft to pages'}).click();
       await page.locator('#automation-status').filter({hasText:'Convert planning draft to pages completed'}).waitFor();
+      assert.match(await page.locator('#automation-history-list').innerText(),/Convert planning draft to pages — completed/);
       assert.equal(await page.locator('.page').count(),2);
       assert.equal(await tabs.nth(1).getAttribute('aria-current'),'step');
       await page.getByRole('button',{name:'Open new pages in Create'}).click();
@@ -165,6 +168,7 @@ const assert = require('node:assert/strict');
         inputs => inputs.map(input => input.value)),outline.split('\n'));
       // Start a separate artwork project and go directly to Create.
       await page.locator('[data-kind=art]').click();
+      assert.equal(await page.locator('#automation-history-list li').count(),0);
       await tabs.nth(2).click();
       await page.getByRole('button',{name:'Add artwork',exact:true}).click();
       await page.locator('.page input[type=file]').waitFor();
