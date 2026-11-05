@@ -37,6 +37,7 @@ const assert=require('node:assert/strict');
    await p.locator('#online-panel summary').click();
    await p.locator('#online-save').click();await ready(p);
    await p.locator('#status').filter({hasText:'Online snapshot saved and verified'}).waitFor();
+   await p.locator('[data-page-link="renders"]').click();
    await p.locator('#check-storage').click();await ready(p);
    await p.locator('#server-storage-status').filter({hasText:'Online snapshots: 1/50'}).waitFor();
    await p.locator('[data-page-link="library"]').click();
