@@ -565,10 +565,10 @@ body:has(#editor:not([hidden])) .workspace > aside {
   align-items: center;
 }
 #editor .workflow-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 21;
-  margin: 0;
+  /* UI 4.1: navigation follows the active workspace in document flow;
+     it must never cover recipe text, inputs or mobile browser controls. */
+  position: static;
+  margin: 20px 0 28px;
   padding: 14px;
   display: grid;
   grid-template-columns: minmax(0,1fr) minmax(0,1fr);
@@ -577,7 +577,7 @@ body:has(#editor:not([hidden])) .workspace > aside {
   background: #101a2b;
   border: 1px solid #667b9e;
   border-radius: 12px;
-  box-shadow: 0 -8px 24px #060b15b0;
+  box-shadow: none;
 }
 #editor .workflow-footer button { min-height: 48px; }
 #editor .workflow-footer p {
@@ -598,7 +598,7 @@ body:has(#editor:not([hidden])) .workspace > aside {
     min-height: 42px;
   }
   #editor .workflow-screen { min-height: max(400px, calc(100svh - 290px)); }
-  #editor .workflow-footer { margin: 0 -10px; padding: 10px; }
+  #editor .workflow-footer { margin: 16px 0 28px; padding: 12px; }
   #editor .workflow-footer button { padding-inline: 8px; }
   #editor .section-heading { display: flex; flex-wrap: wrap; align-items: center; }
   #editor .workflow-save { margin-left: auto; }
@@ -708,7 +708,7 @@ button:disabled { opacity: 0.55; }
 #editor .workflow-footer {
   background: var(--cozy-cream-deep);
   border-color: #b49b7d;
-  box-shadow: 0 -8px 24px rgb(47 43 40 / 12%);
+  box-shadow: none;
 }
 #editor .workflow-footer button:not(.secondary) {
   background: var(--cozy-red);
