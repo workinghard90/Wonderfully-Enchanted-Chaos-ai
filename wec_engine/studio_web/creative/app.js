@@ -98,6 +98,7 @@ function readFields() {
 }
 function changed() {
   readFields();
+  updateProjectHeading();
   dirty = true;
   $("save-status").textContent = "Unsaved changes";
   clearTimeout(saveTimer);
@@ -150,7 +151,11 @@ function lock(value) {
   busy = value;
   document
     .querySelectorAll("button,input,textarea,select")
-    .forEach((n) => (n.disabled = value));
+    .forEach(n => {
+      // Navigation changes only the visible workspace. Its endpoint buttons
+      // keep the disabled state set by workflow.js when a save finishes.
+      if (!n.closest(".workflow-footer, .workflow-tab")) n.disabled = value;
+    });
   if (!value) {
     document
       .querySelectorAll("[data-generate]")
@@ -314,6 +319,11 @@ $("checkpoint-remove").onclick = () => run(async () => {
   await refreshCheckpointInfo();
   say("Checkpoint removed. Current projects were kept.");
 });
+function updateProjectHeading() {
+  const title = project.title.trim() || "Untitled project";
+  $("editor-heading").textContent = title;
+  $("editor-heading").title = title;
+}
 function render() {
   $("plan-handoff").replaceChildren();
   urls.forEach((u) => URL.revokeObjectURL(u));
@@ -362,6 +372,7 @@ function render() {
   $("remove-reference").hidden = !project.reference;
   $("add").textContent = project.kind === "art" ? "Add artwork" : "Add page";
   $("kind-label").textContent = labels[project.kind];
+  updateProjectHeading();
   $("video-settings").hidden = project.kind !== "video";
   $("book-planner").hidden = project.kind === "video";
   $("video").hidden = project.kind !== "video";

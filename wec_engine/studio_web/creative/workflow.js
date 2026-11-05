@@ -12,9 +12,10 @@ const descriptions = [
 ];
 nav.replaceChildren();
 nav.setAttribute("aria-label", "Project workflow stages");
-const heading = document.createElement("span");
-heading.textContent = "Your creative workspaces · choose any stage";
-nav.append(heading);
+const header = document.createElement("div");
+header.className = "workspace-header";
+nav.before(header);
+header.append(editor.querySelector(".section-heading"), nav);
 const buttons = steps.map((name, index) => {
   const button = document.createElement("button");
   button.type = "button";
@@ -40,7 +41,7 @@ const screens = steps.map((name, index) => {
 });
 // Physical stage containers are inserted together in the editor, after navigation.
 // Moving existing nodes preserves listeners and element identity; no data is recreated.
-nav.after(...screens);
+header.after(...screens);
 function move(selector, step) {
   editor.querySelectorAll(selector).forEach(node => screens[step].append(node));
 }
@@ -94,11 +95,11 @@ function show(index) {
   });
   previous.disabled = active === 0;
   next.disabled = active === 4;
-  next.textContent = active === 4 ? "Ready to export" : `Continue to ${steps[active + 1]}`;
-  progress.textContent = `Workspace ${active + 1} of 5 · ${steps[active]}. Choose any workspace at any time; only this one is shown.`;
+  next.textContent = active === 4 ? "Last workspace" : `Continue to ${steps[active + 1]}`;
+  progress.textContent = `Workspace ${active + 1} of 5 · ${steps[active]}.`;
   if (index !== undefined && !editor.hidden) {
     // A new stage starts at the top of its screen instead of a point mid-page.
-    nav.scrollIntoView({block: "start", behavior: "instant"});
+    editor.scrollIntoView({block: "start", behavior: "instant"});
   }
 }
 // Existing video guidance can focus a scene or render control in a different stage.

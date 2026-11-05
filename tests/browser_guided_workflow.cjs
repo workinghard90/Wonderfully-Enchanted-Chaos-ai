@@ -22,13 +22,20 @@ const assert = require('node:assert/strict');
       await new Promise(r=>setTimeout(r,100));
     }
     browser = await chromium.launch({headless:true});
-    for (const width of [390,1440]) {
-      const context = await browser.newContext({viewport:{width,height:1000}});
+    for (const width of [320,390,1440]) {
+      const context = await browser.newContext({viewport:{width,height:width===320?680:1000}});
       const page = await context.newPage();
       const errors=[];
       page.on('pageerror', e=>errors.push(e.message));
       await page.goto(base);
       await page.locator('[data-kind=art]').click();
+      const longTitle = 'W'.repeat(150);
+      await page.locator('#title').fill(longTitle);
+      assert.equal(await page.locator('#editor-heading').innerText(),longTitle);
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+      await page.locator('#save').click();
+      await page.locator('#status').filter({hasText:'Project saved on this device'}).waitFor();
+      assert.equal(await page.locator('.workflow-footer button').first().isDisabled(),true);
       await page.locator('#title').fill('Workflow regression');
       const tabs=page.locator('.workflow-tab');
       assert.equal(await tabs.count(),5);
@@ -54,6 +61,10 @@ const assert = require('node:assert/strict');
       await page.reload();
       await page.locator('#library button').first().click();
       await tabs.nth(4).click();
+      assert.equal(await page.locator('#editor-heading').innerText(),'Workflow regression');
+      await page.locator('#save').click();
+      await page.waitForFunction(()=>!document.querySelector('#save').disabled);
+      assert.equal(await page.locator('.workflow-footer button').last().isDisabled(),true);
       const [exportText] = await Promise.all([
         page.waitForEvent('download'), page.locator('#export-plan').click()
       ]);
@@ -154,6 +165,11 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#book-review').isVisible(),false);
       assert.equal(await page.locator('#cover-settings').isVisible(),false);
       assert.equal(await page.locator('#asset-review img').count(),1);
+      await page.locator('#asset-review-list li').last().evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
+      assert.equal(await page.locator('#save').evaluate(button=>{
+        const box=button.getBoundingClientRect();
+        return document.elementFromPoint(box.x+box.width/2,box.y+box.height/2)===button;
+      }),true);
       const reviewItems = page.locator('#asset-review-list li');
       await reviewItems.nth(2).getByRole('button',{name:'Edit in Create'}).click();
       assert.equal(await page.locator('.page').nth(2).evaluate(el=>el===document.activeElement),true);
