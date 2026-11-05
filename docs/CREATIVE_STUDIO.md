@@ -35,6 +35,14 @@ These bounds accommodate forty typical 300-PPI Letter illustrations while
 bounding CPU exports. The browser decodes image inputs to check dimensions;
 large imports can still be demanding on an iPhone. Keep the backup/originals.
 
+## Optional manual creative automation
+
+The **Plan** workspace contains reusable recipe previews for planning, art, print and video projects. Recipes are optional navigation aids: you can still open any workspace directly.
+
+The first executable actions are **Save current project** and, for planning and print recipes, **Convert planning draft to pages**. Each requires its own explicit confirmation. The existing editor actions own validation and saving; the recipe UI reports success only when those actions report success. Errors and cancellations leave the creator in control, with no automatic retries or later steps.
+
+Recipe previews never make AI requests, approve artwork, render media, publish content or schedule work. Converting a draft adds pages only after confirmation, and existing failed-save safeguards retain the original draft. Use a project backup to protect work across devices.
+
 ## Four delivery paths
 
 | Format | What the app produces | Further review/setup |
