@@ -31,6 +31,9 @@ const assert = require('node:assert/strict');
       const moduleResponse = await page.request.get(base + '/studio/automation.js');
       assert.equal(moduleResponse.status(),200,'Automation JS must be served by the WEC backend');
       assert.match(moduleResponse.headers()['content-type'],/javascript/);
+      const productionModule = await page.request.get(base + '/studio/production.js');
+      assert.equal(productionModule.status(),200,'Production JS must be served by WEC');
+      assert.match(productionModule.headers()['content-type'],/javascript/);
       await page.locator('[data-kind=art]').click();
       const longTitle = 'W'.repeat(150);
       await page.locator('#title').fill(longTitle);
@@ -71,6 +74,7 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#workflow-screen-3 #pages').count(),1);
       assert.equal(await page.locator('#workflow-screen-4 #book-review').count(),1);
       assert.equal(await page.locator('#workflow-screen-5 #cozy-export').count(),1);
+      assert.equal(await page.locator('#workflow-screen-5 #production-workbench').count(),1);
       assert.ok(await page.locator('#editor').evaluate(el => el.getBoundingClientRect().width > 0));
       assert.equal(await page.locator('#title').isVisible(),true);
       // Manual automation recipes preview navigation only. No pages or AI requests.
@@ -113,6 +117,47 @@ const assert = require('node:assert/strict');
       await guided.getByRole('button',{name:'End guided run'}).click();
       assert.match(await guided.innerText(),/No guided run active/);
       assert.equal(await page.locator('.page').count(),0);
+      assert.equal(automationCalls,0);
+      // Phase 7: prepare a production manifest without initiating any export.
+      await tabs.nth(4).click();
+      await page.locator('#production-target').selectOption('artwork');
+      await page.locator('#production-prepare').click();
+      assert.match(await page.locator('#production-summary').innerText(),/0 ordered page/);
+      assert.match(await page.locator('#production-issues').innerText(),/Create at least one page/);
+      const [preparation] = await Promise.all([
+        page.waitForEvent('download'),page.locator('#production-download').click()
+      ]);
+      assert.equal(preparation.suggestedFilename(),'wec-production-preparation.json');
+      const report = JSON.parse(readFileSync(await preparation.path(),'utf8'));
+      assert.equal(report.schema_version,1);
+      assert.equal(report.project_format,'Art collection');
+      assert.equal(report.selected_output,'artwork');
+      assert.deepEqual(report.inventory,[]);
+      assert.match(report.notes.join(' '),/No original artwork/);
+      assert.equal(await page.locator('.page').count(),0);
+      await page.locator('#production-handoff').click();
+      assert.equal(await page.locator('#zip').evaluate(e=>e===document.activeElement),true);
+      assert.match(await page.locator('#production-status').innerText(),/no export started/);
+      // Local output is a separate, user-confirmed request to the original
+      // backup handler. Cancellation never downloads anything.
+      await page.locator('#production-target').selectOption('backup');
+      await page.locator('#production-prepare').click();
+      page.once('dialog', dialog => dialog.dismiss());
+      await page.locator('#production-run-local').click();
+      assert.match(await page.locator('#production-status').innerText(),/cancelled/);
+      assert.equal(await page.locator('.page').count(),0);
+      page.once('dialog', dialog => dialog.accept());
+      const [localBackup] = await Promise.all([
+        page.waitForEvent('download'),page.locator('#production-run-local').click()
+      ]);
+      assert.match(localBackup.suggestedFilename(),/-project\.json$/);
+      const localBackupContent=JSON.parse(readFileSync(await localBackup.path(),'utf8'));
+      assert.equal(localBackupContent.title,'Workflow regression');
+      assert.equal(await page.locator('.page').count(),0);
+      // Re-check target changes instead of using an old manifest authorization.
+      await page.locator('#production-target').selectOption('cozy');
+      assert.match(await page.locator('#production-status').innerText(),/Prepare again/);
+      await tabs.nth(1).click();
       assert.equal(automationCalls,0);
       const [artRunSheet] = await Promise.all([
         page.waitForEvent('download'),
@@ -336,6 +381,16 @@ const assert = require('node:assert/strict');
       await tabs.nth(3).click();
       await page.getByLabel('Artwork 1 approval').selectOption('approved');
       await page.locator('#readiness').filter({hasText:'1 of 2 attached pictures approved'}).waitFor();
+      await tabs.nth(4).click();
+      await page.locator('#production-target').selectOption('artwork');
+      await page.locator('#production-prepare').click();
+      assert.match(await page.locator('#production-summary').innerText(),/3 ordered page/);
+      assert.match(await page.locator('#production-summary').innerText(),/1 approved image/);
+      assert.equal(await page.locator('#production-inventory li').count(),3);
+      assert.match(await page.locator('#production-inventory li').nth(0).innerText(),/approved/);
+      await page.locator('#production-inventory li').nth(1).getByRole('button',{name:'Edit slot 2'}).click();
+      assert.equal(await tabs.nth(2).getAttribute('aria-current'),'step');
+      await tabs.nth(3).click();
       assert.equal(await page.locator('#asset-review-list li').count(),3);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
       await page.reload();
@@ -374,6 +429,19 @@ const assert = require('node:assert/strict');
       for (const id of ['pdf','cozy-export','export-plan']) assert.equal(await page.locator('#'+id).isVisible(),false);
       assert.equal(await page.locator('#video').isVisible(),true);
       assert.equal(await page.locator('#export-image-list a').count(),0);
+      // Production preparation respects video-specific requirements and
+      // keeps actual rendering behind the existing consent controls.
+      await page.locator('#production-target').selectOption('video');
+      await page.locator('#production-prepare').click();
+      assert.match(await page.locator('#production-issues').innerText(),/Add narration/);
+      await page.locator('#production-handoff').click();
+      assert.equal(await page.locator('#video').evaluate(e=>e===document.activeElement),true);
+      await page.locator('#production-target').selectOption('print');
+      await page.locator('#production-prepare').click();
+      assert.match(await page.locator('#production-issues').innerText(),/not supported/);
+      await page.locator('#production-handoff').click();
+      assert.match(await page.locator('#production-status').innerText(),/unavailable/);
+      assert.equal(await page.locator('#video').isVisible(),true);
       await tabs.nth(1).click();
       await page.locator('#automation-recipe').selectOption('artwork');
       await page.locator('#automation-preview-button').click();

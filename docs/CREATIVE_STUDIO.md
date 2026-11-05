@@ -35,6 +35,18 @@ These bounds accommodate forty typical 300-PPI Letter illustrations while
 bounding CPU exports. The browser decodes image inputs to check dimensions;
 large imports can still be demanding on an iPhone. Keep the backup/originals.
 
+## Production preparation and output handoffs (Phase 7)
+
+The **Export** workspace includes a Production Preparation workbench for all four project formats. Choose an intended output (project backup, original-artwork ZIP, printable interior PDF, private Cozy proposal ZIP, or video render) and select **Prepare production inventory**. It collects the current ordered page/scene slots and attached-image names, review selections and approximate image resolution, then shows applicable warnings. For example, it flags missing images and unapproved pages, low-PPI print sources, absent video narration, missing Cozy creator metadata, or a mismatched format. This is a read-only snapshot; source assets and project data remain unchanged.
+
+**Download preparation manifest** writes an on-device JSON report containing project title, format, selected output, ordered image inventory and current guidance. This is distinct from the real artwork ZIP, interior PDF, private Cozy ZIP, render, or editable backup. It includes **no original image bytes, story paragraphs or narration text**. Every download recalculates the current input snapshot. Do not confuse a generated manifest with a valid upload or proof of approval.
+
+For the two **local-only package types**, **Run local backup / artwork ZIP (confirm)** asks for separate permission and delegates to the existing backup or artwork ZIP handler. Artwork ZIPs require a picture in every slot; missing inputs block the request. Cancellation starts no download, and the workbench never claims success merely because it clicked the original handler. PDF, Cozy proposal and video rendering are deliberately excluded from this shortcut and retain their original checks and prompts.
+
+**Open Review workspace** leads back to the existing image approval and print validators. **Open existing export action** navigates to and focuses the original export control but never clicks it. Use that original control after reviewing readiness: its existing storage, output, PDF, image approval, packaging and consent checks remain in charge. The Cozy output is a *private proposal ZIP*, never automatic storefront publishing. No provider requests, downloads of production output, or paid tasks run simply because a workbench report is prepared.
+
+The workbench shows editable page/scene order and offers direct navigation to an individual slot in Create. Switching projects, restoring a backup, or changing target clears stale preparation. Preparation is not an export authorization; after further edits, prepare again. When finished with Phase 7 and its CI, complete the separate full WEC/Cozy/Render/storage/browser audit before the release.
+
 ## Optional guided creative automation (Phase 6)
 
 **Guided runs** are a complete optional interface built on the existing recipe previews, confirmed local actions, preflight checks, run sheets and action receipts. Open a project, choose a compatible recipe, preview it, and click **Start guided run**. The Plan workspace shows the current step, a list of suggested steps and a count of steps whose guidance you explicitly reviewed. Choose **Open current workspace** to navigate without performing a task, then return to Plan to continue. Move backward/forward freely; there are no completion gates on independent workspaces.
