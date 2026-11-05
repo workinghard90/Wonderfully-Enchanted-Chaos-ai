@@ -49,7 +49,7 @@ move("#video-workflow, label[for=title], #title, label[for=author], #author, det
 move("#book-planner, #automation-recipes", 1);
 move("#generation-status, #page-help, #check-sources, #source-status, #pages, #checkpoint-panel", 2);
 move("#review-mode-label, #readiness, #asset-review, #book-review, #cover-settings", 3);
-move("#export-actions, #export-error, #export-originals, #export-note", 4);
+move("#production-workbench, #export-actions, #export-error, #export-originals, #export-note", 4);
 // Save belongs to the project header and remains accessible from every screen.
 // Page creation, uploads and format conversion belong to Create.
 const toolbar = editor.querySelector("#save")?.closest(".toolbar");
