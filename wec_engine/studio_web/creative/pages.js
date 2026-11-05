@@ -100,7 +100,7 @@ if (main && document.getElementById("library-panel") && document.getElementById(
   const sharedStatus=document.getElementById("status");
   if(sharedStatus) new MutationObserver(() => {
     const message=sharedStatus.textContent.trim();
-    if(!editor.hidden && /^(Created |Opened |Backup restored)/.test(message) &&
+    if(!editor.hidden && /^(Created |Opened |Backup restored|Recovery package restored|Coloring ZIP imported)/.test(message) &&
         location.hash!=="#/studio") location.hash="#/studio";
   }).observe(sharedStatus,{childList:true,characterData:true,subtree:true});
 }
