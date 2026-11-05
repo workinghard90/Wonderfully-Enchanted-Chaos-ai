@@ -314,15 +314,18 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     self._send(exc.status if isinstance(exc, AutomationJobError) else 400,
                                {'error': str(exc) if isinstance(exc, AutomationJobError) else 'Invalid automation plan'})
                 return
-            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel)?', path)
+            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel|/source)?', path)
             if match:
                 job_id, cancel_route = match.groups()
                 try:
                     if self.command == 'GET' and not cancel_route:
                         self._send(200, automation_jobs.get(job_id))
-                    elif self.command == 'POST' and cancel_route:
+                    elif self.command == 'POST' and cancel_route == '/cancel':
                         payload = json.loads(self._read_body(1024))
                         self._send(200, automation_jobs.cancel(job_id, payload))
+                    elif self.command == 'POST' and cancel_route == '/source':
+                        payload = json.loads(self._read_body(1024))
+                        self._send(200, automation_jobs.bind_source(job_id, payload))
                     else:
                         self._send(405, {'error': 'Method not allowed'})
                 except (AutomationJobError, ValueError, TypeError, json.JSONDecodeError) as exc:
