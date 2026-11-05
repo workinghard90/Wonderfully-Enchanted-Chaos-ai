@@ -113,6 +113,7 @@ const assert = require('node:assert/strict');
       // creative generation route or silently executes a project action.
       await page.evaluate(() => sessionStorage.setItem('wec_token','test-only-workflow-token-32-characters'));
       const serverPanel=page.locator('#automation-server-plans');
+      await page.locator('#automation-recipe').selectOption('artwork');
       await serverPanel.getByRole('button',{name:'Load server plans'}).click();
       await serverPanel.locator('#automation-server-status').filter({hasText:'0 server plan(s)'}).waitFor();
       page.once('dialog', dialog=>dialog.accept());
