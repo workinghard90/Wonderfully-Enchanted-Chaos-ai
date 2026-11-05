@@ -28,6 +28,9 @@ const assert = require('node:assert/strict');
       const errors=[];
       page.on('pageerror', e=>errors.push(e.message));
       await page.goto(base);
+      const moduleResponse = await page.request.get(base + '/studio/automation.js');
+      assert.equal(moduleResponse.status(),200,'Automation JS must be served by the WEC backend');
+      assert.match(moduleResponse.headers()['content-type'],/javascript/);
       await page.locator('[data-kind=art]').click();
       const longTitle = 'W'.repeat(150);
       await page.locator('#title').fill(longTitle);
@@ -70,6 +73,18 @@ const assert = require('node:assert/strict');
       await tabs.nth(1).click();
       const outline = 'Independent story idea\nSecond scene to consider';
       await page.locator('#outline').fill(outline);
+      await page.locator('#automation-recipe').selectOption('plan');
+      await page.locator('#automation-preview-button').click();
+      // Confirmed actions are opt-in; cancellation must not create pages.
+      page.once('dialog', dialog => dialog.dismiss());
+      await page.locator('#automation-preview').getByRole('button',{name:'Convert planning draft to pages'}).click();
+      assert.match(await page.locator('#automation-status').innerText(),/Cancelled/);
+      assert.equal(await page.locator('.page').count(),0);
+      // Save is a separate explicit action using the existing persistence handler.
+      page.once('dialog', dialog => dialog.accept());
+      await page.locator('#automation-preview').getByRole('button',{name:'Save current project'}).click();
+      await page.locator('#automation-status').filter({hasText:'Save current project completed'}).waitFor();
+      assert.equal(await page.locator('.page').count(),0);
       const [textFile] = await Promise.all([
         page.waitForEvent('download'), page.locator('#download-plan').click()
       ]);
@@ -113,8 +128,12 @@ const assert = require('node:assert/strict');
       await page.locator('#status').filter({hasText:'Device storage full'}).waitFor();
       assert.equal(await page.locator('#plan-handoff button').count(),0);
       assert.equal(await page.locator('#outline').inputValue(),outline);
-      await page.locator('#plan-pages').click();
-      await page.locator('#status').filter({hasText:'Pages created'}).waitFor();
+      await page.locator('#automation-recipe').selectOption('plan');
+      await page.locator('#automation-preview-button').click();
+      page.once('dialog', dialog => dialog.accept());
+      await page.locator('#automation-preview').getByRole('button',{name:'Convert planning draft to pages'}).click();
+      await page.locator('#automation-status').filter({hasText:'Convert planning draft to pages completed'}).waitFor();
+      assert.equal(await page.locator('.page').count(),2);
       assert.equal(await tabs.nth(1).getAttribute('aria-current'),'step');
       await page.getByRole('button',{name:'Open new pages in Create'}).click();
       assert.equal(await page.locator('.page').first().evaluate(el=>el===document.activeElement),true);
