@@ -9,6 +9,7 @@
     <script type="module" src="/studio/app.js"></script>
     <script type="module" src="/studio/workflow.js"></script>
     <script type="module" src="/studio/automation.js"></script>
+    <script type="module" src="/studio/production.js"></script>
   </head>
   <body>
     <header>
@@ -366,6 +367,29 @@
               <p id="book-review-status" role="status">Check missing pictures, story text, exact duplicates and image resolution.</p>
               <ul id="book-review-issues"></ul>
               <p class="muted">Page numbers refer to editor pages, not printed sheet numbers. Exact duplicates means identical file bytes; similar drawings and re-encoded copies need visual review. These checks do not certify KDP acceptance or text layout.</p>
+            </section>
+            <section id="production-workbench" class="panel" aria-labelledby="production-heading">
+              <h3 id="production-heading">Production preparation · review before export</h3>
+              <p class="muted">Prepare an ordered image inventory and a portable JSON report without changing or publishing anything. Final PDF, artwork ZIP, Cozy proposal, backups and video rendering still use their existing validation and confirmation controls.</p>
+              <label for="production-target">Intended output</label>
+              <select id="production-target">
+                <option value="backup">Editable project backup</option>
+                <option value="artwork">Original artwork ZIP</option>
+                <option value="print">Printable interior PDF</option>
+                <option value="cozy">Private Cozy proposal ZIP</option>
+                <option value="video">Video render</option>
+              </select>
+              <div class="toolbar">
+                <button type="button" id="production-prepare" class="secondary">Prepare production inventory</button>
+                <button type="button" id="production-review" class="secondary">Open Review workspace</button>
+                <button type="button" id="production-download" class="secondary">Download preparation manifest</button>
+                <button type="button" id="production-handoff" class="secondary">Open existing export action</button>
+              </div>
+              <p id="production-status" class="muted" role="status"></p>
+              <p id="production-summary"></p>
+              <ol id="production-inventory" aria-label="Ordered production artwork inventory"></ol>
+              <ul id="production-issues" aria-label="Production preparation warnings"></ul>
+              <p id="production-output" class="muted"></p>
             </section>
             <div id="export-actions" class="toolbar export-actions">
               <button id="backup" class="secondary">Download project backup</button>
