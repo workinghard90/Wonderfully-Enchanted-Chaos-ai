@@ -106,15 +106,8 @@ if (root) {
   }
   // Read-only preflight: descriptive checks, not an export/print certification.
   // Never infer approval from an uploaded image or bypass the existing validators.
-  function preflight(recipeKey, expectedTitle, expectedKind, output) {
-    const editor = document.getElementById("editor");
-    const title = document.getElementById("editor-heading").textContent.trim();
-    const kind = document.getElementById("kind-label").textContent.trim();
-    output.replaceChildren();
-    if (editor.hidden || title !== expectedTitle || kind !== expectedKind) {
-      status.textContent = "Project changed. Preview the recipe again to check readiness.";
-      return;
-    }
+  // One source for both on-screen input guidance and the downloaded run sheet.
+  function collectInputs(recipeKey, kind) {
     const compatible = recipeKey === "video" ? kind === "Faceless video"
       : recipeKey === "artwork" ? kind === "Art collection"
       : recipeKey === "book" ? kind === "Coloring book" || kind === "Storybook"
@@ -134,6 +127,18 @@ if (root) {
       if (recipeKey === "video") rows.push(narration ? "Narration text is present." : "Narration is missing. Add it in Setup.");
       if (recipeKey !== "plan") rows.push("Use the existing Review and Export checks for actual asset, print, or render readiness.");
     }
+    return {compatible, rows};
+  }
+  function preflight(recipeKey, expectedTitle, expectedKind, output) {
+    const editor = document.getElementById("editor");
+    const title = document.getElementById("editor-heading").textContent.trim();
+    const kind = document.getElementById("kind-label").textContent.trim();
+    output.replaceChildren();
+    if (editor.hidden || title !== expectedTitle || kind !== expectedKind) {
+      status.textContent = "Project changed. Preview the recipe again to check readiness.";
+      return;
+    }
+    const {compatible, rows} = collectInputs(recipeKey, kind);
     const list = document.createElement("ul");
     for (const message of rows) {
       const row = document.createElement("li");
@@ -143,6 +148,47 @@ if (root) {
     output.append(list);
     status.textContent = compatible ? "Recipe inputs checked. This is guidance, not an approval or export validation."
       : "This recipe does not match this project's format. Choose another recipe or project.";
+  }
+  // A portable, read-only checklist. It does not assert that any stage ran.
+  // Recalculate warnings when clicked so edits after preview are reflected.
+  function downloadRunSheet(recipeKey, expectedTitle, expectedKind) {
+    const editor = document.getElementById("editor");
+    const title = document.getElementById("editor-heading").textContent.trim();
+    const kind = document.getElementById("kind-label").textContent.trim();
+    if (!recipes[recipeKey] || editor.hidden || title !== expectedTitle || kind !== expectedKind) {
+      status.textContent = "Project changed. Preview the recipe again before downloading its checklist.";
+      return;
+    }
+    const recipe = recipes[recipeKey];
+    const {compatible, rows} = collectInputs(recipeKey, kind);
+    const lines = [
+      "WEC Creative Automation — Recipe Run Sheet",
+      "Project: " + title,
+      "Format: " + kind,
+      "Recipe: " + recipe.name,
+      "",
+      "Manual steps (mark complete yourself; no steps are automatically run):",
+      ...recipe.stages.map((step, index) => "[ ] " + (index + 1) + ". " + stageNames[step]),
+      "",
+      "Current input snapshot (guidance only):",
+      ...rows.map(row => "- " + row),
+      "",
+      compatible ? "Matching format: Yes" : "Matching format: No — choose another recipe or format.",
+      "Before exports, use the existing Review and Export validators.",
+      "Any AI generation, rendering, publishing or sharing requires a separate deliberate action.",
+      "This sheet is not a record of successful execution, approval or print readiness.",
+      ""
+    ];
+    const blob = new Blob([lines.join("\n")], {type:"text/plain;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "wec-recipe-run-sheet.txt";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    status.textContent = "Recipe run sheet downloaded. No project action was started.";
   }
   function clear() {
     chosen = "";
@@ -209,6 +255,12 @@ if (root) {
     check.addEventListener("click", () => preflight(chosen, expectedTitle, expectedKind, report));
     readiness.append(check, report);
     preview.append(readiness);
+    const sheet = document.createElement("button");
+    sheet.type = "button";
+    sheet.className = "secondary";
+    sheet.textContent = "Download recipe run sheet";
+    sheet.addEventListener("click", () => downloadRunSheet(chosen, expectedTitle, expectedKind));
+    preview.append(sheet);
     status.textContent = recipe.name + " preview ready. Each action remains your choice; no steps have run.";
   });
   root.querySelector("#automation-clear-button").addEventListener("click", clear);
