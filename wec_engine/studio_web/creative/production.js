@@ -198,6 +198,13 @@ if (productionRoot) {
   $("production-handoff").addEventListener("click",handoff);
   $("production-review").addEventListener("click",review);
   selection.addEventListener("change",invalidate);
+  // The project editor redraws all page rows on image, approval and page
+  // changes. Discard an old inventory rather than implying it stays valid.
+  new MutationObserver(() => {if(prepared) invalidate();})
+    .observe($("pages"),{childList:true});
+  for(const id of ["title","author","narration","outline"]){
+    $(id)?.addEventListener("input",()=>{if(prepared) invalidate();});
+  }
   document.querySelectorAll("[data-kind]").forEach(b=>b.addEventListener("click",invalidate));
   $("library")?.addEventListener("click",e=>{if(e.target.closest("button"))invalidate();});
   for(const id of ["restore","import-zip"]) $(id)?.addEventListener("change",invalidate);
