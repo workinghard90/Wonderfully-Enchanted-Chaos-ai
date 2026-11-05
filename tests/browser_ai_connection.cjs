@@ -40,6 +40,7 @@ async function stage(page, number) {
       await p.goto(base); await ready(p);
       assert.equal(dialogs,0);
       assert.match(await p.locator('#ai-connection-status').innerText(), /not signed in/);
+      await p.locator('[data-page-link="home"]').click();
       await p.locator('[data-kind=art]').click(); await ready(p);
       await stage(p, 3); await p.locator('#add').click(); await ready(p);
       assert.equal(await p.locator('.page').count(),1);
@@ -62,6 +63,7 @@ async function stage(page, number) {
       assert.equal(dialogs,beforeReload);
       assert.match(await p.locator('#ai-connection-status').innerText(), /sign-in was not accepted/);
       assert.equal(await p.evaluate(()=>sessionStorage.getItem('wec_token')),null);
+      await p.locator('[data-page-link="library"]').click();
       await p.locator('#library .library-item button').first().click(); await ready(p);
       answer = '  '+token+'  ';
       await p.locator('#check-ai').click(); await ready(p);
