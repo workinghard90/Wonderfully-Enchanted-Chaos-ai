@@ -44,13 +44,13 @@ jobs:
           from pathlib import Path
           d=json.loads(Path("production-public-smoke.json").read_text())
           print("## Production smoke report")
-          print("Tested repository SHA: \`\" + __import__("os").environ["GITHUB_SHA"] + "\`")
+          print("Tested repository SHA: " + __import__("os").environ["GITHUB_SHA"])
           print("**Result:** " + ("PASS" if d["passed"] else "BLOCKED") + " · public-only")
           print("| Check | Result |")
           print("|---|---|")
           for c in d["checks"]:
               print("| " + c["name"] + " | " + ("Pass" if c["pass"] else "Fail") + " |")
-          print("\\nThis is read-only. Owner storage, restore and media quality are not certified.")
+          print("This is read-only. Owner storage, restore and media quality are not certified.")
           PY
           else
             echo "Smoke gate did not produce a report. Inspect job logs." >> "$GITHUB_STEP_SUMMARY"
