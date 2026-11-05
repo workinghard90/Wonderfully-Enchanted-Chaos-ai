@@ -64,6 +64,17 @@ const assert = require('node:assert/strict');
       await page.getByRole('button',{name:'Check recipe inputs'}).click();
       assert.match(await page.getByRole('status',{name:'Recipe input check'}).innerText(),/No artwork slots/);
       assert.equal(await page.locator('.page').count(),0);
+      const [artRunSheet] = await Promise.all([
+        page.waitForEvent('download'),
+        page.getByRole('button',{name:'Download recipe run sheet'}).click()
+      ]);
+      assert.equal(artRunSheet.suggestedFilename(),'wec-recipe-run-sheet.txt');
+      const artSheetText = readFileSync(await artRunSheet.path(),'utf8');
+      assert.match(artSheetText,/Recipe: Artwork collection/);
+      assert.match(artSheetText,/No artwork slots/);
+      assert.match(artSheetText,/\[ \] 1\. Create/);
+      assert.match(artSheetText,/not a record of successful execution/);
+      assert.equal(await page.locator('.page').count(),0);
       await page.locator('#automation-preview').getByRole('button',{name:'Open Review'}).click();
       assert.equal(await tabs.nth(3).getAttribute('aria-current'),'step');
       assert.equal(await page.locator('.page').count(),0);
@@ -79,6 +90,14 @@ const assert = require('node:assert/strict');
       await page.locator('#automation-preview-button').click();
       await page.getByRole('button',{name:'Check recipe inputs'}).click();
       assert.match(await page.getByRole('status',{name:'Recipe input check'}).innerText(),/Planning text is present/);
+      const [planRunSheet] = await Promise.all([
+        page.waitForEvent('download'),
+        page.getByRole('button',{name:'Download recipe run sheet'}).click()
+      ]);
+      const planSheetText = readFileSync(await planRunSheet.path(),'utf8');
+      assert.match(planSheetText,/Recipe: Plan only/);
+      assert.match(planSheetText,/Planning text is present/);
+      assert.match(planSheetText,/\[ \] 1\. Plan/);
       assert.equal(await page.locator('.page').count(),0);
       // Confirmed actions are opt-in; cancellation must not create pages.
       page.once('dialog', dialog => dialog.dismiss());
