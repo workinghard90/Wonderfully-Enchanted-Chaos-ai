@@ -1,24 +1,31 @@
-# WEC production release gate (PR #36 work package)
+# WEC production release gate (updated after Creative Automation phases 1–7)
 
 The owner's next phase is **prove what is actually running**, without making paid
 AI calls, deleting data, starting video jobs or silently deploying code.
 
-## Verified deployment baseline (October 31, 2026)
+## Verified pre-release baseline (November 5, 2026)
 
-- Existing WEC Render service: `wec-studio-free-test` (`srv-dbc2cb5g1s2s73bjbh40`).
-- Existing Docker service is on a Starter instance with one **5 GB** disk mounted
-  at `/var/data`. This is account configuration, not evidence that every app
-  feature works.
-- **Auto-deploy is off**. Merging a PR will not deploy it.
-- Last Render deployment inspected: `dep-dbj67d7lk1mc738c6obg`, live on
-  merge commit `20f11979d36ee658cd0bac16bab2ba96a3a72830` (PR #34).
-- PR #35 (video package download) was merged later, so this live deployment
-  has **not** been verified to contain PR #35.
-- The engineering audit records a successful synthetic online-snapshot
-  persistence test across a previous Render redeploy, not a guaranteed
-  offsite backup or comprehensive restore drill.
+- Existing Render service: `wec-studio-free-test` (`srv-dbc2cb5g1s2s73bjbh40`).
+- Manual deployment remains in effect; **auto-deploy is off**.
+- Render reports one 0.5 CPU / 512 MiB Docker instance and a **5 GB**
+  persistent disk mounted at `/var/data`. The allocation does **not** reveal
+  actual free disk bytes, snapshot limits or retained video usage.
+- Latest inspected live deployment is `dep-dbm9um6c6qcc738dm4qg` on
+  `cb3c73690e5d6aa20d3eaa977260e40856dbd709` (PR #59).
+- Creative Automation Phase 7 merged on
+  `ed09b411bf2380cff3f5a9873274f817e5be4866` (PR #67);
+  the newer automation modules are **not yet deployed**.
+- PR #67's complete branch CI passed. The post-merge `main` CI requires
+  independent verification before rollout.
+- WEC's browser test pins Cozy validation commit
+  `dfe4b9fc4d0201268769dbc1f1153a6425826476`. At this audit,
+  Cozy `main` at `955f6051a8603943ddd24408629b38639d7d26c0`
+  contained that validation with a merge-only commit and no additional
+  file differences.
 
-These are a dated observation, **not a promise about future deploy state**.
+These are dated connector observations, **not a promise of later deployment
+state** or evidence of free storage. Do not remove any retained work as part
+of release verification.
 
 ## Safe gate included with this PR
 
@@ -33,8 +40,9 @@ python tools/release_gate.py \
 
 Public-only gate checks:
 1. `/api/health` returns the expected health JSON.
-2. Six actual `/studio/` HTML, JS and CSS assets have **exact byte hashes**
-   matching the selected checkout; this detects a stale UI deployment.
+2. Ten actual `/studio/` HTML, JS and CSS assets have **exact byte hashes**
+   matching the selected checkout, including `workflow.js`, `automation.js`, and
+   `production.js`; this detects stale or missing automation modules.
 3. Unauthenticated `/api/projects` requests return HTTP **401**, not data.
 
 Run the fuller **owner read-only** gate by supplying your existing token as a
