@@ -45,6 +45,8 @@ Use **Check recipe inputs** for an optional, read-only snapshot of the outline, 
 
 Use **Download recipe run sheet** to save a plain-text checklist of the currently chosen recipe, its workspace steps and a fresh snapshot of input warnings. The sheet contains the project's title, format and guidance messages, but not the draft text, original images or private project backup. It is **not** a record of executed steps, user approval or print readiness; tick steps manually after doing them. Downloading the run sheet never saves, modifies, publishes or generates project content.
 
+The Plan workspace now keeps a **session-only recent action history** for actions initiated through its recipes. Entries distinguish cancelled, running, completed, and needs-review outcomes; they do not claim that independent workspaces or publishing steps have finished. A needs-review result means check the saved project and recipe inputs **before manually deciding whether to retry**—the interface never automatically replays an action. The list is cleared when a different project is opened or created, and disappears on reload. Use a project backup for durable project content, not this status list.
+
 Recipe previews never make AI requests, approve artwork, render media, publish content or schedule work. Converting a draft adds pages only after confirmation, and existing failed-save safeguards retain the original draft. Use a project backup to protect work across devices.
 
 ## Four delivery paths
