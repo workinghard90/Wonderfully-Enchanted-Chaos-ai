@@ -109,6 +109,25 @@ const assert = require('node:assert/strict');
       assert.equal(await tabs.nth(1).getAttribute('aria-current'),'step');
       let automationCalls = 0;
       await page.route('**/api/creative/image', route => {automationCalls++; return route.abort();});
+      // Owner-scoped persistent plan API: creating a record never invokes the
+      // creative generation route or silently executes a project action.
+      await page.evaluate(() => sessionStorage.setItem('wec_token','test-only-workflow-token-32-characters'));
+      const serverPanel=page.locator('#automation-server-plans');
+      await serverPanel.getByRole('button',{name:'Load server plans'}).click();
+      await serverPanel.locator('#automation-server-status').filter({hasText:'0 server plan(s)'}).waitFor();
+      page.once('dialog', dialog=>dialog.accept());
+      await serverPanel.getByRole('button',{name:'Record a plan (no execution)'}).click();
+      await serverPanel.locator('#automation-server-status').filter({hasText:'1 server plan(s)'}).waitFor();
+      assert.match(await serverPanel.locator('#automation-server-list').innerText(),/artwork · awaiting_approval/);
+      const onServer=await page.request.get(base+'/api/automation/jobs',{
+        headers:{'X-WEC-Token':'test-only-workflow-token-32-characters'}});
+      assert.equal(onServer.status(),200);
+      assert.equal((await onServer.json()).jobs.length,1);
+      page.once('dialog', dialog=>dialog.accept());
+      await serverPanel.getByRole('button',{name:'Cancel plan'}).click();
+      await serverPanel.locator('#automation-server-status').filter({hasText:'1 server plan(s)'}).waitFor();
+      assert.match(await serverPanel.locator('#automation-server-list').innerText(),/cancelled/);
+      assert.equal(automationCalls,0);
       await page.locator('#automation-recipe').selectOption('artwork');
       await page.locator('#automation-preview-button').click();
       assert.match(await page.locator('#automation-status').innerText(),/Each action remains your choice/);
