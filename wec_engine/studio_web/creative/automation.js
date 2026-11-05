@@ -102,6 +102,110 @@ if (root) {
   durablePanel.id="automation-durable";
   durablePanel.setAttribute("aria-label","Local automation recovery");
   root.append(durablePanel);
+  // Persistent owner-authenticated job plans are a separate server feature:
+  // no executor is wired to these routes. Creating one never runs AI or render.
+  const serverPlans=document.createElement("section");
+  serverPlans.id="automation-server-plans";
+  serverPlans.setAttribute("aria-label","Server automation plans");
+  const serverTitle=document.createElement("h4");
+  serverTitle.textContent="Server automation plans (approval required)";
+  const serverHint=document.createElement("p");
+  serverHint.className="muted";
+  serverHint.textContent="These plans survive server restarts, but do not run on their own. Use the original studio tools to create output; execution of server plans is not available yet.";
+  const serverStatus=document.createElement("p");
+  serverStatus.id="automation-server-status";
+  serverStatus.setAttribute("role","status");
+  const serverList=document.createElement("ol");
+  serverList.id="automation-server-list";
+  const serverControls=document.createElement("div");
+  serverControls.className="toolbar";
+  const serverRefresh=document.createElement("button");
+  serverRefresh.type="button";
+  serverRefresh.className="secondary";
+  serverRefresh.textContent="Load server plans";
+  const serverCreate=document.createElement("button");
+  serverCreate.type="button";
+  serverCreate.className="secondary";
+  serverCreate.textContent="Record a plan (no execution)";
+  serverControls.append(serverRefresh,serverCreate);
+  serverPlans.append(serverTitle,serverHint,serverControls,serverStatus,serverList);
+  root.append(serverPlans);
+  let serverBusy=false;
+  async function serverApi(url,body) {
+    const headers={"X-WEC-Token":(sessionStorage.getItem("wec_token")||"").trim()};
+    if(body!==undefined) headers["Content-Type"]="application/json";
+    const response=await fetch(url,{method:body===undefined?"GET":"POST",
+      headers,body:body===undefined?undefined:JSON.stringify(body)});
+    const data=await response.json();
+    if(!response.ok) throw Error(data.error || "Server rejected the plan request.");
+    return data;
+  }
+  async function loadServerPlans() {
+    if(serverBusy)return;
+    serverBusy=true;
+    serverRefresh.disabled=serverCreate.disabled=true;
+    serverStatus.textContent="Loading server plans…";
+    try {
+      const result=await serverApi("/api/automation/jobs");
+      const id=currentProject();
+      serverList.replaceChildren();
+      const matching=result.jobs.filter(job=>job.project_id===id);
+      for(const job of matching) {
+        const row=document.createElement("li");
+        row.textContent=job.recipe+" · "+job.status+" · "+job.id.slice(0,8)+" ";
+        if(job.status==="awaiting_approval"||job.status==="interrupted") {
+          const cancel=document.createElement("button");
+          cancel.type="button";cancel.className="secondary";
+          cancel.textContent="Cancel plan";
+          cancel.addEventListener("click",async()=>{
+            if(serverBusy||!window.confirm("Cancel server plan "+job.id.slice(0,8)+"? No creative assets will be changed."))return;
+            serverBusy=true;
+            cancel.disabled=true;
+            try{
+              await serverApi("/api/automation/jobs/"+job.id+"/cancel",{confirm:job.id});
+              serverStatus.textContent="Plan cancelled on server. No creative work was run.";
+            }catch{serverStatus.textContent="Cancellation was not confirmed. Refresh to check server state.";}
+            finally{serverBusy=false;serverRefresh.disabled=serverCreate.disabled=false;}
+            await loadServerPlans();
+          });
+          row.append(cancel);
+        }
+        serverList.append(row);
+      }
+      serverStatus.textContent=matching.length+" server plan(s) for this project. Execution is unavailable; no actions started.";
+    }catch{
+      serverStatus.textContent="Server plan list is unavailable or owner login is missing. Local projects remain unchanged.";
+    }finally{
+      serverBusy=false;
+      serverRefresh.disabled=serverCreate.disabled=false;
+    }
+  }
+  serverRefresh.addEventListener("click",loadServerPlans);
+  serverCreate.addEventListener("click",async()=>{
+    if(serverBusy || document.getElementById("editor").hidden)return;
+    const kind=projectKinds[currentKind()];
+    const recipe=select.value;
+    const id=currentProject();
+    if(!id || !kind || !recipes[recipe] || !collectInputs(recipe,currentKind()).compatible){
+      serverStatus.textContent="Open a matching saved project and choose its recipe.";
+      return;
+    }
+    if(!window.confirm("Record a durable server plan for "+recipe+"? This stores intent only and does NOT start generation, rendering, downloads or publishing."))return;
+    serverBusy=true;
+    serverCreate.disabled=serverRefresh.disabled=true;
+    try{
+      const result=await serverApi("/api/automation/jobs",{
+        project_id:id,kind,recipe,idempotency_key:crypto.randomUUID()
+      });
+      serverStatus.textContent="Plan recorded: "+result.id.slice(0,8)+". Waiting for owner approval; no execution is available.";
+    }catch{
+      serverStatus.textContent="Server plan was not confirmed. Refresh before retrying to avoid duplicates.";
+    }finally{
+      serverBusy=false;
+      serverRefresh.disabled=serverCreate.disabled=false;
+    }
+    await loadServerPlans();
+  });
   const currentProject = () => document.getElementById("review-mode")?.dataset.projectId || "";
   const currentTitle = () => document.getElementById("editor-heading").textContent.trim();
   const currentKind = () => document.getElementById("kind-label").textContent.trim();

@@ -17,6 +17,34 @@ One mobile-friendly studio for creating and safely recovering artwork, printable
 
 ## Required completion gates, in dependency order
 
+## Phase 10 — Server automation job plans (PR #74)
+
+WEC now supports a **server-persisted, owner-authenticated automation plan ledger**
+in SQLite alongside other WEC data on the configured WEC data volume.
+Under Studio → Plan → **Server automation plans**, owners can explicitly
+record, list and cancel an automation plan associated with a creative project.
+The server API is `GET/POST /api/automation/jobs`,
+`GET /api/automation/jobs/{id}`, and
+`POST /api/automation/jobs/{id}/cancel` with the exact ID in the JSON body.
+
+This release is deliberately **non-executing**. Plans are stored as
+`awaiting_approval`. No server worker is started, no AI charges are incurred,
+and creation is not permission to render, export, or publish. An explicit
+idempotency key prevents duplicate plan records on retry; a reused key for a
+different project is rejected. Strictly bounded input fields exclude title,
+story text, images, tokens, and external destinations. Fifty records maximum
+are retained without automatic deletion, and cancellation does not remove
+work or projects. If a future executor leaves a record in `running`, server
+initialization changes it to `interrupted`, never to completed; this phase
+does not yet provide an executor.
+
+**Remaining:** a server-side executor with version/checksum-based step
+idempotency, durable output receipts, explicit approval per paid/irreversible
+operation, bounded retries, restart-safe locks, and actual end-to-end
+verification of printable PDF, image ZIP, finished MP4 and Cozy importer.
+Until those exist, “record plan” must never be described as automated
+generation or a working background job.
+
 ### A. Durable orchestration (next implementation)
 
 - Store a minimal per-project automation job manifest with schema version, project ID, source revision/checksum, steps, timestamps and terminal state.

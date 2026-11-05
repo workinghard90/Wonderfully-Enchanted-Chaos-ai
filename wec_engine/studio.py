@@ -22,6 +22,7 @@ from .studio_store import (
 from .orchestrator import run_production
 from .providers.cloudflare_images import CloudflareImages, GenerationError, validate_prompt, prepare_reference
 from .studio_video import VideoJobs, VideoJobError, TERMINAL
+from .automation_jobs import AutomationJobs, AutomationJobError
 from .studio_image_requests import ImageRequests, ReceiptError
 from . import creative
 from .online_store import OnlineStore, SnapshotError, MAX_PACKAGE
@@ -49,6 +50,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
     image_provider = CloudflareImages()
     text_provider = CloudflareText()
     image_requests = ImageRequests(db_path)
+    automation_jobs = AutomationJobs(data_dir/'automation-jobs.sqlite3')
     videos = video_jobs or VideoJobs(data_dir/'video-jobs')
     online_reason = 'Online storage is not enabled. Local saves and downloaded recovery packages still work.'
     online = None
@@ -296,6 +298,37 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             if path == '/api/health' and self.command == 'GET':
                 self._send(200, {'ok':True}); return
             if not self._authorized(): return
+            # Owner-authenticated durable planning API. Creating a plan records
+            # intent ONLY. This route has no executor or paid side effects.
+            if path == '/api/automation/jobs':
+                try:
+                    if self.command == 'GET':
+                        self._send(200, {'jobs': automation_jobs.list(), 'execution_enabled': False})
+                    elif self.command == 'POST':
+                        payload = json.loads(self._read_body(4096))
+                        record, created = automation_jobs.create(payload)
+                        self._send(201 if created else 200, record)
+                    else:
+                        self._send(405, {'error': 'Method not allowed'})
+                except (AutomationJobError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                    self._send(exc.status if isinstance(exc, AutomationJobError) else 400,
+                               {'error': str(exc) if isinstance(exc, AutomationJobError) else 'Invalid automation plan'})
+                return
+            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel)?', path)
+            if match:
+                job_id, cancel_route = match.groups()
+                try:
+                    if self.command == 'GET' and not cancel_route:
+                        self._send(200, automation_jobs.get(job_id))
+                    elif self.command == 'POST' and cancel_route:
+                        payload = json.loads(self._read_body(1024))
+                        self._send(200, automation_jobs.cancel(job_id, payload))
+                    else:
+                        self._send(405, {'error': 'Method not allowed'})
+                except (AutomationJobError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                    self._send(exc.status if isinstance(exc, AutomationJobError) else 400,
+                               {'error': str(exc) if isinstance(exc, AutomationJobError) else 'Invalid cancellation request'})
+                return
             if path == '/api/storage/capacity':
                 if self.command != 'GET':
                     self._send(405, {'error': 'Method not allowed'}); return
