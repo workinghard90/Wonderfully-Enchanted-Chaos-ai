@@ -4,6 +4,32 @@ Open **`/`** (or `/studio/`) on the same studio host. The original story/video d
 at `/video/` and coloring editor at `/coloring/` remain available. This release adds
 a multi-project workspace without migrating or replacing either older store.
 
+## Executable local automation — first connected workflow (PR #72)
+
+The Plan workspace automation preview now offers **Save + prepare output**.
+It is a real, two-step **local execution**, not merely a checklist: after
+one explicit confirmation, the existing editor Save handler writes the current
+project and reports its outcome. Only after a verified save, automation calls
+the existing Production Preparation workbench to inspect the target inventory
+and warnings (artwork ZIP for art; print interior for books; video for video;
+editable backup for Plan only). A session receipt reports cancellation, an
+unconfirmed save, a failed preflight, or verified completion.
+
+The output inventory is **guidance, not a generated or approved output**:
+this workflow does not generate AI images, draft story text, render MP4s,
+export files, publish, call paid providers, start recurring work, or replace
+Review/Export validators. The original production buttons still require their
+separate approvals. The operator can inspect the prepared inventory in Export
+and decide how to proceed. It is bounded to the exact open project/recipe,
+with a second identity check before the next step. A failure stops the
+sequence rather than attempting hidden retries or skipping required work.
+
+The studio is **not yet an unattended full automation platform**. Next phases
+should add durable, recoverable job state and controlled owner-authorized
+task execution, then independently verify a full end-to-end creative artifact
+and its backup/restore behavior. Keep paid image generation, rendering and
+external publishing behind explicit owner approvals and per-action limits.
+
 ## UI 4.1 — Inline workspace navigation
 
 The **Previous step** and **Continue to …** buttons sit **below the current Studio workspace** in the normal reading order, rather than following you as a sticky overlay. This keeps the Plan recipe controls, text, page inputs and output review fully visible on phones and desktop. The five Setup/Plan/Create/Review/Export tabs remain available at the top of Studio, so the bottom buttons are optional shortcuts. Switching steps does not automatically save, create, approve, export or modify any project content.

@@ -113,6 +113,25 @@ const assert = require('node:assert/strict');
       await page.locator('#automation-preview-button').click();
       assert.match(await page.locator('#automation-status').innerText(),/Each action remains your choice/);
       assert.equal(await page.locator('#automation-preview li').count(),3);
+      // Real bounded automation: cancelled run changes nothing; approved run
+      // verifies an actual save and actual production inventory handler.
+      const localRun = page.locator('#automation-run-local');
+      assert.equal(await localRun.isVisible(),true);
+      page.once('dialog',dialog=>dialog.dismiss());
+      await localRun.click();
+      assert.match(await page.locator('#automation-status').innerText(),/cancelled/);
+      assert.equal(await page.locator('#automation-history-list li').count(),1);
+      assert.equal(await page.locator('#production-summary').innerText(),'');
+      page.once('dialog',dialog=>dialog.accept());
+      await localRun.click();
+      await page.locator('#automation-status').filter({hasText:'Local preparation completed.'}).waitFor();
+      assert.equal(await page.locator('#production-target').inputValue(),'artwork');
+      assert.match(await page.locator('#production-summary').innerText(),/0 ordered page/);
+      assert.match(await page.locator('#production-issues').innerText(),/Create at least one page/);
+      assert.match(await page.locator('#automation-history-list li').first().innerText(),/completed.*inventory prepared/);
+      assert.match(await page.locator('#save-status').innerText(),/^Saved /);
+      assert.equal(await page.locator('#automation-history-list li').count(),2);
+      assert.equal(automationCalls,0,'Local automation must not call the image provider');
       await page.getByRole('button',{name:'Check recipe inputs'}).click();
       assert.match(await page.getByRole('status',{name:'Recipe input check'}).innerText(),/No artwork slots/);
       assert.equal(await page.locator('.page').count(),0);
