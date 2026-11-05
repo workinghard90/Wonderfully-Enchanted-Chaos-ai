@@ -27,6 +27,25 @@ These are dated connector observations, **not a promise of later deployment
 state** or evidence of free storage. Do not remove any retained work as part
 of release verification.
 
+## One-click public release smoke check (PR #71)
+
+The repository includes a **manually triggered** GitHub Actions workflow named
+**Read-only production smoke check**. From the Actions tab, select that workflow,
+choose **Run workflow** on the commit that Render is currently serving (normally
+`main` immediately after a verified deployment), and inspect both the summary
+and its downloadable JSON report. It invokes the existing release gate with
+`--public-only`: GET-only health, exact deployed bytes for every documented
+Studio asset, and unauthenticated-project rejection. It **does not** access
+saved projects, provide an owner token, invoke AI providers, start video,
+restore backups, change configuration or deploy the service.
+
+**Important:** Running this workflow on a commit that differs from the current
+Render deployment should report a **BLOCKED** asset-parity result; that is
+expected and must not be "fixed" by weakening SHA checks. This public check
+cannot certify server disk free bytes, snapshots, saved project integrity,
+authenticated media or completed recovery. Those require the separately
+documented owner read-only gate and hands-on acceptance.
+
 ## Safe gate included with this PR
 
 Run from the exact repository checkout (or commit) you intend to deploy:

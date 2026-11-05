@@ -1,0 +1,65 @@
+name: Read-only production smoke check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: read-only-production-smoke
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out selected release commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run public-only read-only release checks
+        id: gate
+        shell: bash
+        run: |
+          set -o pipefail
+          # Public-only sends no owner token, performs GETs only, and cannot
+          # start generation, write snapshots, render, publish or deploy.
+          python tools/release_gate.py \
+            --url https://wec-studio-free-test.onrender.com \
+            --public-only --timeout 20 \
+            | tee production-public-smoke.json
+      - name: Summarize verified release bytes
+        if: always()
+        shell: bash
+        run: |
+          if test -f production-public-smoke.json; then
+            python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          d=json.loads(Path("production-public-smoke.json").read_text())
+          print("## Production smoke report")
+          print("Tested repository SHA: " + __import__("os").environ["GITHUB_SHA"])
+          print("**Result:** " + ("PASS" if d["passed"] else "BLOCKED") + " · public-only")
+          print("| Check | Result |")
+          print("|---|---|")
+          for c in d["checks"]:
+              print("| " + c["name"] + " | " + ("Pass" if c["pass"] else "Fail") + " |")
+          print("This is read-only. Owner storage, restore and media quality are not certified.")
+          PY
+          else
+            echo "Smoke gate did not produce a report. Inspect job logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-public-smoke-${{ github.sha }}
+          path: production-public-smoke.json
+          if-no-files-found: warn
+          retention-days: 14
