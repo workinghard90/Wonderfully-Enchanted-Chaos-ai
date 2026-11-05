@@ -32,7 +32,7 @@ if (root) {
   historyList.id = "automation-history-list";
   const historyHint = document.createElement("p");
   historyHint.className = "muted";
-  historyHint.textContent = "Only actions started through this panel appear here. Recheck saved work before retrying; this is not a durable audit trail.";
+  historyHint.textContent = "Only actions started through this panel appear here. For needs review, inspect your project and check recipe inputs before deciding whether to retry. No automatic retries. History resets when you change projects and is not a durable audit trail.";
   history.append(historyTitle, historyHint, historyList);
   root.append(history);
   function addReceipt(label, outcome, detail) {
