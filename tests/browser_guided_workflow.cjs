@@ -138,6 +138,22 @@ const assert = require('node:assert/strict');
       await page.locator('#production-handoff').click();
       assert.equal(await page.locator('#zip').evaluate(e=>e===document.activeElement),true);
       assert.match(await page.locator('#production-status').innerText(),/no export started/);
+      // Local output is a separate, user-confirmed request to the original
+      // backup handler. Cancellation never downloads anything.
+      await page.locator('#production-target').selectOption('backup');
+      await page.locator('#production-prepare').click();
+      page.once('dialog', dialog => dialog.dismiss());
+      await page.locator('#production-run-local').click();
+      assert.match(await page.locator('#production-status').innerText(),/cancelled/);
+      assert.equal(await page.locator('.page').count(),0);
+      page.once('dialog', dialog => dialog.accept());
+      const [localBackup] = await Promise.all([
+        page.waitForEvent('download'),page.locator('#production-run-local').click()
+      ]);
+      assert.match(localBackup.suggestedFilename(),/-project\.json$/);
+      const localBackupContent=JSON.parse(readFileSync(await localBackup.path(),'utf8'));
+      assert.equal(localBackupContent.title,'Workflow regression');
+      assert.equal(await page.locator('.page').count(),0);
       // Re-check target changes instead of using an old manifest authorization.
       await page.locator('#production-target').selectOption('cozy');
       assert.match(await page.locator('#production-status').innerText(),/Prepare again/);
