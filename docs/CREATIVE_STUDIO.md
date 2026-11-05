@@ -35,6 +35,16 @@ These bounds accommodate forty typical 300-PPI Letter illustrations while
 bounding CPU exports. The browser decodes image inputs to check dimensions;
 large imports can still be demanding on an iPhone. Keep the backup/originals.
 
+## Optional guided creative automation (Phase 6)
+
+**Guided runs** are a complete optional interface built on the existing recipe previews, confirmed local actions, preflight checks, run sheets and action receipts. Open a project, choose a compatible recipe, preview it, and click **Start guided run**. The Plan workspace shows the current step, a list of suggested steps and a count of steps whose guidance you explicitly reviewed. Choose **Open current workspace** to navigate without performing a task, then return to Plan to continue. Move backward/forward freely; there are no completion gates on independent workspaces.
+
+**Mark step reviewed** records only that you considered the guidance, **not** that any artwork is approved, a file is valid, or a task is finished. **Check inputs for current step** is read-only. While on a Plan step, **Convert draft at this step (confirm)** calls the existing validated draft-to-pages action. **Save project at this step (confirm)** calls the existing device-saving action. Each operation requires its own confirmation, checks the active project and underlying editor outcome, and never advances the guide automatically. Rendering, AI generation, sharing, and Cozy publishing remain in their original explicitly authorized controls.
+
+Use **Pause guided run** to prevent guided navigation and actions, **Resume guided run** to continue after checking inputs, or **End guided run** to discard only the temporary guidance. A failed or unconfirmed supported action pauses the guide and records a needs-review receipt. Check your saved project and input readiness before deliberately resuming or retrying; the guide will never replay the operation itself. A new recipe run requires confirmation before replacing a current run. Switching/creating/restoring projects clears guided state so progress cannot be attributed to another project.
+
+Guided state and recent action receipts are **session-only**; reloading the page starts without a guided run. Your saved project remains in the existing IndexedDB storage, independently of this guide. Back up your originals normally. The run sheet remains a manual checklist and is not an output approval or durable execution record. Existing Review and Export validators are authoritative.
+
 ## Optional manual creative automation
 
 The **Plan** workspace contains reusable recipe previews for planning, art, print and video projects. Recipes are optional navigation aids: you can still open any workspace directly.
