@@ -124,10 +124,25 @@ const assert = require('node:assert/strict');
         headers:{'X-WEC-Token':'test-only-workflow-token-32-characters'}});
       assert.equal(onServer.status(),200);
       assert.ok((await onServer.json()).jobs.some(job=>job.status==='awaiting_approval'), 'Stored job must exist');
+      const storedPlan=(await onServer.json()).jobs.find(job=>job.status==='awaiting_approval');
+      assert.ok(storedPlan && storedPlan.id,'Expected an identified stored plan before cancellation');
       page.once('dialog', dialog=>dialog.accept());
       await serverPanel.getByRole('button',{name:'Cancel plan'}).click();
-      await serverPanel.locator('#automation-server-status').filter({hasText:'1 server plan(s)'}).waitFor();
-      assert.match(await serverPanel.locator('#automation-server-list').innerText(),/cancelled/);
+      // The record count is unchanged during cancellation. Wait for the
+      // specific plan to enter its terminal state instead of racing the API.
+      await serverPanel.locator('#automation-server-list li')
+        .filter({hasText:storedPlan.id.slice(0,8)})
+        .filter({hasText:'cancelled'}).waitFor();
+      const cancelled=await page.request.get(base+'/api/automation/jobs/'+storedPlan.id,{
+        headers:{'X-WEC-Token':'test-only-workflow-token-32-characters'}});
+      assert.equal(cancelled.status(),200,'Cancelled plan must be readable from storage');
+      assert.equal((await cancelled.json()).status,'cancelled','Server must persist cancellation');
+      await serverPanel.getByRole('button',{name:'Load server plans'}).click();
+      await serverPanel.locator('#automation-server-list li')
+        .filter({hasText:storedPlan.id.slice(0,8)})
+        .filter({hasText:'cancelled'}).waitFor();
+      assert.equal(await serverPanel.getByRole('button',{name:'Cancel plan'}).count(),0,
+        'A cancelled plan must not offer cancellation again');
       await page.locator('#automation-recipe').selectOption('artwork');
       await page.locator('#automation-preview-button').click();
       assert.match(await page.locator('#automation-status').innerText(),/Each action remains your choice/);
