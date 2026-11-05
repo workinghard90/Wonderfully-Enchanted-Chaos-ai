@@ -43,6 +43,8 @@ The first executable actions are **Save current project** and, for planning and 
 
 Use **Check recipe inputs** for an optional, read-only snapshot of the outline, artwork/page slots, or narration. A format mismatch is flagged; it does not change the project's format. These are guidance checks only: the existing Review and Export validators are still authoritative for artwork approval, print, video, and Cozy publishing packages.
 
+Use **Download recipe run sheet** to save a plain-text checklist of the currently chosen recipe, its workspace steps and a fresh snapshot of input warnings. The sheet contains the project's title, format and guidance messages, but not the draft text, original images or private project backup. It is **not** a record of executed steps, user approval or print readiness; tick steps manually after doing them. Downloading the run sheet never saves, modifies, publishes or generates project content.
+
 Recipe previews never make AI requests, approve artwork, render media, publish content or schedule work. Converting a draft adds pages only after confirmation, and existing failed-save safeguards retain the original draft. Use a project backup to protect work across devices.
 
 ## Four delivery paths
