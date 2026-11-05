@@ -370,7 +370,7 @@
             </section>
             <section id="production-workbench" class="panel" aria-labelledby="production-heading">
               <h3 id="production-heading">Production preparation · review before export</h3>
-              <p class="muted">Prepare an ordered image inventory and a portable JSON report without changing or publishing anything. Final PDF, artwork ZIP, Cozy proposal, backups and video rendering still use their existing validation and confirmation controls.</p>
+              <p class="muted">Prepare an ordered image inventory and a portable JSON report without changing or publishing anything. You may confirm a local project backup or artwork ZIP directly here through existing WEC export handlers. Final PDFs, Cozy proposals and video rendering still use their own separate validation and consent controls.</p>
               <label for="production-target">Intended output</label>
               <select id="production-target">
                 <option value="backup">Editable project backup</option>
@@ -383,6 +383,7 @@
                 <button type="button" id="production-prepare" class="secondary">Prepare production inventory</button>
                 <button type="button" id="production-review" class="secondary">Open Review workspace</button>
                 <button type="button" id="production-download" class="secondary">Download preparation manifest</button>
+                <button type="button" id="production-run-local" class="secondary">Run local backup / artwork ZIP (confirm)</button>
                 <button type="button" id="production-handoff" class="secondary">Open existing export action</button>
               </div>
               <p id="production-status" class="muted" role="status"></p>
