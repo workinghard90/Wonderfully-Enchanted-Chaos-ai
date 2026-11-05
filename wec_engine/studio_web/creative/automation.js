@@ -104,6 +104,46 @@ if (root) {
       executing = false;
     }
   }
+  // Read-only preflight: descriptive checks, not an export/print certification.
+  // Never infer approval from an uploaded image or bypass the existing validators.
+  function preflight(recipeKey, expectedTitle, expectedKind, output) {
+    const editor = document.getElementById("editor");
+    const title = document.getElementById("editor-heading").textContent.trim();
+    const kind = document.getElementById("kind-label").textContent.trim();
+    output.replaceChildren();
+    if (editor.hidden || title !== expectedTitle || kind !== expectedKind) {
+      status.textContent = "Project changed. Preview the recipe again to check readiness.";
+      return;
+    }
+    const compatible = recipeKey === "video" ? kind === "Faceless video"
+      : recipeKey === "artwork" ? kind === "Art collection"
+      : recipeKey === "book" ? kind === "Coloring book" || kind === "Storybook"
+      : true;
+    const draft = document.getElementById("outline")?.value.trim() || "";
+    const pages = document.querySelectorAll("#pages .page").length;
+    const narration = document.getElementById("narration")?.value.trim() || "";
+    const rows = [];
+    if (!compatible) rows.push("Choose a matching project format for this recipe. Existing project content is unchanged.");
+    else {
+      if (recipeKey === "plan") rows.push(draft ? "Planning text is present and can be downloaded." : "Planning text is empty. Add an outline in Plan to use this recipe.");
+      if (recipeKey === "book") {
+        rows.push(draft ? "Planning text is available (optional)." : "No planning text; you can still create pages independently.");
+        rows.push(pages ? pages + " page slot(s) available for artwork and review." : "No pages yet. Create pages in Create or convert a Plan draft.");
+      }
+      if (recipeKey === "artwork") rows.push(pages ? pages + " artwork slot(s) in this project." : "No artwork slots. Add artwork in Create.");
+      if (recipeKey === "video") rows.push(narration ? "Narration text is present." : "Narration is missing. Add it in Setup.");
+      if (recipeKey !== "plan") rows.push("Use the existing Review and Export checks for actual asset, print, or render readiness.");
+    }
+    const list = document.createElement("ul");
+    for (const message of rows) {
+      const row = document.createElement("li");
+      row.textContent = message;
+      list.append(row);
+    }
+    output.append(list);
+    status.textContent = compatible ? "Recipe inputs checked. This is guidance, not an approval or export validation."
+      : "This recipe does not match this project's format. Choose another recipe or project.";
+  }
   function clear() {
     chosen = "";
     preview.replaceChildren();
@@ -158,6 +198,17 @@ if (root) {
       actionList.append(button);
     }
     preview.append(actionList);
+    const readiness = document.createElement("div");
+    const check = document.createElement("button");
+    check.type = "button";
+    check.className = "secondary";
+    check.textContent = "Check recipe inputs";
+    const report = document.createElement("div");
+    report.setAttribute("role", "status");
+    report.setAttribute("aria-label", "Recipe input check");
+    check.addEventListener("click", () => preflight(chosen, expectedTitle, expectedKind, report));
+    readiness.append(check, report);
+    preview.append(readiness);
     status.textContent = recipe.name + " preview ready. Each action remains your choice; no steps have run.";
   });
   root.querySelector("#automation-clear-button").addEventListener("click", clear);
