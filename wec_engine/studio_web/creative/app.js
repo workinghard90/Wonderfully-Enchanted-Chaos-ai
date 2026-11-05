@@ -34,6 +34,24 @@ function button(label, action, disabled = false) {
   b.onclick = () => run(action);
   return b;
 }
+// Navigation must leave pending autosave alone; editing actions use run().
+function workspaceButton(label, destination) {
+  const jump = document.createElement("button");
+  jump.type = "button";
+  jump.className = "secondary";
+  jump.textContent = label;
+  jump.onclick = () => {
+    const target = destination();
+    const screen = target.closest(".workflow-screen");
+    document.querySelector(`[aria-controls="${screen.id}"]`).click();
+    const details = target.closest("details");
+    if (details) details.open = true;
+    if (target.tagName === "LI") target.tabIndex = -1;
+    target.focus({preventScroll:true});
+    target.scrollIntoView({block:"center"});
+  };
+  return jump;
+}
 function fresh(kind) {
   return {
     schema_version: 1,
@@ -297,6 +315,7 @@ $("checkpoint-remove").onclick = () => run(async () => {
   say("Checkpoint removed. Current projects were kept.");
 });
 function render() {
+  $("plan-handoff").replaceChildren();
   urls.forEach((u) => URL.revokeObjectURL(u));
   urls = [];
   $("video-workflow").hidden = project?.kind !== "video";
@@ -389,6 +408,7 @@ function render() {
       visual.append(img, original);
       const item = document.createElement("li");
       const exportLink = original.cloneNode(false);
+      exportLink.id = "export-image-" + i;
       exportLink.textContent = title.textContent + " — " + page.asset.name;
       item.append(exportLink);
       exportImages.append(item);
@@ -402,6 +422,16 @@ function render() {
         visual.append(provenance);
       }
       visual.append(reviewControl(page, "Artwork review"));
+      if (project.kind === "art" || project.kind === "video") {
+        visual.append(workspaceButton("Open in Review", () => {
+          if (project.kind === "art" && $("review-mode").value === "print") {
+            $("review-mode").value = "art";
+            updateReviewPanel();
+            readiness();
+          }
+          return $("asset-review-list").children[i];
+        }));
+      }
       visual.append(button("Use as approved reference", async () => {
         if (!confirm("Use this picture as the approved character reference for this project? Save the character profile to reuse it elsewhere.")) return;
         checkAssets(page.asset, project.reference);
@@ -640,6 +670,9 @@ function updateReviewPanel() {
       missing.textContent = video ? "Attach a scene picture in Create." : "Empty artwork slot";
       item.append(missing);
     }
+    item.append(workspaceButton("Edit in Create", () => $("pages").children[index]));
+    if (page.asset)
+      item.append(workspaceButton("Open original in Export", () => $("export-image-" + index)));
     list.append(item);
   }
 }
@@ -1051,6 +1084,7 @@ $("plan-pages").onclick = () =>
       throw error;
     }
     render();
+    $("plan-handoff").append(workspaceButton("Open new pages in Create", () => $("pages").children[previousCount]));
     say("Pages created from your text. Add prompts and pictures next.");
   });
 function downloadPlan() {
@@ -1339,18 +1373,8 @@ async function checkBook() {
   }
   $("book-review-issues").replaceChildren(...issues.map(issue => {
     const li = document.createElement("li"); li.textContent = issue.text + " ";
-    if (issue.index !== undefined) {
-      const jump = document.createElement("button");
-      jump.type = "button";
-      jump.className = "secondary";
-      jump.textContent = "Go to page " + (issue.index + 1);
-      jump.onclick = () => {
-        document.querySelector('[aria-controls="workflow-screen-3"]').click();
-        const card = $("pages").children[issue.index];
-        card.tabIndex = -1; card.scrollIntoView({block:"center", behavior:"smooth"}); card.focus({preventScroll:true});
-      };
-      li.append(jump);
-    }
+    if (issue.index !== undefined)
+      li.append(workspaceButton("Go to page " + (issue.index + 1), () => $("pages").children[issue.index]));
     return li;
   }));
   const errors = issues.filter(i => i.error).length;

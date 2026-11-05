@@ -83,10 +83,13 @@ const assert = require('node:assert/strict');
       });
       await page.locator('#plan-pages').click();
       await page.locator('#status').filter({hasText:'Device storage full'}).waitFor();
+      assert.equal(await page.locator('#plan-handoff button').count(),0);
       assert.equal(await page.locator('#outline').inputValue(),outline);
       await page.locator('#plan-pages').click();
       await page.locator('#status').filter({hasText:'Pages created'}).waitFor();
-      await tabs.nth(2).click();
+      assert.equal(await tabs.nth(1).getAttribute('aria-current'),'step');
+      await page.getByRole('button',{name:'Open new pages in Create'}).click();
+      assert.equal(await page.locator('.page').first().evaluate(el=>el===document.activeElement),true);
       assert.deepEqual(await page.getByLabel('Scene / image prompt').evaluateAll(
         inputs => inputs.map(input => input.value)),outline.split('\n'));
       // Start a separate artwork project and go directly to Create.
@@ -151,8 +154,28 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#book-review').isVisible(),false);
       assert.equal(await page.locator('#cover-settings').isVisible(),false);
       assert.equal(await page.locator('#asset-review img').count(),1);
+      const reviewItems = page.locator('#asset-review-list li');
+      await reviewItems.nth(2).getByRole('button',{name:'Edit in Create'}).click();
+      assert.equal(await page.locator('.page').nth(2).evaluate(el=>el===document.activeElement),true);
+      // Use the third slot while leaving the second empty.
+      await page.locator('.page').nth(2).locator('input[type=file]').setInputFiles({
+        name:'third.png',mimeType:'image/png',buffer:png
+      });
+      await page.locator('.page').nth(2).getByRole('button',{name:'Open in Review'}).click();
+      assert.equal(await reviewItems.nth(2).evaluate(el=>el===document.activeElement),true);
+      assert.equal(await reviewItems.nth(1).getByRole('button',{name:'Open original in Export'}).count(),0);
+      const downloads = [];
+      page.on('download', file=>downloads.push(file.suggestedFilename()));
+      await reviewItems.nth(2).getByRole('button',{name:'Open original in Export'}).click();
+      const third = page.locator('#export-image-list a').last();
+      assert.equal(await third.evaluate(el=>el===document.activeElement),true);
+      assert.deepEqual(downloads,[]);
+      const [thirdFile] = await Promise.all([page.waitForEvent('download'),third.click()]);
+      assert.equal(thirdFile.suggestedFilename(),'artwork-3.png');
+      assert.deepEqual(readFileSync(await thirdFile.path()),png);
+      await tabs.nth(3).click();
       await page.getByLabel('Artwork 1 approval').selectOption('approved');
-      await page.locator('#readiness').filter({hasText:'1 of 1 attached pictures approved'}).waitFor();
+      await page.locator('#readiness').filter({hasText:'1 of 2 attached pictures approved'}).waitFor();
       assert.equal(await page.locator('#asset-review-list li').count(),3);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
       await page.reload();
