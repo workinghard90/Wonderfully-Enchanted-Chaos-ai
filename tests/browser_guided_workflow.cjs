@@ -37,7 +37,28 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('#editor-heading').innerText(),longTitle);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
       await page.locator('#save').click();
-      await page.locator('#status').filter({hasText:'Project saved on this device'}).waitFor();
+      // #status is a transient, shared announcement: another asynchronous
+      // message can replace the save notice before a CI runner reads it.
+      // Verify the durable saved state and the library entry instead.
+      try {
+        await page.waitForFunction(expected => {
+          const save = document.querySelector('#save');
+          const saved = document.querySelector('#save-status')?.textContent || '';
+          const titles = [...document.querySelectorAll('#library strong')].map(n => n.textContent);
+          return !save.disabled && saved.startsWith('Saved ') && titles.includes(expected);
+        }, longTitle, {timeout:15000});
+      } catch (error) {
+        const evidence = await page.evaluate(() => ({
+          status:document.querySelector('#status')?.textContent,
+          saveStatus:document.querySelector('#save-status')?.textContent,
+          saveDisabled:document.querySelector('#save')?.disabled,
+          library:[...document.querySelectorAll('#library strong')].map(n=>n.textContent),
+        }));
+        throw new Error('Initial project persistence was not verified: '+JSON.stringify(evidence),{cause:error});
+      }
+      // Changing the non-durable notice cannot erase saved project evidence.
+      await page.locator('#status').evaluate(node => {node.textContent = 'Background status refreshed.';});
+      assert.match(await page.locator('#save-status').innerText(),/^Saved /);
       assert.equal(await page.locator('.workflow-footer button').first().isDisabled(),true);
       await page.locator('#title').fill('Workflow regression');
       const tabs=page.locator('.workflow-tab');
