@@ -85,6 +85,35 @@ const assert = require('node:assert/strict');
       await page.getByRole('button',{name:'Check recipe inputs'}).click();
       assert.match(await page.getByRole('status',{name:'Recipe input check'}).innerText(),/No artwork slots/);
       assert.equal(await page.locator('.page').count(),0);
+      // Phase 6: optional guided sequence, with no implicit work.
+      await page.getByRole('button',{name:'Start guided run'}).click();
+      const guided = page.locator('#automation-guided');
+      await guided.getByRole('status').filter({hasText:'0 of 3 steps reviewed'}).waitFor();
+      assert.match(await guided.innerText(),/Create — current/);
+      await guided.getByRole('button',{name:'Mark step reviewed'}).click();
+      assert.match(await guided.getByRole('status').innerText(),/1 of 3 steps reviewed/);
+      assert.match(await guided.innerText(),/not output approved/);
+      await guided.getByRole('button',{name:'Next guided step'}).click();
+      assert.match(await guided.getByRole('status').innerText(),/Step 2: Review/);
+      await guided.getByRole('button',{name:'Pause guided run'}).click();
+      assert.match(await guided.getByRole('status').innerText(),/Paused/);
+      assert.equal(await guided.getByRole('button',{name:'Next guided step'}).isDisabled(),true);
+      assert.equal(await guided.getByRole('button',{name:'Open current workspace'}).isDisabled(),true);
+      await guided.getByRole('button',{name:'Resume guided run'}).click();
+      await guided.getByRole('button',{name:'Check inputs for current step'}).click();
+      assert.match(await page.locator('#automation-status').innerText(),/No artwork slots/);
+      await guided.getByRole('button',{name:'Open current workspace'}).click();
+      assert.equal(await tabs.nth(3).getAttribute('aria-current'),'step');
+      await tabs.nth(1).click();
+      await guided.getByRole('button',{name:'Previous guided step'}).click();
+      assert.match(await guided.getByRole('status').innerText(),/Step 1: Create/);
+      page.once('dialog', dialog => dialog.dismiss());
+      await page.getByRole('button',{name:'Start guided run'}).click();
+      assert.match(await guided.getByRole('status').innerText(),/1 of 3 steps reviewed/);
+      await guided.getByRole('button',{name:'End guided run'}).click();
+      assert.match(await guided.innerText(),/No guided run active/);
+      assert.equal(await page.locator('.page').count(),0);
+      assert.equal(automationCalls,0);
       const [artRunSheet] = await Promise.all([
         page.waitForEvent('download'),
         page.getByRole('button',{name:'Download recipe run sheet'}).click()
@@ -120,6 +149,12 @@ const assert = require('node:assert/strict');
       assert.match(planSheetText,/Planning text is present/);
       assert.match(planSheetText,/\[ \] 1\. Plan/);
       assert.equal(await page.locator('.page').count(),0);
+      await page.getByRole('button',{name:'Start guided run'}).click();
+      assert.match(await page.locator('#automation-guided-progress').innerText(),/0 of 1 steps reviewed/);
+      page.once('dialog', dialog => dialog.accept());
+      await page.locator('#automation-guided').getByRole('button',{name:'Save project at this step (confirm)'}).click();
+      await page.locator('#automation-status').filter({hasText:'Save current project completed'}).waitFor();
+      assert.match(await page.locator('#automation-guided-progress').innerText(),/0 of 1 steps reviewed/);
       // Confirmed actions are opt-in; cancellation must not create pages.
       page.once('dialog', dialog => dialog.dismiss());
       await page.locator('#automation-preview').getByRole('button',{name:'Convert planning draft to pages'}).click();
@@ -131,6 +166,7 @@ const assert = require('node:assert/strict');
       await page.locator('#automation-preview').getByRole('button',{name:'Save current project'}).click();
       await page.locator('#automation-status').filter({hasText:'Save current project completed'}).waitFor();
       assert.match(await page.locator('#automation-history-list').innerText(),/Save current project — completed/);
+      assert.match(await page.locator('#automation-guided-progress').innerText(),/0 of 1 steps reviewed/);
       assert.equal(await page.locator('.page').count(),0);
       const [textFile] = await Promise.all([
         page.waitForEvent('download'), page.locator('#download-plan').click()
@@ -175,6 +211,28 @@ const assert = require('node:assert/strict');
       await page.locator('#status').filter({hasText:'Device storage full'}).waitFor();
       assert.equal(await page.locator('#plan-handoff button').count(),0);
       assert.equal(await page.locator('#outline').inputValue(),outline);
+      // An uncertain result stops the guided run; no automatic retry follows.
+      await page.locator('#automation-recipe').selectOption('plan');
+      await page.locator('#automation-preview-button').click();
+      await page.getByRole('button',{name:'Start guided run'}).click();
+      await page.evaluate(() => {
+        const original = IDBDatabase.prototype.transaction;
+        IDBDatabase.prototype.transaction = function(stores, mode, ...options) {
+          if (mode === 'readwrite') {
+            IDBDatabase.prototype.transaction = original;
+            throw new DOMException('Device storage full','QuotaExceededError');
+          }
+          return original.call(this, stores, mode, ...options);
+        };
+      });
+      page.once('dialog', dialog => dialog.accept());
+      await page.locator('#automation-guided').getByRole('button',{name:'Convert draft at this step (confirm)'}).click();
+      await page.locator('#automation-status').filter({hasText:'needs review'}).waitFor();
+      assert.match(await page.locator('#automation-guided-progress').innerText(),/Paused/);
+      assert.equal(await page.locator('.page').count(),0);
+      assert.equal(await page.locator('#outline').inputValue(),outline);
+      await page.locator('#automation-guided').getByRole('button',{name:'Resume guided run'}).click();
+      assert.match(await page.locator('#automation-guided-progress').innerText(),/Active/);
       await page.locator('#automation-recipe').selectOption('plan');
       await page.locator('#automation-preview-button').click();
       page.once('dialog', dialog => dialog.accept());
@@ -190,6 +248,7 @@ const assert = require('node:assert/strict');
       // Start a separate artwork project and go directly to Create.
       await page.locator('[data-kind=art]').click();
       assert.equal(await page.locator('#automation-history-list li').count(),0);
+      assert.match(await page.locator('#automation-guided').innerText(),/No guided run active/);
       await tabs.nth(2).click();
       await page.getByRole('button',{name:'Add artwork',exact:true}).click();
       await page.locator('.page input[type=file]').waitFor();
@@ -315,6 +374,12 @@ const assert = require('node:assert/strict');
       for (const id of ['pdf','cozy-export','export-plan']) assert.equal(await page.locator('#'+id).isVisible(),false);
       assert.equal(await page.locator('#video').isVisible(),true);
       assert.equal(await page.locator('#export-image-list a').count(),0);
+      await tabs.nth(1).click();
+      await page.locator('#automation-recipe').selectOption('artwork');
+      await page.locator('#automation-preview-button').click();
+      await page.getByRole('button',{name:'Start guided run'}).click();
+      assert.match(await page.locator('#automation-status').innerText(),/matches the project format/);
+      assert.match(await page.locator('#automation-guided').innerText(),/No guided run active/);
       assert.deepEqual(errors,[]);
       await context.close();
       console.log(`PASS guided workflow ${width}px`);

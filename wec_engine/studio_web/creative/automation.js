@@ -20,8 +20,165 @@ if (root) {
   };
   let chosen = "";
   let executing = false;
+  // A guided run is a session-only navigation aid, not a durable job or proof
+  // of completion. The existing editor remains responsible for all changes.
+  let guided = null;
+  const currentProject = () => document.getElementById("review-mode")?.dataset.projectId || "";
+  const currentTitle = () => document.getElementById("editor-heading").textContent.trim();
+  const currentKind = () => document.getElementById("kind-label").textContent.trim();
+  function sameProject(run) {
+    return Boolean(run && !document.getElementById("editor").hidden &&
+      run.projectId && run.projectId === currentProject() &&
+      run.title === currentTitle() && run.kind === currentKind());
+  }
+  function stopGuided(reason) {
+    guided = null;
+    renderGuided();
+    if (reason) status.textContent = reason;
+  }
+  function startGuided(recipeKey) {
+    const recipe = recipes[recipeKey];
+    if (!recipe || !currentProject() || document.getElementById("editor").hidden) {
+      status.textContent = "Open a project before starting a guided run.";
+      return;
+    }
+    if (!collectInputs(recipeKey, currentKind()).compatible) {
+      status.textContent = "Choose a recipe that matches the project format before starting.";
+      return;
+    }
+    if (executing) {
+      status.textContent = "Finish the current action before starting a guided run.";
+      return;
+    }
+    // Replacing the current run is a deliberate action; never inherit
+    // old completion claims or silently discard its session progress.
+    if (guided && !window.confirm("Replace the active guided run? Its session-only progress will be cleared. Project content will remain unchanged.")) {
+      status.textContent = "Existing guided run kept. No new run started.";
+      return;
+    }
+    guided = {
+      projectId:currentProject(), title:currentTitle(), kind:currentKind(),
+      recipeKey, index:0, paused:false, states:recipe.stages.map(() => "pending")
+    };
+    renderGuided();
+    status.textContent = "Guided run started. Open the current workspace or review this step. No action has run.";
+  }
+  function renderGuided() {
+    const panel = root.querySelector("#automation-guided");
+    if (!panel) return;
+    panel.replaceChildren();
+    if (!guided) {
+      panel.textContent = "No guided run active. Preview a recipe and choose Start guided run.";
+      return;
+    }
+    if (!sameProject(guided)) {
+      guided = null;
+      panel.textContent = "The project changed. Start a new guided run for this project.";
+      return;
+    }
+    const recipe = recipes[guided.recipeKey];
+    const done = guided.states.filter(state => state === "reviewed").length;
+    const heading = document.createElement("h4");
+    heading.textContent = "Guided run · " + recipe.name;
+    const progress = document.createElement("p");
+    progress.id = "automation-guided-progress";
+    progress.setAttribute("role", "status");
+    progress.textContent = done + " of " + recipe.stages.length +
+      " steps reviewed · " + (guided.paused ? "Paused" : "Active") +
+      " · Step " + (guided.index + 1) + ": " + stageNames[recipe.stages[guided.index]];
+    panel.append(heading, progress);
+    const list = document.createElement("ol");
+    list.id = "automation-guided-steps";
+    recipe.stages.forEach((stage, index) => {
+      const row = document.createElement("li");
+      row.textContent = stageNames[stage] + " — " + (guided.states[index] === "reviewed"
+        ? "reviewed by user (not output approved)" : index === guided.index ? "current" : "pending");
+      if (index === guided.index) row.setAttribute("aria-current", "step");
+      list.append(row);
+    });
+    panel.append(list);
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "Reviewing a step records only that you inspected its guidance; it does not approve content or run a task. Use Review and Export validators separately.";
+    panel.append(note);
+    const controls = document.createElement("div");
+    controls.className = "toolbar";
+    const control = (text, fn, disabled = false) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = text;
+      button.disabled = disabled;
+      button.addEventListener("click", fn);
+      controls.append(button);
+      return button;
+    };
+    control("Open current workspace", () => {
+      if (!sameProject(guided) || guided.paused || executing) return;
+      openStage(recipe.stages[guided.index]);
+      status.textContent = "Opened " + stageNames[recipe.stages[guided.index]] +
+        ". Return to Plan to continue the guided run.";
+    }, guided.paused || executing);
+    control("Mark step reviewed", () => {
+      if (!sameProject(guided) || guided.paused || executing) return;
+      guided.states[guided.index] = "reviewed";
+      renderGuided();
+      status.textContent = "Guidance marked reviewed. Content has not been approved or exported.";
+    }, guided.paused || executing);
+    control("Previous guided step", () => moveGuided(-1),
+      guided.paused || executing || guided.index === 0);
+    control("Next guided step", () => moveGuided(1),
+      guided.paused || executing || guided.index === recipe.stages.length - 1);
+    control(guided.paused ? "Resume guided run" : "Pause guided run", () => {
+      if (!sameProject(guided) || executing) return;
+      guided.paused = !guided.paused;
+      renderGuided();
+      status.textContent = guided.paused ? "Guided run paused. No actions will run." :
+        "Guided run resumed. Verify current inputs before taking action.";
+    }, executing);
+    // Every actionable handoff is user initiated and goes through execute(),
+    // which checks the project, inputs, consent and the original editor result.
+    if (recipe.stages[guided.index] === 1 &&
+        (guided.recipeKey === "plan" || guided.recipeKey === "book")) {
+      control("Convert draft at this step (confirm)", () =>
+        execute("convert", guided.title, guided.kind), guided.paused || executing);
+    }
+    control("Save project at this step (confirm)", () =>
+      execute("save", guided.title, guided.kind), guided.paused || executing);
+    control("Check inputs for current step", () => {
+      if (!sameProject(guided) || guided.paused || executing) return;
+      const {compatible, rows} = collectInputs(guided.recipeKey, guided.kind);
+      if (!compatible) {
+        guided.paused = true;
+        status.textContent = "Project format mismatch. Guided run paused.";
+      } else {
+        status.textContent = "Current inputs: " + rows.join(" ") +
+          " These checks are guidance, not output approval.";
+      }
+      renderGuided();
+    }, guided.paused || executing);
+    control("End guided run", () => {
+      if (executing) return;
+      stopGuided("Guided run ended. Project data and existing work are unchanged.");
+    }, executing);
+    panel.append(controls);
+  }
+  function moveGuided(delta) {
+    if (!guided || !sameProject(guided) || guided.paused || executing) return;
+    const next = guided.index + delta;
+    if (next < 0 || next >= recipes[guided.recipeKey].stages.length) return;
+    guided.index = next;
+    renderGuided();
+    status.textContent = "Now at " + stageNames[recipes[guided.recipeKey].stages[next]] +
+      ". Steps are never automatically executed or approved.";
+  }
   // Ephemeral, per-open-project receipts. Never persist claims of completion
   // or infer that a project is publication-ready from an action result.
+  // Always located in the Plan workspace; no fixed overlay or new stage.
+  const guidedPanel = document.createElement("section");
+  guidedPanel.id = "automation-guided";
+  guidedPanel.setAttribute("aria-label", "Guided recipe progress");
+  root.append(guidedPanel);
   const history = document.createElement("section");
   history.id = "automation-history";
   history.setAttribute("aria-label", "Recent recipe actions");
@@ -84,7 +241,8 @@ if (root) {
   }
   async function execute(key, expectedTitle, expectedKind) {
     const action = actions[key];
-    if (!action || executing || !chosen) return;
+    if (!action || executing ||
+        (!chosen && !(guided && sameProject(guided)))) return;
     const editor = document.getElementById("editor");
     const title = () => document.getElementById("editor-heading").textContent.trim();
     const kind = () => document.getElementById("kind-label").textContent.trim();
@@ -118,19 +276,27 @@ if (root) {
       return;
     }
     executing = true;
+    renderGuided();
     addReceipt(action.label, "running", "Waiting for the existing editor handler");
     const currentReceipt = historyList.firstElementChild;
     status.textContent = action.label + " requested. Checking result…";
     try {
       const result = await waitForResult(original, action.success);
       if (currentReceipt) currentReceipt.textContent = action.label + (result.ok ? " — completed" : " — needs review") + ": " + result.message;
-      status.textContent = result.ok ? action.label + " completed. " + result.message : action.label + " not confirmed: " + result.message;
+      if (!result.ok && guided && sameProject(guided)) {
+        guided.paused = true;
+      }
+      status.textContent = result.ok ? action.label + " completed. " + result.message :
+        action.label + " needs review. Guided run paused if active. Check the saved project before deciding whether to retry: " + result.message;
       if (result.ok && key === "convert") {
+        // A completed conversion changes the outline; refresh the preview
+        // before another manual conversion, without abandoning the guided run.
         chosen = "";
         preview.replaceChildren();
       }
     } finally {
       executing = false;
+      renderGuided();
     }
   }
   // Read-only preflight: descriptive checks, not an export/print certification.
@@ -256,6 +422,12 @@ if (root) {
       list.append(item);
     }
     preview.append(list);
+    const start = document.createElement("button");
+    start.type = "button";
+    start.className = "secondary";
+    start.textContent = "Start guided run";
+    start.addEventListener("click", () => startGuided(select.value));
+    preview.append(start);
     const actionList = document.createElement("div");
     const title = document.createElement("h4");
     title.textContent = "Optional actions (one at a time)";
@@ -293,12 +465,17 @@ if (root) {
     status.textContent = recipe.name + " preview ready. Each action remains your choice; no steps have run.";
   });
   root.querySelector("#automation-clear-button").addEventListener("click", clear);
-  select.addEventListener("change", clear);
+  select.addEventListener("change", () => {
+    clear();
+    // A change of preview does not silently abandon an active guided run.
+    if (guided) status.textContent = "Preview changed. The existing guided run stays active until ended or replaced.";
+  });
   // Project changes reset stale previews, so a recipe never implies that
   // its tasks were performed on a different project.
   function projectChanged() {
     clear();
     resetHistory();
+    stopGuided();
   }
   document.querySelectorAll("[data-kind]").forEach(button => button.addEventListener("click", projectChanged));
   document.getElementById("library")?.addEventListener("click", event => {
@@ -307,4 +484,5 @@ if (root) {
   document.getElementById("restore")?.addEventListener("change", projectChanged);
   document.getElementById("import-zip")?.addEventListener("change", projectChanged);
   clear();
+  renderGuided();
 }
