@@ -68,7 +68,11 @@
       cache: 'no-store',
     });
     if (!result.ok) {
-      if (result.status === 401) throw Error('Incorrect owner password/token.');
+      if (result.status === 401) {
+        const error = Error('Incorrect owner password/token.');
+        error.invalidCredential = true;
+        throw error;
+      }
       throw Error('Could not verify owner access. Check the server connection.');
     }
     return true;
@@ -116,9 +120,14 @@
     if (pendingCheck) return pendingCheck;
     pendingCheck = validate(existing()).then(() => {
       validated = true;update();return true;
-    }).catch(() => {
-      // Stale or revoked session cannot retain owner privilege.
-      lock();return false;
+    }).catch(error => {
+      // Only an explicit server 401 proves that a token was revoked.
+      // Network loss, an offline server, or a transient 5xx response must
+      // never erase the tab credential used to locate offline device backups.
+      validated = false;
+      if (error.invalidCredential) lock();
+      else update();
+      return false;
     }).finally(() => {pendingCheck = null;});
     return pendingCheck;
   }
