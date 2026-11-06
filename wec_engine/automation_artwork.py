@@ -23,6 +23,10 @@ from .automation_jobs import AutomationJobError, closing_transaction
 from .online_store import MAX_PACKAGE, SnapshotError, sync_directory, validate_package
 
 MAX_ARCHIVE = 36 * 1024 * 1024
+# Preserve room for source snapshots, media and future work on the 5 GB disk.
+# These conservative per-export ledger limits do not delete existing files.
+MAX_EXPORT_TOTAL = 512 * 1024 * 1024
+MAX_EXPORT_FILES = 20
 HEADROOM = 64 * 1024 * 1024
 
 
@@ -201,6 +205,18 @@ class ArtworkArchives:
                     raise AutomationJobError("Insufficient disk headroom for artwork ZIP.",507)
                 target = self._path(job_id)
                 digest = hashlib.sha256(raw).hexdigest()
+                if not target.exists():
+                    # Protect the shared persistent disk across multiple
+                    # individually valid plans, without automatically pruning
+                    # any existing approved owner output.
+                    existing = list(self.root.glob("[a-f0-9]" * 32 + ".zip"))
+                    # Path.glob handles a character class for each identifier
+                    # position; this excludes temporary/incomplete files.
+                    if len(existing) >= MAX_EXPORT_FILES or (
+                            sum(path.stat().st_size for path in existing) + len(raw)
+                            > MAX_EXPORT_TOTAL):
+                        raise AutomationJobError(
+                            "Artwork export storage budget reached; existing files were preserved.", 507)
                 if target.exists():
                     if target.stat().st_size != len(raw) or self._hash(target) != digest:
                         raise AutomationJobError("Existing output differs; preserved for recovery.",409)
