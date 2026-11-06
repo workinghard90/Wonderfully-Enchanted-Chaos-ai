@@ -116,6 +116,42 @@ class AutomationJobsTests(unittest.TestCase):
             with self.assertRaises(AutomationJobError):
                 restarted.bind_snapshot(unbound["id"], identifier, verify)
 
+    def test_verified_source_atomic_binding_and_legacy_rejection(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "jobs.sqlite3"
+            jobs = AutomationJobs(db)
+            plan, _ = jobs.create(payload("verified-source-key-123"))
+            metadata = {"project_id": PROJECT, "kind": "art",
+                        "source_revision": 9, "payload_sha256": "b" * 64}
+            def verified(_key):
+                return metadata
+            locked = jobs.bind_verified_source(plan["id"], "a" * 64, verified)
+            self.assertEqual(locked["source_revision"], 9)
+            self.assertEqual(locked["source_sha256"], "b" * 64)
+            self.assertEqual(locked["snapshot_id"], "a" * 64)
+            self.assertEqual(locked["source_format"], "recovery_payload_v1")
+            self.assertEqual(jobs.bind_verified_source(plan["id"], "a" * 64, verified), locked)
+            with self.assertRaises(AutomationJobError) as err:
+                jobs.bind_verified_source(plan["id"], "c" * 64, verified)
+            self.assertEqual(err.exception.status, 409)
+            self.assertEqual(AutomationJobs(db).get(plan["id"]), locked)
+            legacy, _ = jobs.create(payload("legacy-source-key-1234"))
+            jobs.bind_source(legacy["id"], {"source_revision": 1, "source_sha256": "c" * 64})
+            with self.assertRaises(AutomationJobError) as err:
+                jobs.bind_verified_source(legacy["id"], "a" * 64, verified)
+            self.assertEqual(err.exception.status, 409)
+            invalid, _ = jobs.create(payload("invalid-source-key-123"))
+            for meta in ({"project_id": "f" * 32, "kind": "art",
+                          "source_revision": 3, "payload_sha256": "a" * 64},
+                         {"project_id": PROJECT, "kind": "art",
+                          "source_revision": None, "payload_sha256": "a" * 64}):
+                with self.assertRaises(AutomationJobError):
+                    jobs.bind_verified_source(invalid["id"], "a" * 64, lambda _:meta)
+            self.assertIsNone(jobs.get(invalid["id"])["snapshot_id"])
+            jobs.cancel(invalid["id"], {"confirm": invalid["id"]})
+            with self.assertRaises(AutomationJobError):
+                jobs.bind_verified_source(invalid["id"], "a" * 64, verified)
+
     def test_unfinished_work_is_not_reported_success_on_restart(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "jobs.sqlite3"
@@ -185,6 +221,32 @@ class AutomationJobsAPITests(unittest.TestCase):
                             "payload": content, "sha256": hashlib.sha256(content.encode()).hexdigest()}
                 metadata = OnlineStore(root / "creative-snapshots").save(json.dumps(envelope).encode())
                 sid = metadata["id"]
+                _, new_plan = request("/api/automation/jobs", payload("verified-api-key-12345"))
+                verified_route = "/api/automation/jobs/" + new_plan["id"] + "/verified-source"
+                with self.assertRaises(HTTPError) as err:
+                    request(verified_route, {"snapshot_id": sid})
+                self.assertEqual(err.exception.code, 409, "Legacy backups have no source revision")
+                current_content = json.dumps({"source_revision": 4, "project": saved, "checkpoint": None})
+                current_envelope = {"app": "wec-recovery-package", "package_version": 1,
+                                    "payload": current_content,
+                                    "sha256": hashlib.sha256(current_content.encode()).hexdigest()}
+                current_meta = OnlineStore(root / "creative-snapshots").save(
+                    json.dumps(current_envelope).encode())
+                with self.assertRaises(HTTPError) as err:
+                    request(verified_route, {"snapshot_id": current_meta["id"]}, auth=False)
+                self.assertEqual(err.exception.code, 401)
+                _, verified = request(verified_route, {"snapshot_id": current_meta["id"]})
+                self.assertEqual(verified["source_format"], "recovery_payload_v1")
+                self.assertEqual(verified["source_revision"], 4)
+                self.assertEqual(verified["source_sha256"], current_meta["payload_sha256"])
+                self.assertEqual(verified["snapshot_id"], current_meta["id"])
+                _, persisted = request("/api/automation/jobs/" + new_plan["id"])
+                self.assertEqual(persisted, verified)
+                _, replay = request(verified_route, {"snapshot_id": current_meta["id"]})
+                self.assertEqual(replay, verified)
+                with self.assertRaises(HTTPError) as err:
+                    request(verified_route, {"snapshot_id": sid})
+                self.assertEqual(err.exception.code, 409)
                 with self.assertRaises(HTTPError) as err:
                     request("/api/automation/jobs/" + jid + "/snapshot",
                             {"snapshot_id": sid}, auth=False)

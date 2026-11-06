@@ -53,6 +53,8 @@ class AutomationJobs:
                 db.execute("ALTER TABLE jobs ADD COLUMN source_sha256 TEXT")
             if "snapshot_id" not in columns:
                 db.execute("ALTER TABLE jobs ADD COLUMN snapshot_id TEXT")
+            if "source_format" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN source_format TEXT")
             # Defensive recovery for any jobs that a later executor may leave
             # in the running state; never claim that missing work succeeded.
             db.execute("UPDATE jobs SET status='interrupted', updated=? WHERE status='running'",
@@ -67,7 +69,7 @@ class AutomationJobs:
     def _present(row):
         return {field: row[field] for field in
                 ("id", "project_id", "kind", "recipe", "status", "created", "updated",
-                 "source_revision", "source_sha256", "snapshot_id")}
+                 "source_revision", "source_sha256", "snapshot_id", "source_format")}
 
     def create(self, value):
         if not isinstance(value, dict) or set(value) != {"project_id", "kind", "recipe", "idempotency_key"}:
@@ -129,7 +131,7 @@ class AutomationJobs:
                 raise AutomationJobError("Source is locked; create a new plan for changed content.", 409)
             if row["status"] != "awaiting_approval":
                 raise AutomationJobError("Only pending plans can bind a source.", 409)
-            db.execute("UPDATE jobs SET source_revision=?,source_sha256=?,updated=? WHERE id=?",
+            db.execute("UPDATE jobs SET source_revision=?,source_sha256=?,source_format='device_fingerprint_v1',updated=? WHERE id=?",
                        (*incoming, int(time.time()), job_id))
             return self._present(db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
 
@@ -159,6 +161,49 @@ class AutomationJobs:
             if not row["snapshot_id"]:
                 db.execute("UPDATE jobs SET snapshot_id=?,updated=? WHERE id=?",
                            (snapshot_id, int(time.time()), job_id))
+            return self._present(db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
+
+    def bind_verified_source(self, job_id, snapshot_id, verify):
+        """Atomically lock source revision, digest and snapshot to verified bytes.
+
+        This uses SHA-256 of the recovery package's exact payload (including
+        source_revision), not the legacy browser-only source fingerprint.
+        No operation is authorized or executed by linking this source.
+        """
+        if not isinstance(job_id, str) or not re.fullmatch(r"[a-f0-9]{32}", job_id):
+            raise AutomationJobError("Automation plan not found.", 404)
+        if not isinstance(snapshot_id, str) or not re.fullmatch(r"[a-f0-9]{64}", snapshot_id):
+            raise AutomationJobError("Invalid snapshot identifier.")
+        with self.lock, self._db() as db:
+            row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if not row:
+                raise AutomationJobError("Automation plan not found.", 404)
+            if row["status"] != "awaiting_approval":
+                raise AutomationJobError("Only pending plans can lock verified sources.", 409)
+            # Never silently upgrade a legacy fingerprint or replace a prior source.
+            if row["source_sha256"] and row["source_format"] != "recovery_payload_v1":
+                raise AutomationJobError("This plan uses a legacy source lock. Create a new plan.", 409)
+            if row["snapshot_id"] and row["snapshot_id"] != snapshot_id:
+                raise AutomationJobError("Source snapshot already locked. Create a new plan.", 409)
+            metadata = verify(snapshot_id)
+            if metadata["project_id"] != row["project_id"] or metadata["kind"] != row["kind"]:
+                raise AutomationJobError("Verified snapshot identity or format does not match plan.", 409)
+            revision = metadata.get("source_revision")
+            digest = metadata.get("payload_sha256")
+            if (type(revision) is not int or not 1 <= revision <= 2147483647
+                    or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)):
+                raise AutomationJobError("Snapshot has no checksummed source revision. Save a new online snapshot.", 409)
+            incoming = (revision, digest, snapshot_id)
+            existing = (row["source_revision"], row["source_sha256"], row["snapshot_id"])
+            if row["source_sha256"]:
+                if existing != incoming:
+                    raise AutomationJobError("Verified source lock mismatch. Create a new plan.", 409)
+                return self._present(row)
+            if existing != (None, None, None):
+                raise AutomationJobError("Plan already has a source or snapshot; create a new plan.", 409)
+            db.execute("""UPDATE jobs SET source_revision=?,source_sha256=?,snapshot_id=?,
+                          source_format='recovery_payload_v1',updated=? WHERE id=?""",
+                       (*incoming, int(time.time()), job_id))
             return self._present(db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
 
     def cancel(self, job_id, confirmation):

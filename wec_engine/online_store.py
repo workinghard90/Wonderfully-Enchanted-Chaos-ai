@@ -47,6 +47,9 @@ def validate_package(raw):
             raise ValueError()
         content = json.loads(envelope['payload'])
         project = content['project']
+        revision = content.get('source_revision')
+        if revision is not None and (type(revision) is not int or not 1 <= revision <= 2147483647):
+            raise ValueError()
         versions = [project]
         cp = content['checkpoint']
         if cp is not None:
@@ -76,7 +79,8 @@ def validate_package(raw):
                         or hashlib.sha256(image).hexdigest() != asset['sha256']):
                     raise ValueError()
         return {'title': project['title'], 'kind': project['kind'], 'project_id': project['id'],
-                'checkpoint': cp is not None}
+                'checkpoint': cp is not None, 'source_revision': revision,
+                'payload_sha256': envelope['sha256']}
     except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
         raise SnapshotError('Invalid recovery package or picture checksum. Existing snapshots were kept.') from None
 

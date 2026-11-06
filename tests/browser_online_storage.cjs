@@ -44,6 +44,27 @@ const assert=require('node:assert/strict');
    assert.equal(snapshotsResponse.status(),200);
    const matching=(await snapshotsResponse.json()).snapshots.find(item=>item.project_id===id);
    assert.ok(matching&&/^[a-f0-9]{64}$/.test(matching.id));
+   assert.ok(Number.isSafeInteger(matching.source_revision) && matching.source_revision>0,
+     'New online backups must contain a checksummed saved source revision');
+   const freshPlan=await p.request.post(base+'/api/automation/jobs',{headers:ownerHeaders,
+     data:{project_id:id,kind:'art',recipe:'artwork',idempotency_key:'verified-online-source-'+width}});
+   assert.equal(freshPlan.status(),201);
+   const freshJob=await freshPlan.json();
+   const verifiedRoute=base+'/api/automation/jobs/'+freshJob.id+'/verified-source';
+   const verified=await p.request.post(verifiedRoute,{headers:ownerHeaders,
+     data:{snapshot_id:matching.id}});
+   assert.equal(verified.status(),200);
+   const verifiedJob=await verified.json();
+   assert.equal(verifiedJob.source_revision,matching.source_revision);
+   assert.equal(verifiedJob.source_format,'recovery_payload_v1');
+   assert.equal(verifiedJob.snapshot_id,matching.id);
+   assert.equal(verifiedJob.source_sha256,matching.payload_sha256);
+   const repeated=await p.request.post(verifiedRoute,{headers:ownerHeaders,data:{snapshot_id:matching.id}});
+   assert.equal(repeated.status(),200);
+   assert.deepEqual(await repeated.json(),verifiedJob);
+   const unauth=await p.request.post(verifiedRoute,{data:{snapshot_id:matching.id}});
+   assert.equal(unauth.status(),401);
+
    const createPlan=await p.request.post(base+'/api/automation/jobs',{headers:ownerHeaders,
      data:{project_id:id,kind:'art',recipe:'artwork',idempotency_key:'online-snapshot-test-'+width}});
    assert.equal(createPlan.status(),201);
