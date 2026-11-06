@@ -363,7 +363,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     elif self.command == 'POST' and cancel_route == '/approvals':
                         payload = json.loads(self._read_body(1024))
                         approval, created = automation_approvals.approve(
-                            job_id, payload, verified_plan_snapshot, automation_approvals)
+                            job_id, payload, verified_plan_snapshot)
                         self._send(201 if created else 200, approval)
                     elif self.command == 'POST' and cancel_route == '/approvals/revoke':
                         payload = json.loads(self._read_body(1024))
@@ -371,7 +371,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     elif self.command == 'POST' and cancel_route == '/steps':
                         payload = json.loads(self._read_body(1024))
                         receipt, created = automation_steps.execute(
-                            job_id, payload, verified_plan_snapshot)
+                            job_id, payload, verified_plan_snapshot, automation_approvals)
                         self._send(201 if created else 200, receipt)
                     else:
                         self._send(405, {'error': 'Method not allowed'})
