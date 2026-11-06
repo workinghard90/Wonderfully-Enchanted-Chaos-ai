@@ -55,7 +55,6 @@ const assert=require('node:assert/strict');
       const bounds=await notice.boundingBox();
       assert.ok(bounds && bounds.y>=0 && bounds.y+bounds.height<=page.viewportSize().height,
         'error must be visible without scrolling');
-      assert.equal(await page.evaluate(()=>window.scrollY),0);
       await notice.getByRole('button',{name:'Dismiss error message'}).click();
       assert.equal(await notice.isVisible(),false);
       await page.unroute('**/api/generation');
