@@ -163,6 +163,41 @@ class ArtworkArchiveUnitTests(unittest.TestCase):
             self.assertEqual(completed["state"], "succeeded")
             self.assertEqual(completed["attempts"], 2)
 
+    def test_aggregate_zip_budget_fails_closed_without_deleting_existing_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            jobs, approvals, online, archive, job, meta, _ = setup_plan(root)
+            jid = job["id"]
+            # Simulate an existing approved export while keeping all source
+            # archives and receipts intact; no heavy fixture allocations.
+            existing = root / "automation-exports" / ("a" * 32 + ".zip")
+            existing.write_bytes(b"existing-owner-zip")
+            with patch("wec_engine.automation_artwork.MAX_EXPORT_FILES", 1):
+                with self.assertRaises(AutomationJobError) as error:
+                    archive.prepare(jid, {"confirm":jid})
+            self.assertEqual(error.exception.status, 507)
+            self.assertEqual(existing.read_bytes(), b"existing-owner-zip")
+            self.assertEqual(archive.status(jid)["state"], "failed")
+            self.assertFalse((root / "automation-exports" / (jid + ".zip")).exists())
+            # Explicit retry succeeds once there is capacity; no auto cleanup.
+            existing.unlink()
+            receipt, created = archive.prepare(jid, {"confirm":jid,"retry":True})
+            self.assertTrue(created)
+            self.assertEqual(receipt["state"], "succeeded")
+
+    def test_aggregate_byte_limit_rejects_without_mutating_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            jobs, approvals, online, archive, job, meta, _ = setup_plan(root)
+            jid = job["id"]
+            with patch("wec_engine.automation_artwork.MAX_EXPORT_TOTAL", 1):
+                with self.assertRaises(AutomationJobError) as error:
+                    archive.prepare(jid, {"confirm":jid})
+            self.assertEqual(error.exception.status,507)
+            with online.open(meta["id"]) as src:
+                self.assertTrue(src.read())
+            self.assertEqual(archive.status(jid)["state"],"failed")
+
     def test_missing_source_cancel_and_corrupt_output_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
