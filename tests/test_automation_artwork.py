@@ -136,6 +136,33 @@ class ArtworkArchiveUnitTests(unittest.TestCase):
             with online.open(meta["id"]) as source:
                 self.assertTrue(source.read())
 
+    def test_oversized_image_dimensions_fail_closed_with_durable_receipt(self):
+        # Source snapshots verify original bytes and digests, but Pillow may
+        # separately reject declared dimensions during image inspection.
+        # Mock the image pixel safety threshold instead of allocating
+        # dangerous test images on 512 MiB CI workers.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            jobs, approvals, online, archive, job, meta, _ = setup_plan(root)
+            jid = job["id"]
+            with patch.object(Image, "MAX_IMAGE_PIXELS", 10):
+                with self.assertRaises(AutomationJobError) as error:
+                    archive.prepare(jid, {"confirm": jid})
+            self.assertEqual(error.exception.status, 409)
+            receipt = archive.status(jid)
+            self.assertEqual(receipt["state"], "failed")
+            self.assertEqual(receipt["attempts"], 1)
+            self.assertIsNone(receipt["archive_sha256"])
+            self.assertFalse((root / "automation-exports" / (jid + ".zip")).exists())
+            with online.open(meta["id"]) as source:
+                self.assertTrue(source.read())
+            # The original valid source can still be processed on deliberate
+            # retry with the normal image safety threshold.
+            completed, created = archive.prepare(jid, {"confirm": jid, "retry": True})
+            self.assertTrue(created)
+            self.assertEqual(completed["state"], "succeeded")
+            self.assertEqual(completed["attempts"], 2)
+
     def test_missing_source_cancel_and_corrupt_output_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
