@@ -326,6 +326,97 @@ if (root) {
             approvalControls.append(revoke);
           }
           row.append(approvalControls);
+          if(job.kind==="art" && job.recipe==="artwork") {
+            const artworkApproval=approvals.approvals.find(a=>a.operation==="artwork_export");
+            const controls=document.createElement("div");
+            controls.className="toolbar";
+            const status=document.createElement("span");
+            status.textContent="Original artwork ZIP: "+(artworkApproval?.state||"not approved");
+            controls.append(status);
+            if(!artworkApproval) {
+              const grant=document.createElement("button");
+              grant.type="button";grant.className="secondary";
+              grant.textContent="Approve original artwork ZIP";
+              grant.addEventListener("click",async()=>{
+                if(serverBusy||!window.confirm("Allow exporting the approved original images from this exact archived project? No AI generation, video, publishing or provider charge. All artwork pages must already be approved."))return;
+                serverBusy=true;grant.disabled=true;
+                try{
+                  await serverApi("/api/automation/jobs/"+job.id+"/approvals",{
+                    confirm:job.id,operation:"artwork_export",source_sha256:job.source_sha256});
+                }catch(error){serverStatus.textContent=error.message||"Artwork approval failed.";}
+                finally{serverBusy=false;}
+                await loadServerPlans();
+              });
+              controls.append(grant);
+            }
+            if(artworkApproval?.state==="approved") {
+              const exportUrl="/api/automation/jobs/"+job.id+"/artwork-export";
+              const create=document.createElement("button");
+              create.type="button";create.className="secondary";
+              create.textContent="Prepare approved artwork ZIP";
+              create.addEventListener("click",async()=>{
+                if(serverBusy||!window.confirm("Check all saved artwork approvals and create a checksum-verified ZIP of originals? This writes one recoverable server export, without generation or publishing."))return;
+                serverBusy=true;create.disabled=true;
+                try{
+                  const old=(await serverApi(exportUrl)).export;
+                  const retry=old&&["failed","interrupted"].includes(old.state);
+                  if(retry&&!window.confirm("Explicitly retry the "+old.state+" ZIP export?"))return;
+                  const receipt=await serverApi(exportUrl,{confirm:job.id,...(retry?{retry:true}:{})});
+                  if(receipt.state!=="succeeded"||!receipt.archive_sha256)
+                    throw Error("No verified ZIP receipt was returned.");
+                  serverStatus.textContent="Original artwork ZIP verified: "+receipt.image_count+
+                    " pages. Use Download ZIP to save your file.";
+                }catch(error){serverStatus.textContent=error.message||"Artwork archive failed.";}
+                finally{serverBusy=false;create.disabled=false;}
+              });
+              controls.append(create);
+              const download=document.createElement("button");
+              download.type="button";download.className="secondary";
+              download.textContent="Download verified artwork ZIP";
+              download.addEventListener("click",async()=>{
+                if(serverBusy)return;
+                serverBusy=true;download.disabled=true;
+                try{
+                  const receipt=(await serverApi(exportUrl)).export;
+                  if(!receipt||receipt.state!=="succeeded")
+                    throw Error("Prepare the artwork ZIP first.");
+                  const headers={"X-WEC-Token":(sessionStorage.getItem("wec_token")||"").trim()};
+                  const response=await fetch(exportUrl+"/file",{headers});
+                  if(!response.ok){
+                    const data=await response.json().catch(()=>({}));
+                    throw Error(data.error||"ZIP download was rejected.");
+                  }
+                  const blob=await response.blob();
+                  const hash=await digest(await blob.arrayBuffer());
+                  if(hash!==receipt.archive_sha256||blob.size!==receipt.archive_bytes)
+                    throw Error("ZIP checksum does not match the stored receipt. File was not downloaded.");
+                  const href=URL.createObjectURL(blob);
+                  const link=document.createElement("a");
+                  link.href=href;link.download="wec-artwork-"+job.id.slice(0,8)+".zip";
+                  document.body.append(link);link.click();link.remove();
+                  setTimeout(()=>URL.revokeObjectURL(href),30000);
+                  serverStatus.textContent="Verified ZIP download requested. Confirm the file is saved and opens correctly.";
+                }catch(error){serverStatus.textContent=error.message||"ZIP download failed.";}
+                finally{serverBusy=false;download.disabled=false;}
+              });
+              controls.append(download);
+              const revoke=document.createElement("button");
+              revoke.type="button";revoke.className="secondary";
+              revoke.textContent="Revoke artwork export approval";
+              revoke.addEventListener("click",async()=>{
+                if(serverBusy||!window.confirm("Permanently revoke artwork export permission? Existing server ZIP and receipts are preserved, but future downloads will be blocked."))return;
+                serverBusy=true;revoke.disabled=true;
+                try{
+                  await serverApi("/api/automation/jobs/"+job.id+"/approvals/revoke",{
+                    confirm:job.id,operation:"artwork_export"});
+                }catch(error){serverStatus.textContent=error.message||"Revocation failed.";}
+                finally{serverBusy=false;}
+                await loadServerPlans();
+              });
+              controls.append(revoke);
+            }
+            row.append(controls);
+          }
         }
         if(job.status==="awaiting_approval" && !job.source_sha256 && !job.snapshot_id) {
           const verify=document.createElement("button");
