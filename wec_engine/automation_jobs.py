@@ -51,6 +51,8 @@ class AutomationJobs:
                 db.execute("ALTER TABLE jobs ADD COLUMN source_revision INTEGER")
             if "source_sha256" not in columns:
                 db.execute("ALTER TABLE jobs ADD COLUMN source_sha256 TEXT")
+            if "snapshot_id" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN snapshot_id TEXT")
             # Defensive recovery for any jobs that a later executor may leave
             # in the running state; never claim that missing work succeeded.
             db.execute("UPDATE jobs SET status='interrupted', updated=? WHERE status='running'",
@@ -65,7 +67,7 @@ class AutomationJobs:
     def _present(row):
         return {field: row[field] for field in
                 ("id", "project_id", "kind", "recipe", "status", "created", "updated",
-                 "source_revision", "source_sha256")}
+                 "source_revision", "source_sha256", "snapshot_id")}
 
     def create(self, value):
         if not isinstance(value, dict) or set(value) != {"project_id", "kind", "recipe", "idempotency_key"}:
@@ -129,6 +131,34 @@ class AutomationJobs:
                 raise AutomationJobError("Only pending plans can bind a source.", 409)
             db.execute("UPDATE jobs SET source_revision=?,source_sha256=?,updated=? WHERE id=?",
                        (*incoming, int(time.time()), job_id))
+            return self._present(db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
+
+    def bind_snapshot(self, job_id, snapshot_id, verify):
+        """Immutable association with a separately validated owner snapshot.
+
+        verify(snapshot_id) must independently open, checksum and validate the
+        complete stored recovery package before we associate it with this plan.
+        A snapshot link is NOT execution permission or source-revision proof.
+        """
+        if not isinstance(snapshot_id, str) or not re.fullmatch(r"[a-f0-9]{64}", snapshot_id):
+            raise AutomationJobError("Invalid snapshot identifier.")
+        with self.lock, self._db() as db:
+            row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if not row:
+                raise AutomationJobError("Automation plan not found.", 404)
+            if row["snapshot_id"] and row["snapshot_id"] != snapshot_id:
+                raise AutomationJobError("Plan snapshot is locked; create a new plan for another snapshot.", 409)
+            if row["status"] != "awaiting_approval":
+                raise AutomationJobError("Only pending plans can associate a snapshot.", 409)
+            if not row["source_sha256"]:
+                raise AutomationJobError("Lock the saved source fingerprint first.", 409)
+            metadata = verify(snapshot_id)
+            if (metadata["project_id"] != row["project_id"]
+                    or metadata["kind"] != row["kind"]):
+                raise AutomationJobError("Snapshot project identity or format does not match the plan.", 409)
+            if not row["snapshot_id"]:
+                db.execute("UPDATE jobs SET snapshot_id=?,updated=? WHERE id=?",
+                           (snapshot_id, int(time.time()), job_id))
             return self._present(db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
 
     def cancel(self, job_id, confirmation):
