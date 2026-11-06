@@ -221,6 +221,32 @@ class AutomationJobsAPITests(unittest.TestCase):
                             "payload": content, "sha256": hashlib.sha256(content.encode()).hexdigest()}
                 metadata = OnlineStore(root / "creative-snapshots").save(json.dumps(envelope).encode())
                 sid = metadata["id"]
+                _, new_plan = request("/api/automation/jobs", payload("verified-api-key-12345"))
+                verified_route = "/api/automation/jobs/" + new_plan["id"] + "/verified-source"
+                with self.assertRaises(HTTPError) as err:
+                    request(verified_route, {"snapshot_id": sid})
+                self.assertEqual(err.exception.code, 409, "Legacy backups have no source revision")
+                current_content = json.dumps({"source_revision": 4, "project": saved, "checkpoint": None})
+                current_envelope = {"app": "wec-recovery-package", "package_version": 1,
+                                    "payload": current_content,
+                                    "sha256": hashlib.sha256(current_content.encode()).hexdigest()}
+                current_meta = OnlineStore(root / "creative-snapshots").save(
+                    json.dumps(current_envelope).encode())
+                with self.assertRaises(HTTPError) as err:
+                    request(verified_route, {"snapshot_id": current_meta["id"]}, auth=False)
+                self.assertEqual(err.exception.code, 401)
+                _, verified = request(verified_route, {"snapshot_id": current_meta["id"]})
+                self.assertEqual(verified["source_format"], "recovery_payload_v1")
+                self.assertEqual(verified["source_revision"], 4)
+                self.assertEqual(verified["source_sha256"], current_meta["payload_sha256"])
+                self.assertEqual(verified["snapshot_id"], current_meta["id"])
+                _, persisted = request("/api/automation/jobs/" + new_plan["id"])
+                self.assertEqual(persisted, verified)
+                _, replay = request(verified_route, {"snapshot_id": current_meta["id"]})
+                self.assertEqual(replay, verified)
+                with self.assertRaises(HTTPError) as err:
+                    request(verified_route, {"snapshot_id": sid})
+                self.assertEqual(err.exception.code, 409)
                 with self.assertRaises(HTTPError) as err:
                     request("/api/automation/jobs/" + jid + "/snapshot",
                             {"snapshot_id": sid}, auth=False)
