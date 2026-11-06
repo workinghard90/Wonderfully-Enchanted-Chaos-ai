@@ -42,6 +42,23 @@ const assert=require('node:assert/strict');
       await page.locator('#wec-owner-state').getByText('Owner features unlocked for this tab').waitFor();
       assert.equal(await page.evaluate(() => sessionStorage.getItem('wec_token')), 'test-only-pages-token-32-characters');
       assert.equal(await page.locator('#wec-owner-token').inputValue(), '');
+      // A user-triggered failure must appear inside the current viewport,
+      // not solely in the status paragraph near the top of the page.
+      await page.route('**/api/generation', route=>route.fulfill({
+        status:503,contentType:'application/json',
+        body:JSON.stringify({error:'Test-only unavailable provider'})
+      }));
+      await page.locator('#check-ai').click();
+      const notice=page.locator('#wec-visible-error');
+      await notice.waitFor({state:'visible'});
+      assert.match(await notice.innerText(),/Test-only unavailable provider/);
+      const bounds=await notice.boundingBox();
+      assert.ok(bounds && bounds.y>=0 && bounds.y+bounds.height<=page.viewportSize().height,
+        'error must be visible without scrolling');
+      assert.equal(await page.evaluate(()=>window.scrollY),0);
+      await notice.getByRole('button',{name:'Dismiss error message'}).click();
+      assert.equal(await notice.isVisible(),false);
+      await page.unroute('**/api/generation');
       await page.locator('#wec-owner-logout').click();
       assert.equal(await page.evaluate(() => sessionStorage.getItem('wec_token')), null);
       assert.equal(await page.locator('#wec-owner-state').textContent(), 'Owner features locked');
