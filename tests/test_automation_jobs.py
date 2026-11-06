@@ -350,6 +350,38 @@ class AutomationJobsAPITests(unittest.TestCase):
                 _, empty_steps = request(steps_url)
                 self.assertEqual(empty_steps["steps"], [])
                 self.assertFalse(empty_steps["execution_enabled"])
+                approvals_url = "/api/automation/jobs/" + new_plan["id"] + "/approvals"
+                report_cmd = {"confirm":new_plan["id"],"step":"inventory_report"}
+                with self.assertRaises(HTTPError) as err:
+                    request(steps_url, report_cmd)
+                self.assertEqual(err.exception.code,409)
+                grant = {"confirm":new_plan["id"],"operation":"inventory_report",
+                         "source_sha256":current_meta["payload_sha256"]}
+                with self.assertRaises(HTTPError) as err:
+                    request(approvals_url, grant, auth=False)
+                self.assertEqual(err.exception.code,401)
+                with self.assertRaises(HTTPError) as err:
+                    request(approvals_url, {**grant,"operation":"ai_image"})
+                self.assertEqual(err.exception.code,400)
+                status, approved = request(approvals_url,grant)
+                self.assertEqual(status,201)
+                self.assertEqual(approved["state"],"approved")
+                status, again_approved = request(approvals_url,grant)
+                self.assertEqual(status,200)
+                self.assertEqual(again_approved,approved)
+                status, report = request(steps_url,report_cmd)
+                self.assertEqual(status,201)
+                self.assertEqual(report["result"]["page_count"],0)
+                self.assertEqual(report["state"],"succeeded")
+                _, approvals_list=request(approvals_url)
+                self.assertEqual(approvals_list["approvals"],[approved])
+                self.assertFalse(approvals_list["paid_operations_enabled"])
+                _, revoked=request(approvals_url+"/revoke",
+                                  {"confirm":new_plan["id"],"operation":"inventory_report"})
+                self.assertEqual(revoked["state"],"revoked")
+                with self.assertRaises(HTTPError) as err:
+                    request(steps_url,report_cmd)
+                self.assertEqual(err.exception.code,409)
                 status, first_step = request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"})
                 self.assertEqual(status,201)
                 self.assertEqual(first_step["state"],"succeeded")
@@ -361,7 +393,7 @@ class AutomationJobsAPITests(unittest.TestCase):
                 self.assertEqual(status,201)
                 self.assertEqual(inventory["result"]["page_count"],0)
                 _, steps_readback = request(steps_url)
-                self.assertEqual(len(steps_readback["steps"]),2)
+                self.assertEqual(len(steps_readback["steps"]),3)
                 with self.assertRaises(HTTPError) as err:
                     request(steps_url, {"confirm":new_plan["id"],"step":"render_video"})
                 self.assertEqual(err.exception.code,400)
@@ -410,7 +442,7 @@ class AutomationJobsAPITests(unittest.TestCase):
                     request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"})
                 self.assertEqual(err.exception.code,404)
                 _, retained_steps = request(steps_url)
-                self.assertEqual(len(retained_steps["steps"]),2)
+                self.assertEqual(len(retained_steps["steps"]),3)
             finally:
                 server.shutdown()
                 server.server_close()
