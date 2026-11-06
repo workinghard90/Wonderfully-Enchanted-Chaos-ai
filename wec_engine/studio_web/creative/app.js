@@ -183,7 +183,10 @@ function lock(value) {
     .forEach(n => {
       // Navigation changes only the visible workspace. Its endpoint buttons
       // keep the disabled state set by workflow.js when a save finishes.
-      if (!n.closest(".workflow-footer, .workflow-tab")) n.disabled = value;
+      // A protected request may be waiting for owner sign-in. Keep its
+      // credential inputs and controls enabled during the pending action.
+      if (!n.closest(".workflow-footer, .workflow-tab, #wec-owner-login"))
+        n.disabled = value;
     });
   if (!value) {
     document
