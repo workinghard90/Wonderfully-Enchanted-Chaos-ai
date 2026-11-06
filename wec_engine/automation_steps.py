@@ -10,7 +10,7 @@ import threading
 import time
 from pathlib import Path
 
-from .automation_jobs import AutomationJobError
+from .automation_jobs import AutomationJobError, closing_transaction
 
 STEPS = ("verify_source", "inspect_inventory")
 
@@ -36,7 +36,7 @@ class AutomationSteps:
                           WHERE state='running'""", (int(time.time()),))
 
     def _db(self):
-        return sqlite3.connect(self.path, timeout=10)
+        return closing_transaction(sqlite3.connect(self.path, timeout=10))
 
     @staticmethod
     def _row(row):
