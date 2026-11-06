@@ -11,18 +11,17 @@
   const container = document.createElement('section');
   container.id = 'wec-owner-login';
   container.setAttribute('aria-label', 'WEC owner access');
-  container.style.cssText = 'margin:12px auto;padding:12px 16px;max-width:1080px;border:1px solid #697187;border-radius:12px;font:inherit;';
   container.innerHTML = `
-    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px">
+    <div class="wec-owner-toolbar">
       <strong id="wec-owner-state">Owner features locked</strong>
       <button type="button" id="wec-owner-open">Owner sign in</button>
       <button type="button" id="wec-owner-logout" hidden>Lock owner features</button>
-      <span style="font-size:0.88em">Basic pages remain available. AI requires separate provider setup and cost limits.</span>
+      <span class="wec-owner-note">Basic pages remain available. AI requires separate provider setup and cost limits.</span>
     </div>
-    <form id="wec-owner-form" hidden style="margin-top:12px">
+    <form id="wec-owner-form" hidden>
       <label for="wec-owner-token">Owner access password / token</label>
       <input id="wec-owner-token" type="password" autocomplete="off" required minlength="32"
-        style="max-width:480px;width:100%;display:block;margin:8px 0" />
+         />
       <button type="submit">Unlock owner features</button>
       <button id="wec-owner-cancel" type="button">Cancel</button>
       <p id="wec-owner-message" role="status" aria-live="polite"></p>
