@@ -29,6 +29,22 @@ const assert=require('node:assert/strict');
       const errors=[];
       page.on('pageerror',e=>errors.push(e.message));
       await page.goto(base);
+      // Guest pages must remain browsable while protected server APIs
+      // require owner authentication; the inline sign-in replaces prompts.
+      assert.equal(await page.locator('#wec-owner-state').textContent(), 'Owner features locked');
+      assert.equal(await page.request.get(base+'/api/automation/jobs').then(r=>r.status()),401);
+      await page.locator('#wec-owner-open').click();
+      await page.locator('#wec-owner-token').fill('wrong-owner-password-32-characters');
+      await page.locator('#wec-owner-form button[type="submit"]').click();
+      await page.locator('#wec-owner-message').getByText('Incorrect owner password/token.').waitFor();
+      await page.locator('#wec-owner-token').fill('test-only-pages-token-32-characters');
+      await page.locator('#wec-owner-form button[type="submit"]').click();
+      await page.locator('#wec-owner-state').getByText('Owner features unlocked for this tab').waitFor();
+      assert.equal(await page.evaluate(() => sessionStorage.getItem('wec_token')), 'test-only-pages-token-32-characters');
+      assert.equal(await page.locator('#wec-owner-token').inputValue(), '');
+      await page.locator('#wec-owner-logout').click();
+      assert.equal(await page.evaluate(() => sessionStorage.getItem('wec_token')), null);
+      assert.equal(await page.locator('#wec-owner-state').textContent(), 'Owner features locked');
       assert.equal(await page.request.get(base+'/studio/pages.js').then(r=>r.status()),200);
       await page.locator('#wec-page-navigation').waitFor();
       assert.equal(new URL(page.url()).hash,'#/home');

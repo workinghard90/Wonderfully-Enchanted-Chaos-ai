@@ -29,11 +29,10 @@ async function request(path, options = {}, retry = true) {
     ...options.headers,
   };
   const response = await fetch(API_BASE + path, {...options, headers});
-  if (response.status === 401 && retry) {
-    const value = prompt('Studio access token (stored for this browser tab):');
-    if (value === null) throw Error('Authentication cancelled');
-    sessionStorage.setItem('wec_token', value);
+  if (response.status === 401 && retry && window.WECOwnerLogin) {
+    sessionStorage.removeItem('wec_token');
     resetDeviceView();
+    await window.WECOwnerLogin.require();
     return request(path, options, false);
   }
   if (response.status === 401) {

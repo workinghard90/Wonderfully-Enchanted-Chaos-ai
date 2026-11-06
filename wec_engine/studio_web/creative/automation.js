@@ -131,11 +131,18 @@ if (root) {
   serverPlans.append(serverTitle,serverHint,serverControls,serverStatus,serverList);
   root.append(serverPlans);
   let serverBusy=false;
-  async function serverApi(url,body) {
-    const headers={"X-WEC-Token":(sessionStorage.getItem("wec_token")||"").trim()};
+  async function serverApi(url,body,retry=true) {
+    const accessToken=(sessionStorage.getItem("wec_token")||"").trim();
+    const headers={"X-WEC-Token":accessToken};
     if(body!==undefined) headers["Content-Type"]="application/json";
     const response=await fetch(url,{method:body===undefined?"GET":"POST",
       headers,body:body===undefined?undefined:JSON.stringify(body)});
+    if(response.status===401 && retry && window.WECOwnerLogin) {
+      if((sessionStorage.getItem("wec_token")||"").trim()===accessToken)
+        sessionStorage.removeItem("wec_token");
+      await window.WECOwnerLogin.require();
+      return serverApi(url,body,false);
+    }
     const data=await response.json();
     if(!response.ok) throw Error(data.error || "Server rejected the plan request.");
     return data;

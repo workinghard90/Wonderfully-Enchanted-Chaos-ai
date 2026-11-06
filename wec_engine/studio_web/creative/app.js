@@ -220,11 +220,8 @@ async function api(path, body, retry = true) {
     // Discard only the rejected value, not a newer sign-in from another request.
     if ((sessionStorage.getItem("wec_token") || "").trim() === accessToken)
       sessionStorage.removeItem("wec_token");
-    if (retry) {
-      const value = prompt("Sign in to WEC with your existing studio access token (kept in this tab):");
-      if (value === null) throw Error("Sign-in cancelled.");
-      if (!value.trim()) throw Error("Sign-in was not completed. Enter your existing studio access token to connect.");
-      sessionStorage.setItem("wec_token", value.trim());
+    if (retry && window.WECOwnerLogin) {
+      await window.WECOwnerLogin.require();
       return api(path, body, false);
     }
     throw Error(accessToken
