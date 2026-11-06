@@ -312,7 +312,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
             if self.command == 'GET' and path in coloring_assets:
                 name, mime = coloring_assets[path]
                 self._send(200, (ROOT / 'coloring' / name).read_bytes(), mime); return
-            if self.command == 'GET' and path in ('/app.js','/device-backup.js','/style.css','/config.js','/owner-login.js'):
+            if self.command == 'GET' and path in ('/app.js','/device-backup.js','/style.css','/config.js','/owner-login.js','/owner-login.css'):
                 mime = 'application/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8'
                 self._send(200, (ROOT / path.lstrip('/')).read_bytes(), mime); return
             if path == '/api/health' and self.command == 'GET':
