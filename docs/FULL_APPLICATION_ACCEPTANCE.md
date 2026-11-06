@@ -180,6 +180,34 @@ provider/export handler, cancellation/restart safety and human output
 validation. These inspection steps do not modify originals or produce
 creative assets.
 
+### Phase 16 — Source-scoped approval for a no-cost inventory report (PR #81)
+
+A new owner-authenticated `/api/automation/jobs/{id}/approvals` ledger
+records a single named permission for `inventory_report`. Approval requires
+the exact job ID, operation and previously verified immutable source SHA-256.
+The server reopens the archived recovery package and verifies source revision,
+digest, project ID and type before recording any permission. Approval is
+idempotent for the same source, survives restart, and can be revoked using
+`POST /api/automation/jobs/{id}/approvals/revoke`. A revoked approval cannot
+be regranted on the same job; create a new plan if the owner wants to grant
+it again. This avoids treating old consent as automatically renewed.
+
+The `inventory_report` typed step requires an active source-bound approval,
+and writes an idempotent, durable JSON receipt with page and approved-artwork
+counts plus snapshot/revision/hash. Studio Plan can explicitly grant consent,
+prepare the report, request its local JSON download and revoke consent.
+Existing source inspection steps remain available without this additional
+approval. Revocation blocks subsequent report requests (including replay)
+but does not delete prior receipts or previously downloaded JSON.
+
+**This permission has a zero AI/provider budget.** It authorizes only the
+local read-only report step. The API rejects AI generation, billable rendering,
+Cozy handoff, publishing and other unknown operation names. It is not a
+generic executor authorization or a provider-cost quote. Download success
+must be checked by the owner; the browser requesting a file is not proof it
+was saved. Future paid operations will need separately specified cost caps,
+bounded inputs, explicit per-operation approvals and provider receipts.
+
 ### A. Durable orchestration (next implementation)
 
 - Store a minimal per-project automation job manifest with schema version, project ID, source revision/checksum, steps, timestamps and terminal state.

@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 
 from wec_engine.automation_jobs import AutomationJobs, AutomationJobError, MAX_JOBS
 from wec_engine.automation_steps import AutomationSteps
+from wec_engine.automation_approvals import AutomationApprovals
 from wec_engine.online_store import OnlineStore
 from wec_engine.studio import create_handler
 
@@ -206,6 +207,54 @@ class AutomationJobsTests(unittest.TestCase):
             with self.assertRaises(AutomationJobError):
                 restarted.execute(job["id"],{"confirm":job["id"],"step":"verify_source","retry":1},lambda _:source)
 
+    def test_approved_inventory_report_grant_revoke_and_replay(self):
+        with tempfile.TemporaryDirectory() as td:
+            jobs=AutomationJobs(Path(td)/"jobs.sqlite3")
+            steps=AutomationSteps(jobs)
+            approvals=AutomationApprovals(jobs)
+            plan,_=jobs.create(payload("approval-report-key-123"))
+            meta={"project_id":PROJECT,"kind":"art","source_revision":8,
+                  "payload_sha256":"c"*64,"page_count":2,"approved_pages":1}
+            jobs.bind_verified_source(plan["id"],"b"*64,lambda _:meta)
+            report={"confirm":plan["id"],"step":"inventory_report"}
+            with self.assertRaises(AutomationJobError) as err:
+                steps.execute(plan["id"],report,lambda _:meta,approvals)
+            self.assertEqual(err.exception.status,409)
+            with self.assertRaises(AutomationJobError):
+                approvals.approve(plan["id"],{"confirm":plan["id"],"operation":"ai_image",
+                           "source_sha256":"c"*64},lambda _:meta)
+            with self.assertRaises(AutomationJobError):
+                approvals.approve(plan["id"],{"confirm":plan["id"],"operation":"inventory_report",
+                           "source_sha256":"d"*64},lambda _:meta)
+            request={"confirm":plan["id"],"operation":"inventory_report","source_sha256":"c"*64}
+            granted,created=approvals.approve(plan["id"],request,lambda _:meta)
+            self.assertTrue(created)
+            self.assertEqual(granted["state"],"approved")
+            repeated,created=approvals.approve(plan["id"],request,lambda _:meta)
+            self.assertFalse(created)
+            self.assertEqual(repeated,granted)
+            receipt,created=steps.execute(plan["id"],report,lambda _:meta,approvals)
+            self.assertTrue(created)
+            self.assertEqual(receipt["result"]["approved_pages"],1)
+            self.assertEqual(receipt["result"]["source_sha256"],"c"*64)
+            self.assertNotIn("title",receipt["result"])
+            self.assertEqual(AutomationApprovals(AutomationJobs(jobs.path)).list(plan["id"])[0],granted)
+            withdrawn=approvals.revoke(plan["id"],{"confirm":plan["id"],"operation":"inventory_report"})
+            self.assertEqual(withdrawn["state"],"revoked")
+            self.assertEqual(approvals.revoke(plan["id"],{"confirm":plan["id"],"operation":"inventory_report"}),withdrawn)
+            self.assertEqual(steps.list(plan["id"])[0],receipt)
+            with self.assertRaises(AutomationJobError) as err:
+                steps.execute(plan["id"],report,lambda _:meta,approvals)
+            self.assertEqual(err.exception.status,409)
+            with self.assertRaises(AutomationJobError) as err:
+                approvals.approve(plan["id"],request,lambda _:meta)
+            self.assertEqual(err.exception.status,409)
+            unbound,_=jobs.create(payload("approval-unbound-key-123"))
+            with self.assertRaises(AutomationJobError):
+                approvals.approve(unbound["id"],
+                    {"confirm":unbound["id"],"operation":"inventory_report","source_sha256":"c"*64},lambda _:meta)
+            jobs.cancel(unbound["id"],{"confirm":unbound["id"]})
+
     def test_unfinished_work_is_not_reported_success_on_restart(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "jobs.sqlite3"
@@ -301,6 +350,38 @@ class AutomationJobsAPITests(unittest.TestCase):
                 _, empty_steps = request(steps_url)
                 self.assertEqual(empty_steps["steps"], [])
                 self.assertFalse(empty_steps["execution_enabled"])
+                approvals_url = "/api/automation/jobs/" + new_plan["id"] + "/approvals"
+                report_cmd = {"confirm":new_plan["id"],"step":"inventory_report"}
+                with self.assertRaises(HTTPError) as err:
+                    request(steps_url, report_cmd)
+                self.assertEqual(err.exception.code,409)
+                grant = {"confirm":new_plan["id"],"operation":"inventory_report",
+                         "source_sha256":current_meta["payload_sha256"]}
+                with self.assertRaises(HTTPError) as err:
+                    request(approvals_url, grant, auth=False)
+                self.assertEqual(err.exception.code,401)
+                with self.assertRaises(HTTPError) as err:
+                    request(approvals_url, {**grant,"operation":"ai_image"})
+                self.assertEqual(err.exception.code,400)
+                status, approved = request(approvals_url,grant)
+                self.assertEqual(status,201)
+                self.assertEqual(approved["state"],"approved")
+                status, again_approved = request(approvals_url,grant)
+                self.assertEqual(status,200)
+                self.assertEqual(again_approved,approved)
+                status, report = request(steps_url,report_cmd)
+                self.assertEqual(status,201)
+                self.assertEqual(report["result"]["page_count"],0)
+                self.assertEqual(report["state"],"succeeded")
+                _, approvals_list=request(approvals_url)
+                self.assertEqual(approvals_list["approvals"],[approved])
+                self.assertFalse(approvals_list["paid_operations_enabled"])
+                _, revoked=request(approvals_url+"/revoke",
+                                  {"confirm":new_plan["id"],"operation":"inventory_report"})
+                self.assertEqual(revoked["state"],"revoked")
+                with self.assertRaises(HTTPError) as err:
+                    request(steps_url,report_cmd)
+                self.assertEqual(err.exception.code,409)
                 status, first_step = request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"})
                 self.assertEqual(status,201)
                 self.assertEqual(first_step["state"],"succeeded")
@@ -312,7 +393,7 @@ class AutomationJobsAPITests(unittest.TestCase):
                 self.assertEqual(status,201)
                 self.assertEqual(inventory["result"]["page_count"],0)
                 _, steps_readback = request(steps_url)
-                self.assertEqual(len(steps_readback["steps"]),2)
+                self.assertEqual(len(steps_readback["steps"]),3)
                 with self.assertRaises(HTTPError) as err:
                     request(steps_url, {"confirm":new_plan["id"],"step":"render_video"})
                 self.assertEqual(err.exception.code,400)
@@ -361,7 +442,7 @@ class AutomationJobsAPITests(unittest.TestCase):
                     request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"})
                 self.assertEqual(err.exception.code,404)
                 _, retained_steps = request(steps_url)
-                self.assertEqual(len(retained_steps["steps"]),2)
+                self.assertEqual(len(retained_steps["steps"]),3)
             finally:
                 server.shutdown()
                 server.server_close()

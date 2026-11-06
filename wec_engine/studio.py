@@ -24,6 +24,7 @@ from .providers.cloudflare_images import CloudflareImages, GenerationError, vali
 from .studio_video import VideoJobs, VideoJobError, TERMINAL
 from .automation_jobs import AutomationJobs, AutomationJobError
 from .automation_steps import AutomationSteps
+from .automation_approvals import AutomationApprovals
 from .studio_image_requests import ImageRequests, ReceiptError
 from . import creative
 from .online_store import OnlineStore, SnapshotError, MAX_PACKAGE, validate_package
@@ -53,6 +54,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
     image_requests = ImageRequests(db_path)
     automation_jobs = AutomationJobs(data_dir/'automation-jobs.sqlite3')
     automation_steps = AutomationSteps(automation_jobs)
+    automation_approvals = AutomationApprovals(automation_jobs)
     videos = video_jobs or VideoJobs(data_dir/'video-jobs')
     online_reason = 'Online storage is not enabled. Local saves and downloaded recovery packages still work.'
     online = None
@@ -328,7 +330,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     self._send(exc.status if isinstance(exc, AutomationJobError) else 400,
                                {'error': str(exc) if isinstance(exc, AutomationJobError) else 'Invalid automation plan'})
                 return
-            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel|/source|/snapshot|/verified-source|/steps)?', path)
+            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel|/source|/snapshot|/verified-source|/steps|/approvals|/approvals/revoke)?', path)
             if match:
                 job_id, cancel_route = match.groups()
                 try:
@@ -355,10 +357,21 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     elif self.command == 'GET' and cancel_route == '/steps':
                         self._send(200, {'steps': automation_steps.list(job_id),
                                          'execution_enabled': False})
+                    elif self.command == 'GET' and cancel_route == '/approvals':
+                        self._send(200, {'approvals': automation_approvals.list(job_id),
+                                         'paid_operations_enabled': False})
+                    elif self.command == 'POST' and cancel_route == '/approvals':
+                        payload = json.loads(self._read_body(1024))
+                        approval, created = automation_approvals.approve(
+                            job_id, payload, verified_plan_snapshot)
+                        self._send(201 if created else 200, approval)
+                    elif self.command == 'POST' and cancel_route == '/approvals/revoke':
+                        payload = json.loads(self._read_body(1024))
+                        self._send(200, automation_approvals.revoke(job_id, payload))
                     elif self.command == 'POST' and cancel_route == '/steps':
                         payload = json.loads(self._read_body(1024))
                         receipt, created = automation_steps.execute(
-                            job_id, payload, verified_plan_snapshot)
+                            job_id, payload, verified_plan_snapshot, automation_approvals)
                         self._send(201 if created else 200, receipt)
                     else:
                         self._send(405, {'error': 'Method not allowed'})

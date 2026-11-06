@@ -4,6 +4,7 @@ Only two source-inspection operations exist. No worker, provider, render,
 publishing, file creation or background retries are reachable through here.
 """
 import json
+from contextlib import nullcontext
 import re
 import sqlite3
 import threading
@@ -12,7 +13,7 @@ from pathlib import Path
 
 from .automation_jobs import AutomationJobError, closing_transaction
 
-STEPS = ("verify_source", "inspect_inventory")
+STEPS = ("verify_source", "inspect_inventory", "inventory_report")
 
 
 class AutomationSteps:
@@ -54,7 +55,7 @@ class AutomationSteps:
                    result_json,updated FROM automation_steps WHERE job_id=?
                    ORDER BY step""", (job_id,))]
 
-    def execute(self, job_id, command, verify):
+    def execute(self, job_id, command, verify, approvals=None):
         if (not isinstance(command, dict)
                 or set(command) not in ({"confirm", "step"}, {"confirm", "step", "retry"})
                 or command.get("confirm") != job_id
@@ -64,13 +65,18 @@ class AutomationSteps:
             raise AutomationJobError("Confirm the exact plan ID and an allowed read-only step.")
         step = command["step"]
         retry = command.get("retry", False)
-        with self.lock:
+        # Serialize approved work against revocation, including receipt commit.
+        with self.lock, (approvals.lock if step == 'inventory_report' and approvals else nullcontext()):
             job = self.jobs.get(job_id)
             if job["status"] != "awaiting_approval":
                 raise AutomationJobError("This plan is not eligible for source inspection.", 409)
             if (job["source_format"] != "recovery_payload_v1" or not job["snapshot_id"]
                     or not job["source_sha256"] or not job["source_revision"]):
                 raise AutomationJobError("A verified recovery source is required.", 409)
+            if step == "inventory_report":
+                if approvals is None:
+                    raise AutomationJobError("Approval controller is unavailable.", 503)
+                approvals.require(job)
             with self._db() as db:
                 row = db.execute("""SELECT job_id,step,state,attempts,snapshot_id,
                                     source_sha256,result_json,updated FROM automation_steps
@@ -106,10 +112,12 @@ class AutomationSteps:
                 result = {"snapshot_id": job["snapshot_id"],
                           "source_revision": job["source_revision"],
                           "source_sha256": job["source_sha256"]}
-                if step == "inspect_inventory":
+                if step in ("inspect_inventory", "inventory_report"):
                     result.update(page_count=metadata["page_count"],
                                   approved_pages=metadata["approved_pages"],
                                   kind=job["kind"])
+                if step == "inventory_report":
+                    approvals.require(self.jobs.get(job_id))
                 if self.jobs.get(job_id)["status"] != "awaiting_approval":
                     raise AutomationJobError("Plan changed or was cancelled during verification.", 409)
             except Exception:
