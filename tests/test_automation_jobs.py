@@ -1,4 +1,7 @@
 import json
+import hashlib
+import os
+from unittest.mock import patch
 from contextlib import closing
 import sqlite3
 import tempfile
@@ -10,6 +13,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from wec_engine.automation_jobs import AutomationJobs, AutomationJobError, MAX_JOBS
+from wec_engine.online_store import OnlineStore
 from wec_engine.studio import create_handler
 
 
@@ -151,6 +155,73 @@ class AutomationJobsTests(unittest.TestCase):
 
 
 class AutomationJobsAPITests(unittest.TestCase):
+    def test_authenticated_snapshot_attachment_verifies_real_stored_bytes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with patch.dict(os.environ, {"WEC_ENABLE_ONLINE_STORAGE": "1", "RENDER": ""}):
+                server = ThreadingHTTPServer(("127.0.0.1", 0),
+                    create_handler(root / "studio.sqlite3", root, token=TOKEN))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            origin = "http://127.0.0.1:%d" % server.server_port
+            def request(route, data=None, auth=True):
+                headers = {"Content-Type": "application/json"}
+                if auth:
+                    headers["X-WEC-Token"] = TOKEN
+                value = json.dumps(data).encode() if data is not None else None
+                with urlopen(Request(origin + route, headers=headers, data=value,
+                                     method="POST" if data is not None else "GET"), timeout=10) as response:
+                    return response.status, json.load(response)
+            try:
+                _, plan = request("/api/automation/jobs", payload("snapshot-api-key-1234"))
+                jid = plan["id"]
+                request("/api/automation/jobs/" + jid + "/source",
+                        {"source_revision": 1, "source_sha256": "a" * 64})
+                saved = {"app": "wec-creative-studio", "schema_version": 1,
+                         "backup_version": 2, "id": PROJECT, "kind": "art",
+                         "title": "Snapshot test", "pages": []}
+                content = json.dumps({"project": saved, "checkpoint": None})
+                envelope = {"app": "wec-recovery-package", "package_version": 1,
+                            "payload": content, "sha256": hashlib.sha256(content.encode()).hexdigest()}
+                metadata = OnlineStore(root / "creative-snapshots").save(json.dumps(envelope).encode())
+                sid = metadata["id"]
+                with self.assertRaises(HTTPError) as err:
+                    request("/api/automation/jobs/" + jid + "/snapshot",
+                            {"snapshot_id": sid}, auth=False)
+                self.assertEqual(err.exception.code, 401)
+                _, linked = request("/api/automation/jobs/" + jid + "/snapshot", {"snapshot_id": sid})
+                self.assertEqual(linked["snapshot_id"], sid)
+                _, repeated = request("/api/automation/jobs/" + jid + "/snapshot", {"snapshot_id": sid})
+                self.assertEqual(repeated, linked)
+                _, readback = request("/api/automation/jobs/" + jid)
+                self.assertEqual(readback["snapshot_id"], sid)
+                with self.assertRaises(HTTPError) as err:
+                    request("/api/automation/jobs/" + jid + "/snapshot", {"snapshot_id": "f" * 64})
+                self.assertEqual(err.exception.code, 409)
+                # A mismatched project is never linked, despite a valid
+                # self-consistent package and image-checksum verification.
+                _, other = request("/api/automation/jobs", payload("snapshot-other-key-123"))
+                request("/api/automation/jobs/" + other["id"] + "/source",
+                        {"source_revision": 2, "source_sha256": "b" * 64})
+                other_saved = {**saved, "id": "e" * 32}
+                other_content = json.dumps({"project": other_saved, "checkpoint": None})
+                other_envelope = {"app": "wec-recovery-package", "package_version": 1,
+                                  "payload": other_content,
+                                  "sha256": hashlib.sha256(other_content.encode()).hexdigest()}
+                other_sid = OnlineStore(root / "creative-snapshots").save(
+                    json.dumps(other_envelope).encode())["id"]
+                with self.assertRaises(HTTPError) as err:
+                    request("/api/automation/jobs/" + other["id"] + "/snapshot",
+                            {"snapshot_id": other_sid})
+                self.assertEqual(err.exception.code, 409)
+                _, unchanged = request("/api/automation/jobs/" + other["id"])
+                self.assertIsNone(unchanged["snapshot_id"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                server.RequestHandlerClass.video_jobs.close()
+                thread.join(timeout=5)
+
     def test_auth_create_read_cancel_no_execution(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
