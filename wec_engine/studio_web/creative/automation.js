@@ -111,7 +111,7 @@ if (root) {
   serverTitle.textContent="Server automation plans (approval required)";
   const serverHint=document.createElement("p");
   serverHint.className="muted";
-  serverHint.textContent="Plans are stored on the server but never execute automatically. Lock saved source only after saving: WEC hashes the saved device project and original artwork locally, sending just revision + SHA-256. This is not server-side content verification or approval.";
+  serverHint.textContent="Plans never execute automatically. Lock the saved device source, then optionally verify and attach a matching owner online snapshot. The server checks stored snapshot bytes and picture checksums, but its backup omits project revision: these remain separate proofs, not an execution approval.";
   const serverStatus=document.createElement("p");
   serverStatus.id="automation-server-status";
   serverStatus.setAttribute("role","status");
@@ -199,6 +199,53 @@ if (root) {
       for(const job of matching) {
         const row=document.createElement("li");
         row.textContent=job.recipe+" · "+job.status+" · "+job.id.slice(0,8)+" ";
+        if(job.status==="awaiting_approval" && job.source_sha256 && !job.snapshot_id) {
+          const find=document.createElement("button");
+          find.type="button";find.className="secondary";
+          find.textContent="Find online snapshot";
+          find.addEventListener("click",async()=>{
+            if(serverBusy)return;
+            serverBusy=true;find.disabled=true;serverRefresh.disabled=serverCreate.disabled=true;
+            try {
+              const result=await serverApi("/api/creative/snapshots");
+              if(!result.enabled)throw Error("Online snapshots are disabled. Existing plans remain unchanged.");
+              const choices=(result.snapshots||[]).filter(item=>
+                item.project_id===job.project_id && item.kind===job.kind);
+              if(!choices.length)throw Error("No matching online snapshot. Save an explicit online snapshot in Library first.");
+              const picker=document.createElement("select");
+              picker.setAttribute("aria-label","Online snapshot for plan "+job.id.slice(0,8));
+              for(const item of choices) {
+                const option=document.createElement("option");
+                option.value=item.id;
+                option.textContent=new Date(item.created_at).toLocaleString()+" · "+item.id.slice(0,8);
+                picker.append(option);
+              }
+              const attach=document.createElement("button");
+              attach.type="button";attach.className="secondary";
+              attach.textContent="Verify & attach snapshot";
+              attach.addEventListener("click",async()=>{
+                if(serverBusy)return;
+                const selected=picker.value;
+                if(!window.confirm("Verify and link this stored snapshot to the plan? No creative work will run. The saved-source revision and snapshot bytes are not yet independently reconciled."))return;
+                serverBusy=true;attach.disabled=true;picker.disabled=true;
+                serverRefresh.disabled=serverCreate.disabled=true;
+                try{
+                  await serverApi("/api/automation/jobs/"+job.id+"/snapshot",{snapshot_id:selected});
+                  await loadAfterSnapshot();
+                }catch(error){
+                  serverStatus.textContent=error.message||"Snapshot association failed; plan unchanged.";
+                }finally{
+                  serverBusy=false;serverRefresh.disabled=serverCreate.disabled=false;
+                }
+              });
+              row.append(picker,attach);
+              serverStatus.textContent="Select a matching saved snapshot, then verify and attach. No execution is available.";
+            }catch(error){
+              serverStatus.textContent=error.message||"Could not list online snapshots.";
+            }finally{serverBusy=false;serverRefresh.disabled=serverCreate.disabled=false;}
+          });
+          row.append(find);
+        }
         if(job.status==="awaiting_approval" && job.source_sha256===null) {
           const bind=document.createElement("button");
           bind.type="button";bind.className="secondary";
@@ -252,6 +299,12 @@ if (root) {
       serverBusy=false;
       serverRefresh.disabled=serverCreate.disabled=false;
     }
+  }
+  async function loadAfterSnapshot() {
+    // Called after an acknowledged server write, while the attaching handler
+    // owns the busy flag. Refresh after it releases that flag.
+    serverBusy=false;
+    await loadServerPlans();
   }
   serverRefresh.addEventListener("click",loadServerPlans);
   serverCreate.addEventListener("click",async()=>{

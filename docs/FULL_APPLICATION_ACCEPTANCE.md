@@ -91,6 +91,31 @@ stale inputs. Browser tests cover explicit locking, saved revision and
 server persistence across a new list request. They do not replace manual
 output inspection or licensed provider verification.
 
+### Phase 13 — Owner-verified online snapshot association (PR #78)
+
+A pending server plan with an immutable source fingerprint can now link one
+existing online recovery snapshot via
+`POST /api/automation/jobs/{id}/snapshot`, with an exact
+`{"snapshot_id": "<64 hex characters>"}` body. The server **reopens the
+stored bytes**, checks the immutable package ID/content hash, validates the
+recovery payload and original-artwork checksums, and confirms that project ID
+and format match the requested job before the snapshot identifier is stored.
+The link is immutable, idempotent and retained across restarts. Studio Plan
+offers a selector for matching existing online snapshots. The owner confirms
+before association. No new backup is made automatically.
+
+This remains a **non-executing provenance link**, not a verified input for a
+worker: recovery backups omit the browser revision, and the source-lock
+digest in Phase 12 describes a different canonical representation. Therefore
+the locked source hash and the associated online snapshot are **not yet
+cryptographically reconciled**, even if the project ID matches. The plan
+must not be runnable until a later phase defines and verifies a shared
+canonical source format and checks revision and source digest together.
+The snapshot may also be independently removed through the Library; an
+executor must reopen and reverify availability and integrity immediately
+before every step. Deleting a snapshot never deletes a creative project or
+plan. No provider calls, rendering, publishing or background execution occur.
+
 ### A. Durable orchestration (next implementation)
 
 - Store a minimal per-project automation job manifest with schema version, project ID, source revision/checksum, steps, timestamps and terminal state.

@@ -25,7 +25,7 @@ from .studio_video import VideoJobs, VideoJobError, TERMINAL
 from .automation_jobs import AutomationJobs, AutomationJobError
 from .studio_image_requests import ImageRequests, ReceiptError
 from . import creative
-from .online_store import OnlineStore, SnapshotError, MAX_PACKAGE
+from .online_store import OnlineStore, SnapshotError, MAX_PACKAGE, validate_package
 from .storage_status import capacity_report
 from .studio_store import reserve_creative_generation, reserve_text_generation
 from .providers.cloudflare_text import CloudflareText, MODEL as TEXT_MODEL, draft_settings
@@ -64,6 +64,18 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 online = OnlineStore(data_dir/'creative-snapshots')
             except OSError:
                 online_reason = 'Online storage is unavailable. Check the disk mount and write permissions.'
+    def verified_plan_snapshot(key):
+        if online is None:
+            raise AutomationJobError("Online snapshots are unavailable; existing plans were kept.", 503)
+        try:
+            with online.open(key) as source:
+                raw = source.read(MAX_PACKAGE + 1)
+            return validate_package(raw)
+        except SnapshotError as exc:
+            raise AutomationJobError(str(exc), exc.status) from None
+        except OSError:
+            raise AutomationJobError("Snapshot storage could not be verified.", 503) from None
+
     class Handler(BaseHTTPRequestHandler):
         video_jobs = videos
         def setup(self):
@@ -314,7 +326,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     self._send(exc.status if isinstance(exc, AutomationJobError) else 400,
                                {'error': str(exc) if isinstance(exc, AutomationJobError) else 'Invalid automation plan'})
                 return
-            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel|/source)?', path)
+            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel|/source|/snapshot)?', path)
             if match:
                 job_id, cancel_route = match.groups()
                 try:
@@ -326,6 +338,12 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     elif self.command == 'POST' and cancel_route == '/source':
                         payload = json.loads(self._read_body(1024))
                         self._send(200, automation_jobs.bind_source(job_id, payload))
+                    elif self.command == 'POST' and cancel_route == '/snapshot':
+                        payload = json.loads(self._read_body(1024))
+                        if not isinstance(payload, dict) or set(payload) != {'snapshot_id'}:
+                            raise AutomationJobError("Provide the exact online snapshot identifier.")
+                        self._send(200, automation_jobs.bind_snapshot(
+                            job_id, payload['snapshot_id'], verified_plan_snapshot))
                     else:
                         self._send(405, {'error': 'Method not allowed'})
                 except (AutomationJobError, ValueError, TypeError, json.JSONDecodeError) as exc:
