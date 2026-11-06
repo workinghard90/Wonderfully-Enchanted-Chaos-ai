@@ -10,7 +10,7 @@ import time
 
 from .automation_jobs import AutomationJobError, closing_transaction
 
-SAFE_OPERATIONS = ("inventory_report",)
+SAFE_OPERATIONS = ("inventory_report", "artwork_export")
 
 
 class AutomationApprovals:
@@ -89,31 +89,35 @@ class AutomationApprovals:
 
     def revoke(self, job_id, request):
         if (not isinstance(request,dict)
-                or request != {"confirm":job_id,"operation":"inventory_report"}):
+                or set(request) != {"confirm","operation"}
+                or request.get("confirm") != job_id
+                or request.get("operation") not in SAFE_OPERATIONS):
             raise AutomationJobError("Confirm the exact plan and approval to revoke.")
         with self.lock, self._db() as db:
             self.jobs.get(job_id)
             row=db.execute("""SELECT job_id,operation,snapshot_id,source_sha256,
                     state,granted,updated FROM automation_approvals
                     WHERE job_id=? AND operation=?""",
-                    (job_id,"inventory_report")).fetchone()
+                    (job_id,request["operation"])).fetchone()
             if not row:
                 raise AutomationJobError("No approval exists for this operation.",404)
             if row[4] != "revoked":
                 db.execute("""UPDATE automation_approvals SET state='revoked',
                     updated=? WHERE job_id=? AND operation=?""",
-                    (int(time.time()),job_id,"inventory_report"))
+                    (int(time.time()),job_id,request["operation"]))
                 row=db.execute("""SELECT job_id,operation,snapshot_id,source_sha256,
                     state,granted,updated FROM automation_approvals
                     WHERE job_id=? AND operation=?""",
                     (job_id,"inventory_report")).fetchone()
             return self._present(row)
 
-    def require(self, job):
+    def require(self, job, operation="inventory_report"):
+        if operation not in SAFE_OPERATIONS:
+            raise AutomationJobError("Unknown or disabled operation.", 400)
         with self.lock, self._db() as db:
             row=db.execute("""SELECT state,snapshot_id,source_sha256
-                FROM automation_approvals WHERE job_id=? AND operation='inventory_report'""",
-                (job["id"],)).fetchone()
+                FROM automation_approvals WHERE job_id=? AND operation=?""",
+                (job["id"],operation)).fetchone()
         if (job["status"]!="awaiting_approval" or not row or row[0]!="approved"
                 or (row[1],row[2])!=(job["snapshot_id"],job["source_sha256"])):
             raise AutomationJobError("An active approval for this exact source is required.",409)
