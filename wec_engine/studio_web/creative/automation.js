@@ -111,7 +111,7 @@ if (root) {
   serverTitle.textContent="Server automation plans (approval required)";
   const serverHint=document.createElement("p");
   serverHint.className="muted";
-  serverHint.textContent="These plans survive server restarts, but do not run on their own. Use the original studio tools to create output; execution of server plans is not available yet.";
+  serverHint.textContent="Plans are stored on the server but never execute automatically. Lock saved source only after saving: WEC hashes the saved device project and original artwork locally, sending just revision + SHA-256. This is not server-side content verification or approval.";
   const serverStatus=document.createElement("p");
   serverStatus.id="automation-server-status";
   serverStatus.setAttribute("role","status");
@@ -140,6 +140,52 @@ if (root) {
     if(!response.ok) throw Error(data.error || "Server rejected the plan request.");
     return data;
   }
+  // Source fingerprints are computed from the actual *saved* IndexedDB
+  // record, including original binary bytes. Only revision and SHA-256 leave
+  // this device; no titles, pages, prompts or artwork are uploaded.
+  const hex = bytes => [...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  const digest = async bytes => hex(await crypto.subtle.digest("SHA-256",bytes));
+  async function normalizedSource(value) {
+    if (value instanceof Blob) return {type:"blob",size:value.size,
+      mime:value.type,sha256:await digest(await value.arrayBuffer())};
+    if (value instanceof ArrayBuffer) return {type:"arraybuffer",size:value.byteLength,
+      sha256:await digest(value)};
+    if (ArrayBuffer.isView(value)) return {type:"typedbytes",name:value.constructor.name,
+      sha256:await digest(value.buffer.slice(value.byteOffset,value.byteOffset+value.byteLength))};
+    if (Array.isArray(value)) {
+      const result=[];
+      for(const item of value) result.push(await normalizedSource(item));
+      return result;
+    }
+    if (value && typeof value==="object") {
+      const result={};
+      for(const key of Object.keys(value).sort()) {
+        if(key==="__proto__"||key==="constructor") throw Error("Unsupported saved project field.");
+        result[key]=await normalizedSource(value[key]);
+      }
+      return result;
+    }
+    if (value===null || ["string","boolean","number"].includes(typeof value)) {
+      if(typeof value==="number" && !Number.isFinite(value)) throw Error("Invalid saved project number.");
+      return value;
+    }
+    throw Error("Unsupported saved project data. No source was locked.");
+  }
+  async function savedFingerprint(expectedId,expectedKind) {
+    const {get}=await import("/studio/store.js");
+    const first=await get(expectedId);
+    if(!first || first.id!==expectedId || first.kind!==expectedKind ||
+       !Number.isSafeInteger(first.revision) || first.revision<1)
+      throw Error("Save this matching project before locking its source.");
+    const normalized=await normalizedSource(first);
+    const sha256=await digest(new TextEncoder().encode(JSON.stringify(normalized)));
+    // Revision recheck catches another tab's normal saved-project edits while
+    // hashing large original images. A hash never proves server possession.
+    const second=await get(expectedId);
+    if(!second || second.revision!==first.revision || second.kind!==expectedKind)
+      throw Error("Saved project changed during fingerprinting. Review and retry.");
+    return {source_revision:first.revision,source_sha256:sha256};
+  }
   async function loadServerPlans() {
     if(serverBusy)return;
     serverBusy=true;
@@ -153,6 +199,33 @@ if (root) {
       for(const job of matching) {
         const row=document.createElement("li");
         row.textContent=job.recipe+" · "+job.status+" · "+job.id.slice(0,8)+" ";
+        if(job.status==="awaiting_approval" && job.source_sha256===null) {
+          const bind=document.createElement("button");
+          bind.type="button";bind.className="secondary";
+          bind.textContent="Lock saved source";
+          bind.addEventListener("click",async()=>{
+            if(serverBusy)return;
+            if(!window.confirm("Lock the saved device-project revision to this server plan? This sends only a checksum and revision, not artwork or an approval to run."))return;
+            serverBusy=true;
+            bind.disabled=true;serverRefresh.disabled=serverCreate.disabled=true;
+            serverStatus.textContent="Checking the saved project and its original files…";
+            try{
+              const expectedId=currentProject();
+              if(expectedId!==job.project_id || document.getElementById("editor").hidden)
+                throw Error("Open the matching project before locking its source.");
+              const fingerprint=await savedFingerprint(expectedId,job.kind);
+              if(currentProject()!==expectedId)throw Error("Project changed. No source lock submitted.");
+              await serverApi("/api/automation/jobs/"+job.id+"/source",fingerprint);
+              serverStatus.textContent="Saved-source fingerprint locked. No server execution or project upload occurred.";
+            }catch(error){
+              serverStatus.textContent=error.message || "Source lock not confirmed. Refresh before retrying.";
+            }finally{
+              serverBusy=false;serverRefresh.disabled=serverCreate.disabled=false;
+            }
+            await loadServerPlans();
+          });
+          row.append(bind);
+        }
         if(job.status==="awaiting_approval"||job.status==="interrupted") {
           const cancel=document.createElement("button");
           cancel.type="button";cancel.className="secondary";

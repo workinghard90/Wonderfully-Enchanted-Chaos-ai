@@ -126,6 +126,28 @@ const assert = require('node:assert/strict');
       assert.ok((await onServer.json()).jobs.some(job=>job.status==='awaiting_approval'), 'Stored job must exist');
       const storedPlan=(await onServer.json()).jobs.find(job=>job.status==='awaiting_approval');
       assert.ok(storedPlan && storedPlan.id,'Expected an identified stored plan before cancellation');
+      // Owner opts into a checksum of the saved project, including binary
+      // original assets. The server never receives project content here.
+      assert.equal(storedPlan.source_revision,null);
+      page.once('dialog', dialog=>dialog.accept());
+      await serverPanel.getByRole('button',{name:'Lock saved source'}).click();
+      await serverPanel.locator('#automation-server-list li')
+        .filter({hasText:storedPlan.id.slice(0,8)})
+        .getByRole('button',{name:'Lock saved source'}).waitFor({state:'detached'});
+      const lockedResponse=await page.request.get(base+'/api/automation/jobs/'+storedPlan.id,{
+        headers:{'X-WEC-Token':'test-only-workflow-token-32-characters'}});
+      assert.equal(lockedResponse.status(),200);
+      const lockedPlan=await lockedResponse.json();
+      assert.ok(Number.isInteger(lockedPlan.source_revision) && lockedPlan.source_revision>=1);
+      assert.match(lockedPlan.source_sha256,/^[a-f0-9]{64}$/);
+      const savedProject=await page.evaluate(async id=>{
+        const {get}=await import('/studio/store.js');
+        return await get(id);
+      },storedPlan.project_id);
+      assert.equal(lockedPlan.source_revision,savedProject.revision);
+      await serverPanel.getByRole('button',{name:'Load server plans'}).click();
+      assert.equal(await serverPanel.getByRole('button',{name:'Lock saved source'}).count(),0,
+        'Server-retained source lock must not be replaceable by the UI');
       page.once('dialog', dialog=>dialog.accept());
       await serverPanel.getByRole('button',{name:'Cancel plan'}).click();
       // The record count is unchanged during cancellation. Wait for the

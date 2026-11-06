@@ -71,6 +71,26 @@ states, and their source fields remain null until explicitly bound.
 steps and durable receipts, explicit per-operation consent, retry semantics,
 failure recovery, owner acceptance and real file verification.
 
+### Phase 12 — Browser-saved source fingerprints (PR #77)
+
+Studio → Plan now provides an explicit **Lock saved source** action for
+unbound pending server plans. It reopens the current project from IndexedDB,
+requires a positive saved revision and matching ID/format, recursively hashes
+binary Blob/ArrayBuffer content, and hashes a deterministic representation
+of the saved record using browser SHA-256. A second read checks the revision
+before transmitting only `source_revision` and `source_sha256` to the
+owner-authenticated PR #76 source-lock route. The plan can only be locked once.
+No original images, narration, titles or prompts are transmitted by this action.
+
+This does **not** independently verify the server has the source bytes:
+the server currently receives a client-reported digest only. It does not
+freeze future editing in the browser and does not assert that an unsaved editor
+matches the saved snapshot. An executor must later obtain and authenticate
+a canonical project snapshot, verify bytes/checksum/revision again and block
+stale inputs. Browser tests cover explicit locking, saved revision and
+server persistence across a new list request. They do not replace manual
+output inspection or licensed provider verification.
+
 ### A. Durable orchestration (next implementation)
 
 - Store a minimal per-project automation job manifest with schema version, project ID, source revision/checksum, steps, timestamps and terminal state.
