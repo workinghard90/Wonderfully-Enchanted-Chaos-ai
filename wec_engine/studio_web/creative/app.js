@@ -21,9 +21,37 @@ let project = null,
   textReady = false,
   urls = [],
   verifiedVideoPackage = null;
-const say = (s) => {
+// Keep the existing status element for history, navigation and screen readers.
+// Surface actionable failures separately within the current viewport.
+let activeError = null;
+function showError(message) {
+  if (!activeError) {
+    const region = document.createElement("div");
+    region.id = "wec-visible-error";
+    region.setAttribute("role", "alert");
+    region.setAttribute("aria-live", "assertive");
+    region.hidden = true;
+    const text = document.createElement("p");
+    text.id = "wec-visible-error-text";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "secondary";
+    close.textContent = "Dismiss";
+    close.setAttribute("aria-label", "Dismiss error message");
+    close.addEventListener("click", () => { region.hidden = true; });
+    region.append(text, close);
+    document.body.append(region);
+    activeError = region;
+  }
+  activeError.querySelector("#wec-visible-error-text").textContent = message;
+  activeError.hidden = false;
+}
+const say = (s, kind = "info") => {
   $("status").textContent = s;
-  $("status").classList.toggle("status-alert", /Cannot reach|90 seconds|failed|error|unavailable/i.test(s));
+  const isError = kind === "error" ||
+    /Cannot reach|90 seconds|failed|error|unavailable/i.test(s);
+  $("status").classList.remove("status-alert");
+  if (isError) showError(s);
 };
 function button(label, action, disabled = false) {
   const b = document.createElement("button");
@@ -135,6 +163,7 @@ async function refreshAI(interactive = false) {
     $("generation-status").textContent = message;
     $("ai-connection-status").textContent = message;
     $("draft-status").textContent = "Connect to check AI drafting.";
+    if (interactive) say(message, "error");
     return;
   }
   try {
@@ -175,7 +204,7 @@ async function run(action) {
     await action();
   } catch (e) {
     const message = e.message || String(e);
-    say(message);
+    say(message, "error");
     if ($("editor").dataset.workflowStep === "4") {
       $("export-error").textContent = message;
       $("export-error").hidden = false;
