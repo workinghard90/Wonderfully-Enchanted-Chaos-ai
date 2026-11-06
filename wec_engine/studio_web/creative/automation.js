@@ -201,6 +201,58 @@ if (root) {
         row.textContent=job.recipe+" · "+job.status+" · "+job.id.slice(0,8)+" ";
         // Preferred pathway for NEW plans: source revision + payload digest
         // are derived together from a validated immutable online snapshot.
+        if(job.status==="awaiting_approval" &&
+           job.source_format==="recovery_payload_v1" && job.snapshot_id) {
+          const safeSteps=document.createElement("div");
+          safeSteps.className="toolbar";
+          const summary=document.createElement("span");
+          summary.textContent="Source inspection only · No generation or exports";
+          safeSteps.append(summary);
+          const show=document.createElement("button");
+          show.type="button";show.className="secondary";
+          show.textContent="View step receipts";
+          show.addEventListener("click",async()=>{
+            if(serverBusy)return;
+            try{
+              const result=await serverApi("/api/automation/jobs/"+job.id+"/steps");
+              const receipt=result.steps.map(s=>s.step+": "+s.state+
+                " (attempts "+s.attempts+")").join("; ");
+              serverStatus.textContent=receipt||"No inspection steps recorded for this plan.";
+            }catch(error){serverStatus.textContent=error.message||"Step receipts unavailable.";}
+          });
+          safeSteps.append(show);
+          for(const [step,label] of [["verify_source","Verify archived source"],
+                                      ["inspect_inventory","Inspect inventory"]]) {
+            const action=document.createElement("button");
+            action.type="button";action.className="secondary";
+            action.textContent=label;
+            action.addEventListener("click",async()=>{
+              if(serverBusy)return;
+              if(!window.confirm("Run the read-only "+label.toLowerCase()+
+                " step now? This checks stored recovery bytes and writes a receipt only; no AI, video or publishing."))return;
+              serverBusy=true;action.disabled=true;
+              serverRefresh.disabled=serverCreate.disabled=true;
+              try {
+                const url="/api/automation/jobs/"+job.id+"/steps";
+                const history=await serverApi(url);
+                const previous=history.steps.find(s=>s.step===step);
+                const retry=previous && ["failed","interrupted"].includes(previous.state);
+                if(retry && !window.confirm("This step previously "+previous.state+
+                   ". Explicitly retry the read-only check?"))return;
+                const result=await serverApi(url,{confirm:job.id,step,...(retry?{retry:true}:{})});
+                serverStatus.textContent=result.step+" · "+result.state+
+                  " · receipt saved. No creative work or export was performed.";
+              }catch(error){
+                serverStatus.textContent=error.message||"Read-only verification failed.";
+              }finally{
+                serverBusy=false;action.disabled=false;
+                serverRefresh.disabled=serverCreate.disabled=false;
+              }
+            });
+            safeSteps.append(action);
+          }
+          row.append(safeSteps);
+        }
         if(job.status==="awaiting_approval" && !job.source_sha256 && !job.snapshot_id) {
           const verify=document.createElement("button");
           verify.type="button";verify.className="secondary";
