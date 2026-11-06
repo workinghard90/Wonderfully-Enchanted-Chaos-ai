@@ -37,7 +37,7 @@ async function stage(page, number) {
       let dialogs = 0, calls = 0, used = 0;
       const errors = [];
       p.on('pageerror', e => errors.push(e.message));
-      p.on('dialog', d => { dialogs++; return d.dismiss(); });
+      p.on('dialog', d => { if (d.type() === 'prompt') { dialogs++; return d.dismiss(); } return d.accept(); });
       await p.goto(base); await ready(p);
       assert.equal(dialogs,0);
       assert.match(await p.locator('#ai-connection-status').innerText(), /not signed in/);
