@@ -316,14 +316,6 @@ class AutomationJobsAPITests(unittest.TestCase):
                 with self.assertRaises(HTTPError) as err:
                     request(steps_url, {"confirm":new_plan["id"],"step":"render_video"})
                 self.assertEqual(err.exception.code,400)
-                # Preserve both receipts if the owner removes the source snapshot;
-                # an existing success must NOT conceal a missing source.
-                OnlineStore(root / "creative-snapshots").remove(current_meta["id"])
-                with self.assertRaises(HTTPError) as err:
-                    request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"})
-                self.assertEqual(err.exception.code,404)
-                _, retained_steps = request(steps_url)
-                self.assertEqual(len(retained_steps["steps"]),2)
                 _, persisted = request("/api/automation/jobs/" + new_plan["id"])
                 self.assertEqual(persisted, verified)
                 _, replay = request(verified_route, {"snapshot_id": current_meta["id"]})
@@ -362,6 +354,14 @@ class AutomationJobsAPITests(unittest.TestCase):
                 self.assertEqual(err.exception.code, 409)
                 _, unchanged = request("/api/automation/jobs/" + other["id"])
                 self.assertIsNone(unchanged["snapshot_id"])
+                # Preserve both receipts if the owner removes the source snapshot;
+                # an existing success must NOT conceal a missing source.
+                OnlineStore(root / "creative-snapshots").remove(current_meta["id"])
+                with self.assertRaises(HTTPError) as err:
+                    request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"})
+                self.assertEqual(err.exception.code,404)
+                _, retained_steps = request(steps_url)
+                self.assertEqual(len(retained_steps["steps"]),2)
             finally:
                 server.shutdown()
                 server.server_close()
