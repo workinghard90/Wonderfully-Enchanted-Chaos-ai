@@ -1235,7 +1235,8 @@ async function recoveryPackage() {
   readFields();
   await persist();
   const state = await storage.recoverySnapshot(project.id, project.revision);
-  const content = {project: await encodeBackup(state.project), checkpoint: state.checkpoint
+  const content = {source_revision: state.project.revision,
+    project: await encodeBackup(state.project), checkpoint: state.checkpoint
     ? {createdAt: state.checkpoint.createdAt, project: await encodeBackup(state.checkpoint.project)} : null};
   const payload = JSON.stringify(content);
   const value = {app: "wec-recovery-package", package_version: 1, payload,
