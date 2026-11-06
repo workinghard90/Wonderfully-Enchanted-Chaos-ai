@@ -252,6 +252,80 @@ if (root) {
             safeSteps.append(action);
           }
           row.append(safeSteps);
+          const approvals=await serverApi("/api/automation/jobs/"+job.id+"/approvals");
+          const consent=approvals.approvals.find(a=>a.operation==="inventory_report");
+          const approvalControls=document.createElement("div");
+          approvalControls.className="toolbar";
+          const badge=document.createElement("span");
+          badge.textContent="Inventory report: "+(consent?.state||"not approved");
+          approvalControls.append(badge);
+          if(!consent) {
+            const grant=document.createElement("button");
+            grant.type="button";grant.className="secondary";
+            grant.textContent="Approve free inventory report";
+            grant.addEventListener("click",async()=>{
+              if(serverBusy)return;
+              if(!window.confirm("Authorize one source-bound inventory report for this plan? It uses existing verified data, costs $0 in AI/provider charges, and does NOT approve AI, rendering, Cozy handoff or publishing."))return;
+              serverBusy=true;grant.disabled=true;
+              try{
+                await serverApi("/api/automation/jobs/"+job.id+"/approvals",{
+                  confirm:job.id,operation:"inventory_report",source_sha256:job.source_sha256
+                });
+              }catch(error){serverStatus.textContent=error.message||"Approval not recorded.";}
+              finally{serverBusy=false;}
+              await loadServerPlans();
+            });
+            approvalControls.append(grant);
+          }
+          if(consent?.state==="approved") {
+            const prepare=document.createElement("button");
+            prepare.type="button";prepare.className="secondary";
+            prepare.textContent="Prepare inventory report";
+            prepare.addEventListener("click",async()=>{
+              if(serverBusy)return;
+              if(!window.confirm("Verify the source and prepare this read-only inventory report? No provider calls, rendering or publishing."))return;
+              serverBusy=true;prepare.disabled=true;
+              try{
+                const url="/api/automation/jobs/"+job.id+"/steps";
+                const history=await serverApi(url);
+                const previous=history.steps.find(s=>s.step==="inventory_report");
+                const retry=previous&&["failed","interrupted"].includes(previous.state);
+                if(retry&&!window.confirm("Retry this previously "+previous.state+" report verification?"))return;
+                const receipt=await serverApi(url,{confirm:job.id,step:"inventory_report",
+                  ...(retry?{retry:true}:{})});
+                if(receipt.state!=="succeeded"||!receipt.result)
+                  throw Error("The server did not confirm a completed report.");
+                const output={schema_version:1,report_type:"wec-inventory",
+                  project_id:job.project_id,job_id:job.id,
+                  ...receipt.result};
+                const file=new Blob([JSON.stringify(output,null,2)+"\n"],
+                  {type:"application/json"});
+                const href=URL.createObjectURL(file);
+                const link=document.createElement("a");
+                link.href=href;link.download="wec-inventory-"+job.id.slice(0,8)+".json";
+                document.body.append(link);link.click();link.remove();
+                setTimeout(()=>URL.revokeObjectURL(href),3000);
+                serverStatus.textContent="Inventory report prepared; download requested. Verify it in your files.";
+              }catch(error){serverStatus.textContent=error.message||"Inventory report unavailable.";}
+              finally{serverBusy=false;prepare.disabled=false;}
+            });
+            approvalControls.append(prepare);
+            const revoke=document.createElement("button");
+            revoke.type="button";revoke.className="secondary";
+            revoke.textContent="Revoke report approval";
+            revoke.addEventListener("click",async()=>{
+              if(serverBusy||!window.confirm("Permanently revoke this report approval? Existing receipts remain, but new report requests are blocked."))return;
+              serverBusy=true;revoke.disabled=true;
+              try{
+                await serverApi("/api/automation/jobs/"+job.id+"/approvals/revoke",
+                  {confirm:job.id,operation:"inventory_report"});
+              }catch(error){serverStatus.textContent=error.message||"Revocation not confirmed.";}
+              finally{serverBusy=false;}
+              await loadServerPlans();
+            });
+            approvalControls.append(revoke);
+          }
+          row.append(approvalControls);
         }
         if(job.status==="awaiting_approval" && !job.source_sha256 && !job.snapshot_id) {
           const verify=document.createElement("button");
