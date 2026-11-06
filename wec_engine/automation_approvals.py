@@ -108,7 +108,7 @@ class AutomationApprovals:
                 row=db.execute("""SELECT job_id,operation,snapshot_id,source_sha256,
                     state,granted,updated FROM automation_approvals
                     WHERE job_id=? AND operation=?""",
-                    (job_id,"inventory_report")).fetchone()
+                    (job_id,request["operation"])).fetchone()
             return self._present(row)
 
     def require(self, job, operation="inventory_report"):
