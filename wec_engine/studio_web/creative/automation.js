@@ -111,7 +111,7 @@ if (root) {
   serverTitle.textContent="Server automation plans (approval required)";
   const serverHint=document.createElement("p");
   serverHint.className="muted";
-  serverHint.textContent="Plans never execute automatically. Lock the saved device source, then optionally verify and attach a matching owner online snapshot. The server checks stored snapshot bytes and picture checksums, but its backup omits project revision: these remain separate proofs, not an execution approval.";
+  serverHint.textContent="Plans never execute automatically. For a new plan, save an online snapshot in Library, then choose a verified source snapshot to lock its saved revision and checked bytes together. The older device-fingerprint lock remains available for legacy use; it is not execution-ready.";
   const serverStatus=document.createElement("p");
   serverStatus.id="automation-server-status";
   serverStatus.setAttribute("role","status");
@@ -199,6 +199,57 @@ if (root) {
       for(const job of matching) {
         const row=document.createElement("li");
         row.textContent=job.recipe+" · "+job.status+" · "+job.id.slice(0,8)+" ";
+        // Preferred pathway for NEW plans: source revision + payload digest
+        // are derived together from a validated immutable online snapshot.
+        if(job.status==="awaiting_approval" && !job.source_sha256 && !job.snapshot_id) {
+          const verify=document.createElement("button");
+          verify.type="button";verify.className="secondary";
+          verify.textContent="Choose verified source snapshot";
+          verify.addEventListener("click",async()=>{
+            if(serverBusy)return;
+            serverBusy=true;verify.disabled=true;
+            serverRefresh.disabled=serverCreate.disabled=true;
+            try{
+              const result=await serverApi("/api/creative/snapshots");
+              if(!result.enabled)throw Error("Online snapshots are disabled. Save a recovery package or enable online storage.");
+              const eligible=(result.snapshots||[]).filter(item=>
+                item.project_id===job.project_id && item.kind===job.kind &&
+                Number.isSafeInteger(item.source_revision) && item.source_revision>0);
+              if(!eligible.length)throw Error("No revision-bearing online snapshot for this project. Save a new online snapshot in Library.");
+              const picker=document.createElement("select");
+              picker.setAttribute("aria-label","Verified source for plan "+job.id.slice(0,8));
+              for(const item of eligible) {
+                const option=document.createElement("option");
+                option.value=item.id;
+                option.textContent="Revision "+item.source_revision+" · "+new Date(item.created_at).toLocaleString();
+                picker.append(option);
+              }
+              const bind=document.createElement("button");
+              bind.type="button";bind.className="secondary";bind.textContent="Verify & lock source";
+              bind.addEventListener("click",async()=>{
+                if(serverBusy)return;
+                const selected=picker.value;
+                if(!window.confirm("Lock this immutable online recovery package as the source for this plan? Its contents will be verified, but no automation will run."))return;
+                serverBusy=true;picker.disabled=bind.disabled=true;
+                serverRefresh.disabled=serverCreate.disabled=true;
+                try{
+                  await serverApi("/api/automation/jobs/"+job.id+"/verified-source",{snapshot_id:selected});
+                  serverStatus.textContent="Verified snapshot source locked. No automation was run.";
+                }catch(error){
+                  serverStatus.textContent=error.message||"Source was not verified. Refresh before retrying.";
+                }finally{
+                  serverBusy=false;serverRefresh.disabled=serverCreate.disabled=false;
+                }
+                await loadServerPlans();
+              });
+              row.append(picker,bind);
+              serverStatus.textContent="Choose a saved revision, then verify and lock it. No execution occurs.";
+            }catch(error){
+              serverStatus.textContent=error.message||"Verified source snapshots are unavailable.";
+            }finally{serverBusy=false;serverRefresh.disabled=serverCreate.disabled=false;}
+          });
+          row.append(verify);
+        }
         if(job.status==="awaiting_approval" && job.source_sha256 && !job.snapshot_id) {
           const find=document.createElement("button");
           find.type="button";find.className="secondary";
