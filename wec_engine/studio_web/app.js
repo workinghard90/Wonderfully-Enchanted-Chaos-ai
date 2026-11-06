@@ -49,7 +49,12 @@ async function request(path, options = {}, retry = true) {
 async function api(path, options) { return (await request(path, options)).json(); }
 function setBusy(value) {
   busy = value;
-  document.querySelectorAll('button, #editor input, #editor textarea, #preview input, #preview textarea').forEach(item => { item.disabled = value || item.dataset.generationReady === 'false'; });
+  document.querySelectorAll('button, #editor input, #editor textarea, #preview input, #preview textarea').forEach(item => {
+    // A protected action can wait on inline owner credentials.
+    // Never disable its input, submit or cancel controls.
+    if (!item.closest('#wec-owner-login'))
+      item.disabled = value || item.dataset.generationReady === 'false';
+  });
   $('editor').setAttribute('aria-busy', String(value));
   updateVideoButton();
   updateDeviceView();
