@@ -885,3 +885,39 @@ body:has(#editor:not([hidden])) .studio-quicknav { position: static; }
   #wec-page-navigation {gap:6px;padding:7px;margin-inline:-8px;}
   #wec-page-navigation a {flex:1 1 calc(50% - 10px);font-size:13px;padding:8px;}
 }
+
+/* Contextual failures stay visible wherever the reader is on the page.
+   Fixed only for errors; ordinary progress/success remains inline. */
+#wec-visible-error:not([hidden]) {
+  position: fixed;
+  z-index: 200;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 28px));
+  max-height: min(35svh, 260px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 2px solid #a63727;
+  border-radius: 12px;
+  background: #fff8e9;
+  color: #29211b;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 35%);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+#wec-visible-error p { margin: 0; overflow-wrap: anywhere; }
+#wec-visible-error button {
+  min-height: 40px;
+  flex-shrink: 0;
+  color: #29211b;
+  border: 1px solid #a63727;
+  background: #fff;
+}
+@media (max-width: 480px) {
+  #wec-visible-error:not([hidden]) { flex-direction: column; }
+  #wec-visible-error button { align-self: flex-end; }
+}
