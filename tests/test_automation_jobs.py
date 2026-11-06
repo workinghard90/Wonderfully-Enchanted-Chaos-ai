@@ -179,7 +179,7 @@ class AutomationJobsTests(unittest.TestCase):
             with self.assertRaises(AutomationJobError):
                 steps.execute(job["id"], verify_command, lambda _: (_ for _ in ()).throw(
                     AutomationJobError("Read failed.",503)))
-            self.assertEqual(steps.list(job["id"])[0]["state"],"failed")
+            self.assertEqual(next(x for x in steps.list(job["id"]) if x["step"]=="verify_source")["state"],"failed")
             with self.assertRaises(AutomationJobError) as err:
                 steps.execute(job["id"],verify_command,lambda _:source)
             self.assertEqual(err.exception.status,409)
