@@ -208,6 +208,46 @@ must be checked by the owner; the browser requesting a file is not proof it
 was saved. Future paid operations will need separately specified cost caps,
 bounded inputs, explicit per-operation approvals and provider receipts.
 
+### Phase 17 — Approval-controlled original artwork ZIP (PR #82)
+
+The first approval-controlled creative artifact is a ZIP containing **existing,
+explicitly approved** original PNG/JPEG artwork from an immutable online
+recovery snapshot. This operation is available only to `art` plans using
+the `artwork` recipe with a `recovery_payload_v1` verified source.
+The separate `artwork_export` approval is tied to the exact source digest,
+is owner-authenticated, survives restart and can be permanently revoked
+without changing the independent `inventory_report` permission.
+
+An owner explicitly calls
+`POST /api/automation/jobs/{id}/artwork-export` with the exact job ID.
+The server verifies the recovery package, saved revision and source checksum;
+requires every page to have an approved original PNG/JPEG image; verifies
+image hashes and decodability; and creates a deterministic ZIP with fixed
+names and `manifest.json` listing image hashes, source revision and snapshot.
+The ZIP is bounded to 36 MiB, stored by atomic rename on the existing
+persistent data directory, and its SHA-256, bytes, image count and attempt
+count are recorded in a durable SQLite receipt. Missing/incorrect images
+fail closed without altering project sources. Failed/interrupted attempts
+require an explicit owner retry, capped at three. A completed repeat returns
+the same stored receipt and verifies the existing file instead of generating
+a duplicate. A restart converts unfinished `running` records to
+`interrupted` without reporting success.
+
+`GET /api/automation/jobs/{id}/artwork-export/file` permits authenticated
+downloads only while the original snapshot still validates and the exact
+approval remains active. The server hashes the saved ZIP against its receipt,
+and Studio independently checks the ZIP byte count and SHA-256 before
+requesting a local browser download. Browser download initiation is **not**
+proof that the owner saved/opened the file. Revocation and cancellation block
+future downloads and preparations, while preserving saved artifacts and
+receipts for recovery. A transfer already underway cannot be recalled.
+
+This ZIP is **not a print-ready PDF, completed artwork quality review or
+publishing authorization**. It includes original approved page images, not
+title, narrative or prompt text. No paid AI/provider calls, video rendering,
+Cozy publishing, scheduled workers or external handoff occurs. Production
+deployment is separate from merging and still requires owner acceptance.
+
 ### A. Durable orchestration (next implementation)
 
 - Store a minimal per-project automation job manifest with schema version, project ID, source revision/checksum, steps, timestamps and terminal state.
