@@ -114,7 +114,11 @@ class ArtworkArchives:
                 with Image.open(io.BytesIO(raw)) as image:
                     fmt = image.format
                     image.verify()
-            except (UnidentifiedImageError, OSError, ValueError):
+            except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+                # Pillow raises a distinct exception for oversized declared
+                # dimensions, even when a small, checksummed image is uploaded.
+                # Convert it to the same fail-closed owner-facing validation
+                # error instead of dropping the authenticated HTTP connection.
                 raise AutomationJobError("Original artwork must be a valid PNG or JPEG.", 409) from None
             if fmt not in ("PNG", "JPEG"):
                 raise AutomationJobError("Only PNG/JPEG original artwork can be exported.", 409)
