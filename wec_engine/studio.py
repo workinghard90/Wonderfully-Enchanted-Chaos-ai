@@ -25,6 +25,7 @@ from .studio_video import VideoJobs, VideoJobError, TERMINAL
 from .automation_jobs import AutomationJobs, AutomationJobError
 from .automation_steps import AutomationSteps
 from .automation_approvals import AutomationApprovals
+from .automation_artwork import ArtworkArchives
 from .studio_image_requests import ImageRequests, ReceiptError
 from . import creative
 from .online_store import OnlineStore, SnapshotError, MAX_PACKAGE, validate_package
@@ -55,6 +56,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
     automation_jobs = AutomationJobs(data_dir/'automation-jobs.sqlite3')
     automation_steps = AutomationSteps(automation_jobs)
     automation_approvals = AutomationApprovals(automation_jobs)
+    artwork_archives = ArtworkArchives(automation_jobs, automation_approvals, None, data_dir)
     videos = video_jobs or VideoJobs(data_dir/'video-jobs')
     online_reason = 'Online storage is not enabled. Local saves and downloaded recovery packages still work.'
     online = None
@@ -68,6 +70,8 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                 online = OnlineStore(data_dir/'creative-snapshots')
             except OSError:
                 online_reason = 'Online storage is unavailable. Check the disk mount and write permissions.'
+    artwork_archives.online = online
+
     def verified_plan_snapshot(key):
         if online is None:
             raise AutomationJobError("Online snapshots are unavailable; existing plans were kept.", 503)
@@ -330,7 +334,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     self._send(exc.status if isinstance(exc, AutomationJobError) else 400,
                                {'error': str(exc) if isinstance(exc, AutomationJobError) else 'Invalid automation plan'})
                 return
-            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel|/source|/snapshot|/verified-source|/steps|/approvals|/approvals/revoke)?', path)
+            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel|/source|/snapshot|/verified-source|/steps|/approvals|/approvals/revoke|/artwork-export|/artwork-export/file)?', path)
             if match:
                 job_id, cancel_route = match.groups()
                 try:
@@ -373,6 +377,21 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                         receipt, created = automation_steps.execute(
                             job_id, payload, verified_plan_snapshot, automation_approvals)
                         self._send(201 if created else 200, receipt)
+                    elif self.command == 'GET' and cancel_route == '/artwork-export':
+                        self._send(200, {'export': artwork_archives.status(job_id),
+                                         'paid_operations_enabled': False})
+                    elif self.command == 'POST' and cancel_route == '/artwork-export':
+                        payload = json.loads(self._read_body(1024))
+                        receipt, created = artwork_archives.prepare(job_id, payload)
+                        self._send(201 if created else 200, receipt)
+                    elif self.command == 'GET' and cancel_route == '/artwork-export/file':
+                        source, receipt = artwork_archives.open_download(job_id)
+                        with source:
+                            self._headers(200, 'application/zip', receipt['archive_bytes'], {
+                                'Content-Disposition': f'attachment; filename="wec-artwork-{job_id[:8]}.zip"',
+                                'X-WEC-Archive-SHA256': receipt['archive_sha256']})
+                            for chunk in iter(lambda: source.read(65536), b''):
+                                self.wfile.write(chunk)
                     else:
                         self._send(405, {'error': 'Method not allowed'})
                 except (AutomationJobError, ValueError, TypeError, json.JSONDecodeError) as exc:
