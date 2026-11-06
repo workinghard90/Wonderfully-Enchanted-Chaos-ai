@@ -45,6 +45,32 @@ verification of printable PDF, image ZIP, finished MP4 and Cozy importer.
 Until those exist, “record plan” must never be described as automated
 generation or a working background job.
 
+### Phase 11 — Immutable source lock for stored plans (PR #76)
+
+A pending, owner-authenticated server plan may pin a **caller-declared**
+project revision and SHA-256 using
+`POST /api/automation/jobs/{id}/source` with JSON
+`{"source_revision": 1, "source_sha256": "<64 lowercase hex characters>"}`.
+This is an additive SQLite migration; existing records keep their IDs, keys and
+states, and their source fields remain null until explicitly bound.
+
+- A matching repeated request is idempotent. A changed revision/hash is
+  rejected with 409 rather than silently replacing the source of a plan.
+- Cancelled or interrupted plans cannot be newly bound; all owner-only routes
+  still require authentication. No workers or provider calls are started.
+- **Security limitation:** the hash is supplied by the caller. Server storage
+  cannot inspect the browser's actual project bytes from this declaration.
+  The future executor must retrieve a permitted project snapshot, verify its
+  canonical digest and revision itself, and recheck before each step. A source
+  lock is NOT an approval, an execution receipt or a completed output.
+- This is a backend contract only. The Studio UI currently records plans
+  without capturing a canonical project snapshot; browser-local data and
+  source-lock readiness must not be conflated.
+
+**Remaining:** verified snapshot capture and binding in the UI, typed executor
+steps and durable receipts, explicit per-operation consent, retry semantics,
+failure recovery, owner acceptance and real file verification.
+
 ### A. Durable orchestration (next implementation)
 
 - Store a minimal per-project automation job manifest with schema version, project ID, source revision/checksum, steps, timestamps and terminal state.

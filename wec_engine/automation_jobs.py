@@ -45,6 +45,12 @@ class AutomationJobs:
                 updated INTEGER NOT NULL
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS jobs_recent ON jobs(updated DESC)")
+            # Additive migration preserves existing project plans and keys.
+            columns = {col[1] for col in db.execute("PRAGMA table_info(jobs)")}
+            if "source_revision" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN source_revision INTEGER")
+            if "source_sha256" not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN source_sha256 TEXT")
             # Defensive recovery for any jobs that a later executor may leave
             # in the running state; never claim that missing work succeeded.
             db.execute("UPDATE jobs SET status='interrupted', updated=? WHERE status='running'",
@@ -58,7 +64,8 @@ class AutomationJobs:
     @staticmethod
     def _present(row):
         return {field: row[field] for field in
-                ("id", "project_id", "kind", "recipe", "status", "created", "updated")}
+                ("id", "project_id", "kind", "recipe", "status", "created", "updated",
+                 "source_revision", "source_sha256")}
 
     def create(self, value):
         if not isinstance(value, dict) or set(value) != {"project_id", "kind", "recipe", "idempotency_key"}:
@@ -99,6 +106,30 @@ class AutomationJobs:
             if not row:
                 raise AutomationJobError("Automation plan not found.", 404)
             return self._present(row)
+
+    def bind_source(self, job_id, value):
+        """Pin a declared browser-source checksum, not authorization to execute."""
+        if (not isinstance(value, dict) or set(value) != {"source_revision", "source_sha256"}
+                or type(value["source_revision"]) is not int
+                or not 1 <= value["source_revision"] <= 2147483647
+                or not isinstance(value["source_sha256"], str)
+                or not re.fullmatch(r"[a-f0-9]{64}", value["source_sha256"])):
+            raise AutomationJobError("Provide a positive revision and lowercase SHA-256.")
+        with self.lock, self._db() as db:
+            row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if not row or not isinstance(job_id, str) or not re.fullmatch(r"[a-f0-9]{32}", job_id):
+                raise AutomationJobError("Automation plan not found.", 404)
+            incoming = (value["source_revision"], value["source_sha256"])
+            existing = (row["source_revision"], row["source_sha256"])
+            if incoming == existing:
+                return self._present(row)
+            if existing != (None, None):
+                raise AutomationJobError("Source is locked; create a new plan for changed content.", 409)
+            if row["status"] != "awaiting_approval":
+                raise AutomationJobError("Only pending plans can bind a source.", 409)
+            db.execute("UPDATE jobs SET source_revision=?,source_sha256=?,updated=? WHERE id=?",
+                       (*incoming, int(time.time()), job_id))
+            return self._present(db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
 
     def cancel(self, job_id, confirmation):
         if not isinstance(confirmation, dict) or confirmation != {"confirm": job_id}:

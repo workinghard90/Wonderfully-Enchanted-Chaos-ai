@@ -45,6 +45,37 @@ class AutomationJobsTests(unittest.TestCase):
             self.assertEqual(reopened.cancel(record["id"], {"confirm": record["id"]}), cancelled)
             self.assertEqual(reopened.list()[0]["status"], "cancelled")
 
+    def test_source_revision_lock_migration_and_replay(self):
+        sha = "a" * 64
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "jobs.sqlite3"
+            jobs = AutomationJobs(db)
+            record, _ = jobs.create(payload())
+            self.assertIsNone(record["source_revision"])
+            source = {"source_revision": 7, "source_sha256": sha}
+            bound = jobs.bind_source(record["id"], source)
+            self.assertEqual(bound["source_revision"], 7)
+            self.assertEqual(bound["source_sha256"], sha)
+            self.assertEqual(jobs.bind_source(record["id"], source), bound)
+            with self.assertRaises(AutomationJobError) as err:
+                jobs.bind_source(record["id"], {**source, "source_revision": 8})
+            self.assertEqual(err.exception.status, 409)
+            for invalid in (
+                {"source_revision": True, "source_sha256": sha},
+                {"source_revision": 0, "source_sha256": sha},
+                {"source_revision": 7, "source_sha256": "A" * 64},
+                {**source, "token": "private"},
+            ):
+                with self.subTest(invalid=invalid), self.assertRaises(AutomationJobError):
+                    jobs.bind_source(record["id"], invalid)
+            restarted = AutomationJobs(db)
+            self.assertEqual(restarted.get(record["id"])["source_sha256"], sha)
+            new_record, _ = restarted.create(payload("different-key-123456"))
+            restarted.cancel(new_record["id"], {"confirm": new_record["id"]})
+            with self.assertRaises(AutomationJobError) as err:
+                restarted.bind_source(new_record["id"], source)
+            self.assertEqual(err.exception.status, 409)
+
     def test_unfinished_work_is_not_reported_success_on_restart(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "jobs.sqlite3"
@@ -127,6 +158,25 @@ class AutomationJobsAPITests(unittest.TestCase):
                 _, cancelled = request("/api/automation/jobs/" + created["id"] + "/cancel",
                                        {"confirm": created["id"]})
                 self.assertEqual(cancelled["status"], "cancelled")
+                source = {"source_revision": 5, "source_sha256": "b" * 64}
+                with self.assertRaises(HTTPError) as err:
+                    request("/api/automation/jobs/" + created["id"] + "/source", source, auth=False)
+                self.assertEqual(err.exception.code, 401)
+                with self.assertRaises(HTTPError) as err:
+                    request("/api/automation/jobs/" + created["id"] + "/source", source)
+                self.assertEqual(err.exception.code, 409, "Cancelled jobs cannot acquire source locks")
+                _, fresh = request("/api/automation/jobs", payload("fresh-source-key-123"))
+                _, locked = request("/api/automation/jobs/" + fresh["id"] + "/source", source)
+                self.assertEqual(locked["source_sha256"], "b" * 64)
+                self.assertEqual(locked["source_revision"], 5)
+                _, again = request("/api/automation/jobs/" + fresh["id"] + "/source", source)
+                self.assertEqual(again, locked)
+                _, persisted = request("/api/automation/jobs/" + fresh["id"])
+                self.assertEqual(persisted, locked)
+                with self.assertRaises(HTTPError) as err:
+                    request("/api/automation/jobs/" + fresh["id"] + "/source",
+                            {"source_revision": 6, "source_sha256": "c" * 64})
+                self.assertEqual(err.exception.code, 409)
                 # No asynchronous queue, media worker, or generation call is created.
                 self.assertFalse((root / "automation-jobs" / created["id"]).exists())
             finally:
