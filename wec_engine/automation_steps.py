@@ -4,6 +4,7 @@ Only two source-inspection operations exist. No worker, provider, render,
 publishing, file creation or background retries are reachable through here.
 """
 import json
+from contextlib import nullcontext
 import re
 import sqlite3
 import threading
@@ -64,7 +65,8 @@ class AutomationSteps:
             raise AutomationJobError("Confirm the exact plan ID and an allowed read-only step.")
         step = command["step"]
         retry = command.get("retry", False)
-        with self.lock:
+        # Serialize approved work against revocation, including receipt commit.
+        with self.lock, (approvals.lock if step == 'inventory_report' and approvals else nullcontext()):
             job = self.jobs.get(job_id)
             if job["status"] != "awaiting_approval":
                 raise AutomationJobError("This plan is not eligible for source inspection.", 409)
