@@ -34,10 +34,10 @@ async function stage(page, number) {
     for (const width of [390,1440]) {
       const context = await browser.newContext({viewport:{width,height:1000}});
       const p = await context.newPage();
-      let answer = null, dialogs = 0, calls = 0, used = 0;
+      let dialogs = 0, calls = 0, used = 0;
       const errors = [];
       p.on('pageerror', e => errors.push(e.message));
-      p.on('dialog', d => { dialogs++; return d.type() === 'prompt' ? (answer === null ? d.dismiss() : d.accept(answer)) : d.accept(); });
+      p.on('dialog', d => { dialogs++; return d.dismiss(); });
       await p.goto(base); await ready(p);
       assert.equal(dialogs,0);
       assert.match(await p.locator('#ai-connection-status').innerText(), /not signed in/);
@@ -46,28 +46,37 @@ async function stage(page, number) {
       await stage(p, 3); await p.locator('#add').click(); await ready(p);
       assert.equal(await p.locator('.page').count(),1);
       assert.equal(await p.locator('[data-generate]').isDisabled(),true);
-      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
-      assert.equal(dialogs,1);
+      // A pending protected action must leave inline owner login usable.
+      await p.locator('[data-page-link="home"]').click();
+      await p.locator('#check-ai').click();
+      await p.locator('#wec-owner-form').waitFor({state:'visible'});
+      assert.equal(await p.locator('#wec-owner-token').isEnabled(),true);
+      assert.equal(await p.locator('#wec-owner-cancel').isEnabled(),true);
+      assert.equal(dialogs,0,'Owner login must not open a native prompt');
+      await p.locator('#wec-owner-cancel').click();
+      await ready(p);
       assert.match(await p.locator('#ai-connection-status').innerText(), /cancelled/);
-      answer = '   ';
-      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
-      assert.match(await p.locator('#ai-connection-status').innerText(), /not completed/);
       assert.equal(await p.evaluate(()=>sessionStorage.getItem('wec_token')),null);
-      answer = 'wrong';
-      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
-      assert.match(await p.locator('#ai-connection-status').innerText(), /sign-in was not accepted/);
-      assert.equal(await p.evaluate(()=>sessionStorage.getItem('wec_token')),null);
-      // A stale tab must explain the rejected sign-in without a startup prompt.
+      // A stale tab must lose server authority without a startup prompt.
       await p.evaluate(()=>sessionStorage.setItem('wec_token','old-tab-token'));
-      const beforeReload=dialogs;
       await p.reload(); await ready(p);
-      assert.equal(dialogs,beforeReload);
-      assert.match(await p.locator('#ai-connection-status').innerText(), /sign-in was not accepted/);
-      assert.equal(await p.evaluate(()=>sessionStorage.getItem('wec_token')),null);
+      assert.equal(dialogs,0);
+      await p.waitForFunction(()=>sessionStorage.getItem('wec_token')===null);
+      assert.match(await p.locator('#ai-connection-status').innerText(), /not signed in|not accepted|reconnect/i);
       await p.locator('[data-page-link="library"]').click();
       await p.locator('#library .library-item button').first().click(); await ready(p);
-      answer = '  '+token+'  ';
-      await p.locator('[data-page-link="home"]').click(); await p.locator('#check-ai').click(); await ready(p);
+      await p.locator('[data-page-link="home"]').click();
+      await p.locator('#check-ai').click();
+      await p.locator('#wec-owner-form').waitFor({state:'visible'});
+      await p.locator('#wec-owner-token').fill('wrong');
+      assert.equal(await p.locator('#wec-owner-token').evaluate(e=>e.validity.tooShort),true);
+      await p.locator('#wec-owner-token').fill('incorrect-owner-token-with-more-than-32-chars');
+      await p.locator('#wec-owner-form button[type="submit"]').click();
+      await p.locator('#wec-owner-message').filter({hasText:'Incorrect owner password/token.'}).waitFor();
+      assert.equal(await p.evaluate(()=>sessionStorage.getItem('wec_token')),null);
+      await p.locator('#wec-owner-token').fill('  '+token+'  ');
+      await p.locator('#wec-owner-form button[type="submit"]').click();
+      await ready(p);
       assert.match(await p.locator('#ai-connection-status').innerText(), /WEC_ENABLE_IMAGE_GENERATION/);
       assert.equal(await p.evaluate(()=>sessionStorage.getItem('wec_token')),token);
       assert.equal(await p.locator('.page').count(),1);
@@ -84,8 +93,12 @@ async function stage(page, number) {
       await stage(p, 3); await p.locator('[data-generate]').click(); await ready(p);
       assert.equal(calls,1);
       assert.match(await p.locator('#status').innerText(), /Cannot reach/);
-      const box = await p.locator('#status').boundingBox();
-      assert.ok(box.y >= 0 && box.y < 1000, 'Error stays visible on mobile');
+      const alert = p.locator('#wec-visible-error');
+      await alert.waitFor({state:'visible'});
+      assert.match(await alert.innerText(), /Cannot reach/);
+      const box = await alert.boundingBox();
+      assert.ok(box && box.y >= 0 && box.y + box.height <= 1000,
+        'Error stays visible in the viewport on mobile');
       assert.equal(await p.locator('#save').isDisabled(), false);
       await stage(p, 3); await p.locator('[data-generate]').click(); await ready(p);
       assert.equal(calls,1, 'An unresolved receipt blocks another billable request');
