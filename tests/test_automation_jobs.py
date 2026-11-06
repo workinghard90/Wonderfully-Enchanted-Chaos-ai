@@ -13,6 +13,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from wec_engine.automation_jobs import AutomationJobs, AutomationJobError, MAX_JOBS
+from wec_engine.automation_steps import AutomationSteps
 from wec_engine.online_store import OnlineStore
 from wec_engine.studio import create_handler
 
@@ -151,6 +152,59 @@ class AutomationJobsTests(unittest.TestCase):
             jobs.cancel(invalid["id"], {"confirm": invalid["id"]})
             with self.assertRaises(AutomationJobError):
                 jobs.bind_verified_source(invalid["id"], "a" * 64, verified)
+
+    def test_readonly_steps_receipts_retry_restart_and_cancel(self):
+        with tempfile.TemporaryDirectory() as td:
+            jobs = AutomationJobs(Path(td) / "jobs.sqlite3")
+            steps = AutomationSteps(jobs)
+            job, _ = jobs.create(payload("readonly-steps-123456"))
+            source = {"project_id": PROJECT, "kind": "art", "source_revision": 3,
+                      "payload_sha256": "b" * 64, "page_count": 4, "approved_pages": 2}
+            jobs.bind_verified_source(job["id"], "a" * 64, lambda _: source)
+            command = {"confirm":job["id"],"step":"inspect_inventory"}
+            first, created = steps.execute(job["id"], command, lambda _:source)
+            self.assertTrue(created)
+            self.assertEqual(first["state"], "succeeded")
+            self.assertEqual(first["result"]["page_count"], 4)
+            self.assertEqual(first["result"]["approved_pages"], 2)
+            self.assertEqual(first["attempts"],1)
+            same, created = steps.execute(job["id"], command, lambda _:source)
+            self.assertFalse(created)
+            self.assertEqual(first,same)
+            with self.assertRaises(AutomationJobError):
+                steps.execute(job["id"], command, lambda _: (_ for _ in ()).throw(
+                    AutomationJobError("Snapshot disappeared.", 404)))
+            self.assertEqual(AutomationSteps(AutomationJobs(jobs.path)).list(job["id"])[0], first)
+            verify_command = {"confirm":job["id"],"step":"verify_source"}
+            with self.assertRaises(AutomationJobError):
+                steps.execute(job["id"], verify_command, lambda _: (_ for _ in ()).throw(
+                    AutomationJobError("Read failed.",503)))
+            self.assertEqual(steps.list(job["id"])[0]["state"],"failed")
+            with self.assertRaises(AutomationJobError) as err:
+                steps.execute(job["id"],verify_command,lambda _:source)
+            self.assertEqual(err.exception.status,409)
+            retry, created = steps.execute(job["id"],{**verify_command,"retry":True},lambda _:source)
+            self.assertTrue(created)
+            self.assertEqual(retry["attempts"],2)
+            self.assertEqual(retry["state"],"succeeded")
+            with closing(sqlite3.connect(jobs.path)) as db:
+                db.execute("UPDATE automation_steps SET state='running' WHERE job_id=? AND step='verify_source'",
+                           (job["id"],))
+                db.commit()
+            restarted = AutomationSteps(AutomationJobs(jobs.path))
+            self.assertEqual(next(x for x in restarted.list(job["id"])
+                                  if x["step"]=="verify_source")["state"], "interrupted")
+            with self.assertRaises(AutomationJobError):
+                restarted.execute(job["id"],verify_command,lambda _:source)
+            completed, _ = restarted.execute(job["id"],{**verify_command,"retry":True},lambda _:source)
+            self.assertEqual(completed["attempts"],3)
+            jobs.cancel(job["id"],{"confirm":job["id"]})
+            with self.assertRaises(AutomationJobError):
+                restarted.execute(job["id"],verify_command,lambda _:source)
+            with self.assertRaises(AutomationJobError):
+                restarted.execute(job["id"],{"confirm":job["id"],"step":"render_video"},lambda _:source)
+            with self.assertRaises(AutomationJobError):
+                restarted.execute(job["id"],{"confirm":job["id"],"step":"verify_source","retry":1},lambda _:source)
 
     def test_unfinished_work_is_not_reported_success_on_restart(self):
         with tempfile.TemporaryDirectory() as td:
