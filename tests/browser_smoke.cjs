@@ -122,11 +122,24 @@ const assert=require('node:assert/strict'), net=require('node:net');
     const context=await browser.newContext();
     await context.addInitScript(()=>sessionStorage.setItem('wec_token','wrong'));
     const page=await context.newPage();let prompts=0;
-    page.on('dialog',async dialog=>{prompts++;await dialog.accept('still-wrong')});
+    page.on('dialog',async dialog=>{prompts++;await dialog.dismiss()});
     await page.goto(base + "/video/");
-    await page.locator('#message').filter({hasText:'Access token rejected'}).waitFor();
-    assert.equal(prompts,1);await context.close();
-    console.log('PASS authentication retry is bounded');
+    // The owner login no longer uses browser prompts. A stale token must
+    // be rejected and the inline form must allow a valid explicit sign-in.
+    await page.locator('#wec-owner-form').waitFor({state:'visible'});
+    await page.locator('#wec-owner-token').fill('still-wrong-owner-token-32-characters');
+    await page.locator('#wec-owner-form button[type="submit"]').click();
+    await page.locator('#wec-owner-message').filter({hasText:'Incorrect owner password/token.'}).waitFor();
+    assert.equal(await page.evaluate(()=>sessionStorage.getItem('wec_token')),null);
+    await page.locator('#wec-owner-token').fill(token);
+    await page.locator('#wec-owner-form button[type="submit"]').click();
+    await page.locator('#wec-owner-state').filter({hasText:'Owner features unlocked'}).waitFor();
+    assert.equal(await page.evaluate(()=>sessionStorage.getItem('wec_token')),token);
+    assert.equal(prompts,0);
+    await page.locator('#wec-owner-logout').click();
+    assert.equal(await page.evaluate(()=>sessionStorage.getItem('wec_token')),null);
+    await context.close();
+    console.log('PASS bounded inline owner sign-in and explicit lock; no browser prompts');
   }finally{
     if(browser)await browser.close();server.kill();
     await new Promise(r=>server.exitCode!==null?r():server.once('exit',r));
