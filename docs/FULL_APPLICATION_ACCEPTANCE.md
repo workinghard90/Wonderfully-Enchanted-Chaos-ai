@@ -116,6 +116,38 @@ executor must reopen and reverify availability and integrity immediately
 before every step. Deleting a snapshot never deletes a creative project or
 plan. No provider calls, rendering, publishing or background execution occur.
 
+### Phase 14 — Recovery-payload source reconciliation (PR #79)
+
+New recovery packages include a **positive saved device revision** within the
+existing checksummed payload. The actual archived project retains the v2
+editable-backup format, so downloads and older recovery packages remain
+compatible. On the server, the existing validator checks the revision type,
+recovery envelope SHA-256, project identity and original image checksums.
+
+A new pending plan may use **Choose verified source snapshot** to select an
+online snapshot carrying this revision. The owner-authenticated
+`POST /api/automation/jobs/{id}/verified-source` takes one exact
+`snapshot_id`. The server opens and verifies the archived bytes, then
+atomically binds the snapshot ID, its exact payload SHA-256, saved revision
+and `source_format=recovery_payload_v1`. These fields are immutable;
+idempotent repeats must revalidate archived bytes. Older snapshots without
+source revision are rejected, as are plans already locked using the prior
+device-fingerprint scheme. Existing records are migrated additively.
+
+**Trust boundary:** the source revision originated from the browser's saved
+IndexedDB record at package creation; the server verifies it is contained in
+the authentic stored payload, not that it is the device's latest revision.
+The payload digest commits to all archived text, art and checkpoint content,
+not the older browser-only normalized-source representation. Future
+executors must re-open the immutable snapshot and verify its SHA-256 and
+project identity before every operation, refuse missing or deleted
+snapshots, and record durable step receipts. Changing the editable browser
+project after the snapshot does not update its frozen source.
+
+This milestone still does not execute any creative action, approve costs,
+render media or publish externally. The existing manual source-lock pathway
+remains for compatibility and is **not** execution-ready.
+
 ### A. Durable orchestration (next implementation)
 
 - Store a minimal per-project automation job manifest with schema version, project ID, source revision/checksum, steps, timestamps and terminal state.
