@@ -163,6 +163,7 @@ async function refreshAI(interactive = false) {
     $("generation-status").textContent = message;
     $("ai-connection-status").textContent = message;
     $("draft-status").textContent = "Connect to check AI drafting.";
+    if (interactive) say(message, "error");
     return;
   }
   try {
