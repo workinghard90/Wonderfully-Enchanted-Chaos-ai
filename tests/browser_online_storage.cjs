@@ -37,6 +37,27 @@ const assert=require('node:assert/strict');
    await p.locator('#online-panel summary').click();
    await p.locator('#online-save').click();await ready(p);
    await p.locator('#status').filter({hasText:'Online snapshot saved and verified'}).waitFor();
+   // Link the immutable, server-verified recovery bytes to a saved plan;
+   // this is provenance only, not source-revision reconciliation or execution.
+   const ownerHeaders={'X-WEC-Token':token};
+   const snapshotsResponse=await p.request.get(base+'/api/creative/snapshots',{headers:ownerHeaders});
+   assert.equal(snapshotsResponse.status(),200);
+   const matching=(await snapshotsResponse.json()).snapshots.find(item=>item.project_id===id);
+   assert.ok(matching&&/^[a-f0-9]{64}$/.test(matching.id));
+   const createPlan=await p.request.post(base+'/api/automation/jobs',{headers:ownerHeaders,
+     data:{project_id:id,kind:'art',recipe:'artwork',idempotency_key:'online-snapshot-test-'+width}});
+   assert.equal(createPlan.status(),201);
+   const job=await createPlan.json();
+   const lockSource=await p.request.post(base+'/api/automation/jobs/'+job.id+'/source',
+     {headers:ownerHeaders,data:{source_revision:1,source_sha256:'a'.repeat(64)}});
+   assert.equal(lockSource.status(),200);
+   const linkSnapshot=await p.request.post(base+'/api/automation/jobs/'+job.id+'/snapshot',
+     {headers:ownerHeaders,data:{snapshot_id:matching.id}});
+   assert.equal(linkSnapshot.status(),200);
+   assert.equal((await linkSnapshot.json()).snapshot_id,matching.id);
+   const afterLink=await p.request.get(base+'/api/automation/jobs/'+job.id,{headers:ownerHeaders});
+   assert.equal((await afterLink.json()).snapshot_id,matching.id);
+
    await p.locator('[data-page-link="renders"]').click();
    await p.locator('#check-storage').click();await ready(p);
    await p.locator('#server-storage-status').filter({hasText:'Online snapshots: 1/50'}).waitFor();
