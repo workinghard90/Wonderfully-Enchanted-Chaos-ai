@@ -326,7 +326,7 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                     self._send(exc.status if isinstance(exc, AutomationJobError) else 400,
                                {'error': str(exc) if isinstance(exc, AutomationJobError) else 'Invalid automation plan'})
                 return
-            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel|/source|/snapshot)?', path)
+            match = re.fullmatch(r'/api/automation/jobs/([a-f0-9]{32})(/cancel|/source|/snapshot|/verified-source)?', path)
             if match:
                 job_id, cancel_route = match.groups()
                 try:
@@ -343,6 +343,12 @@ def create_handler(db_path, data_dir, token=None, allowed_origin=None, video_job
                         if not isinstance(payload, dict) or set(payload) != {'snapshot_id'}:
                             raise AutomationJobError("Provide the exact online snapshot identifier.")
                         self._send(200, automation_jobs.bind_snapshot(
+                            job_id, payload['snapshot_id'], verified_plan_snapshot))
+                    elif self.command == 'POST' and cancel_route == '/verified-source':
+                        payload = json.loads(self._read_body(1024))
+                        if not isinstance(payload, dict) or set(payload) != {'snapshot_id'}:
+                            raise AutomationJobError("Provide the exact online snapshot identifier.")
+                        self._send(200, automation_jobs.bind_verified_source(
                             job_id, payload['snapshot_id'], verified_plan_snapshot))
                     else:
                         self._send(405, {'error': 'Method not allowed'})
