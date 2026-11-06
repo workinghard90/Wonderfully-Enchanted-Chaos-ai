@@ -148,6 +148,38 @@ This milestone still does not execute any creative action, approve costs,
 render media or publish externally. The existing manual source-lock pathway
 remains for compatibility and is **not** execution-ready.
 
+### Phase 15 — Durable owner-triggered source inspection steps (PR #80)
+
+Only plans locked to `source_format=recovery_payload_v1` may run the first
+two typed, read-only operations: `verify_source` and `inspect_inventory`.
+An owner explicitly triggers a step through Studio Plan, or through
+`POST /api/automation/jobs/{id}/steps` with the exact plan ID and step.
+`GET /api/automation/jobs/{id}/steps` returns the step receipts.
+
+Each step opens and independently verifies the stored online snapshot's
+content hash, original picture checksums, project identity and saved revision.
+The inventory step reports only counts (page slots and approved-page flags).
+It is not a print-quality, image-quality or output readiness certification.
+
+Execution state and receipts use a separate additive SQLite table. A
+success is idempotent and still rechecks snapshot availability before a
+previous receipt is returned. A crash during a step leaves `running`,
+which becomes `interrupted` on initialization. Failed/interrupted steps
+require a separate explicit `retry: true` action, with at most three
+attempts. Cancellation blocks further execution. No step contains creative
+text, pictures, tokens or destination URLs. Legacy-only source locks cannot
+run these steps. A receipt records metadata and does not imply consent to
+generate, render, export or publish.
+
+**Important:** This is synchronous, owner-triggered source inspection,
+not an unattended worker or a fully automated creative workflow.
+`execution_enabled` for the full automation system remains false. Future
+milestones must add typed consent for billable/irreversible operations,
+durable output receipts and idempotency guarantees specific to each
+provider/export handler, cancellation/restart safety and human output
+validation. These inspection steps do not modify originals or produce
+creative assets.
+
 ### A. Durable orchestration (next implementation)
 
 - Store a minimal per-project automation job manifest with schema version, project ID, source revision/checksum, steps, timestamps and terminal state.

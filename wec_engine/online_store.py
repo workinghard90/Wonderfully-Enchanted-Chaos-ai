@@ -80,7 +80,9 @@ def validate_package(raw):
                     raise ValueError()
         return {'title': project['title'], 'kind': project['kind'], 'project_id': project['id'],
                 'checkpoint': cp is not None, 'source_revision': revision,
-                'payload_sha256': envelope['sha256']}
+                'payload_sha256': envelope['sha256'],
+                'page_count': len(project['pages']),
+                'approved_pages': sum(p.get('review') == 'approved' for p in project['pages'])}
     except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
         raise SnapshotError('Invalid recovery package or picture checksum. Existing snapshots were kept.') from None
 
