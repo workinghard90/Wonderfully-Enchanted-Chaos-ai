@@ -294,6 +294,36 @@ class AutomationJobsAPITests(unittest.TestCase):
                 self.assertEqual(verified["source_revision"], 4)
                 self.assertEqual(verified["source_sha256"], current_meta["payload_sha256"])
                 self.assertEqual(verified["snapshot_id"], current_meta["id"])
+                steps_url = "/api/automation/jobs/" + new_plan["id"] + "/steps"
+                with self.assertRaises(HTTPError) as err:
+                    request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"}, auth=False)
+                self.assertEqual(err.exception.code,401)
+                _, empty_steps = request(steps_url)
+                self.assertEqual(empty_steps["steps"], [])
+                self.assertFalse(empty_steps["execution_enabled"])
+                status, first_step = request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"})
+                self.assertEqual(status,201)
+                self.assertEqual(first_step["state"],"succeeded")
+                self.assertEqual(first_step["result"]["source_sha256"],current_meta["payload_sha256"])
+                status, replayed_step = request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"})
+                self.assertEqual(status,200)
+                self.assertEqual(replayed_step,first_step)
+                status, inventory = request(steps_url, {"confirm":new_plan["id"],"step":"inspect_inventory"})
+                self.assertEqual(status,201)
+                self.assertEqual(inventory["result"]["page_count"],0)
+                _, steps_readback = request(steps_url)
+                self.assertEqual(len(steps_readback["steps"]),2)
+                with self.assertRaises(HTTPError) as err:
+                    request(steps_url, {"confirm":new_plan["id"],"step":"render_video"})
+                self.assertEqual(err.exception.code,400)
+                # Preserve both receipts if the owner removes the source snapshot;
+                # an existing success must NOT conceal a missing source.
+                OnlineStore(root / "creative-snapshots").remove(current_meta["id"])
+                with self.assertRaises(HTTPError) as err:
+                    request(steps_url, {"confirm":new_plan["id"],"step":"verify_source"})
+                self.assertEqual(err.exception.code,404)
+                _, retained_steps = request(steps_url)
+                self.assertEqual(len(retained_steps["steps"]),2)
                 _, persisted = request("/api/automation/jobs/" + new_plan["id"])
                 self.assertEqual(persisted, verified)
                 _, replay = request(verified_route, {"snapshot_id": current_meta["id"]})
