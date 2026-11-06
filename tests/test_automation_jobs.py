@@ -76,6 +76,42 @@ class AutomationJobsTests(unittest.TestCase):
                 restarted.bind_source(new_record["id"], source)
             self.assertEqual(err.exception.status, 409)
 
+    def test_verified_snapshot_binding_is_immutable_and_restart_safe(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "jobs.sqlite3"
+            jobs = AutomationJobs(db)
+            record, _ = jobs.create(payload())
+            jobs.bind_source(record["id"], {"source_revision": 3, "source_sha256": "a" * 64})
+            calls = []
+            def verify(identifier):
+                calls.append(identifier)
+                return {"project_id": PROJECT, "kind": "art"}
+            identifier = "b" * 64
+            attached = jobs.bind_snapshot(record["id"], identifier, verify)
+            self.assertEqual(attached["snapshot_id"], identifier)
+            self.assertEqual(jobs.bind_snapshot(record["id"], identifier, verify), attached)
+            self.assertEqual(calls, [identifier, identifier])
+            with self.assertRaises(AutomationJobError) as err:
+                jobs.bind_snapshot(record["id"], "c" * 64, verify)
+            self.assertEqual(err.exception.status, 409)
+            restarted = AutomationJobs(db)
+            self.assertEqual(restarted.get(record["id"])["snapshot_id"], identifier)
+            other, _ = restarted.create(payload("snapshot-mismatch-key-1"))
+            restarted.bind_source(other["id"], {"source_revision": 2, "source_sha256": "d" * 64})
+            for bad in ({"project_id": "f" * 32, "kind": "art"},
+                        {"project_id": PROJECT, "kind": "video"}):
+                with self.subTest(bad=bad), self.assertRaises(AutomationJobError) as err:
+                    restarted.bind_snapshot(other["id"], "e" * 64, lambda _key: bad)
+                self.assertEqual(err.exception.status, 409)
+            self.assertIsNone(restarted.get(other["id"])["snapshot_id"])
+            unbound, _ = restarted.create(payload("snapshot-unbound-key-1"))
+            with self.assertRaises(AutomationJobError) as err:
+                restarted.bind_snapshot(unbound["id"], identifier, verify)
+            self.assertEqual(err.exception.status, 409)
+            restarted.cancel(unbound["id"], {"confirm": unbound["id"]})
+            with self.assertRaises(AutomationJobError):
+                restarted.bind_snapshot(unbound["id"], identifier, verify)
+
     def test_unfinished_work_is_not_reported_success_on_restart(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "jobs.sqlite3"
